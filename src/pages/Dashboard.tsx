@@ -8,6 +8,10 @@ import {
   CalendarClock,
   Package,
   Users,
+  BarChart3,
+  PieChart,
+  TrendingUp,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +36,23 @@ import {
 import { useApp } from "@/context/AppContext";
 import { createFolder, deleteFolder, updateFolder } from "@/lib/storage";
 import type { Folder, FolderType } from "@/types";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  Legend,
+} from "recharts";
+
+const COLORS = ["#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
 export default function Dashboard() {
   const { user, data, setData } = useApp();
@@ -82,6 +103,44 @@ export default function Dashboard() {
     [folderStats],
   );
 
+  // Chart data
+  const barChartData = useMemo(() => {
+    const typeCounts: Record<string, { name: string; value: number }> = {};
+    for (const type of ["Cliente", "Produto"]) {
+      const count = foldersByType[type]?.length ?? 0;
+      const itemTotal = (foldersByType[type]?.length ?? 0) * 5; // placeholder
+      typeCounts[type] = { name: type, value: count };
+    }
+    return Object.values(typeCounts);
+  }, [foldersByType]);
+
+  const pieChartData = useMemo(() => {
+    const statusCounts: Record<string, number> = {};
+    for (const item of data.items) {
+      const status = item.status || "Sem Vencimento";
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    }
+    return Object.entries(statusCounts).map(([name, value]) => ({
+      name,
+      value,
+    }));
+  }, [data.items]);
+
+  const lineChartData = useMemo(() => {
+    const days = ["Hoje", "Amanhã", "2 dias"];
+    const counts = [
+      folderStats.reduce((s, f) => s + f.today, 0),
+      folderStats.reduce((s, f) => s + f.tomorrow, 0),
+      folderStats.reduce((s, f) => s + f.twoDays, 0),
+    ];
+    return days.map((name, i) => ({ name, value: counts[i] }));
+  }, [folderStats]);
+
+  const overdueCount = useMemo(
+    () => folderStats.reduce((s, f) => s + f.overdue, 0),
+    [folderStats],
+  );
+
   const onCreate = (e: FormEvent) => {
     e.preventDefault();
     if (!user || !name.trim()) return;
@@ -121,6 +180,146 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-slate-200">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total de Itens</CardTitle>
+            <BarChart3 className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totals.count}</div>
+            <p className="text-xs text-slate-500">
+              em {folders.length} pastas
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
+            <TrendingUp className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              R$ {totals.total.toFixed(2)}
+            </div>
+            <p className="text-xs text-slate-500">
+              valor acumulado
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-amber-200 bg-amber-50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-amber-800">
+              Vencidos
+            </CardTitle>
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-800">{overdueCount}</div>
+            <p className="text-xs text-amber-700">
+              itens vencidos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-sky-200 bg-sky-50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-sky-800">
+              Ativos
+            </CardTitle>
+            <CalendarClock className="h-4 w-4 text-sky-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-sky-800">
+              {totals.count - overdueCount}
+            </div>
+            <p className="text-xs text-sky-700">
+              itens ativos
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts Section */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Distribuição por Tipo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="value" fill="#8884d8" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Status dos Itens</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <RechartsPieChart>
+                <Tooltip />
+                <Legend />
+                <Pie
+                  data={pieChartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {pieChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+              </RechartsPieChart>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Itens por Dias</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={lineChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#0ea5e9"
+                    strokeWidth={2}
+                    activeDot={{ r: 8 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Folder List Section */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Suas pastas</h1>
@@ -161,6 +360,7 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Folder Types Section */}
       {(["Cliente", "Produto"] as FolderType[]).map((folderType) => (
         <section key={folderType} className="space-y-3">
           <div className="flex items-center gap-2">
@@ -170,7 +370,9 @@ export default function Dashboard() {
               <Package className="h-5 w-5 text-emerald-600" />
             )}
             <h2 className="text-lg font-semibold">{folderType}s</h2>
-            <Badge variant="secondary">{foldersByType[folderType]?.length ?? 0}</Badge>
+            <Badge variant="secondary">
+              {foldersByType[folderType]?.length ?? 0}
+            </Badge>
           </div>
 
           {(foldersByType[folderType] ?? []).length === 0 ? (
@@ -182,7 +384,10 @@ export default function Dashboard() {
               {(foldersByType[folderType] ?? []).map((folder) => {
                 const stats = folderStats.find((s) => s.folder.id === folder.id)!;
                 return (
-                  <Card key={folder.id} className="group border-slate-200 transition hover:border-sky-300 hover:shadow-md">
+                  <Card
+                    key={folder.id}
+                    className="group border-slate-200 transition hover:border-sky-300 hover:shadow-md"
+                  >
                     <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                       <div>
                         <CardTitle className="text-lg">
@@ -234,6 +439,7 @@ export default function Dashboard() {
         </section>
       ))}
 
+      {/* Create Folder Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
@@ -242,7 +448,11 @@ export default function Dashboard() {
           <form className="space-y-4" onSubmit={onCreate}>
             <div className="space-y-2">
               <Label>Nome</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label>Tipo</Label>
@@ -265,6 +475,7 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Folder Dialog */}
       <Dialog open={!!editFolder} onOpenChange={(o) => !o && setEditFolder(null)}>
         <DialogContent>
           <DialogHeader>
@@ -273,7 +484,11 @@ export default function Dashboard() {
           <form className="space-y-4" onSubmit={onEdit}>
             <div className="space-y-2">
               <Label>Nome</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label>Tipo</Label>
@@ -296,6 +511,7 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Folder Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
