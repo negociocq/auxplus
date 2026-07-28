@@ -10,14 +10,11 @@ import {
 import type { AppData, User } from "@/types";
 import {
   getSessionUserId,
-  loadData,
   refreshItemStatuses,
-  saveData,
   setSessionUserId,
 } from "@/lib/storage";
 import {
   fetchAppDataFromSupabase,
-  isSupabaseConfigured,
   loginWithSupabase,
   persistAppDataToSupabase,
 } from "@/lib/supabaseApi";
@@ -26,7 +23,7 @@ interface AppContextValue {
   data: AppData;
   user: User | null;
   loading: boolean;
-  backend: "supabase" | "local";
+  backend: "supabase";
   error: string | null;
   setData: (updater: AppData | ((prev: AppData) => AppData)) => void;
   login: (username: string, password: string) => Promise<string | null>;
@@ -53,25 +50,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [backend] = useState<"supabase" | "local">(() =>
-    isSupabaseConfigured ? "supabase" : "local",
-  );
+  const backend = "supabase" as const;
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      if (isSupabaseConfigured) {
-        const remote = await fetchAppDataFromSupabase();
-        setDataState(remote);
-      } else {
-        setDataState(refreshItemStatuses(loadData()));
-      }
+      const remote = await fetchAppDataFromSupabase();
+      setDataState(remote);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao carregar dados";
       setError(msg);
-      // fallback local para não travar a UI
-      setDataState(refreshItemStatuses(loadData()));
     } finally {
       setLoading(false);
     }
@@ -90,18 +79,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             : updater;
         const refreshed = refreshItemStatuses(next);
 
-        if (isSupabaseConfigured) {
-          void persistAppDataToSupabase(refreshed).catch((err) => {
-            console.error("[AuxPlus] Falha ao salvar no Supabase", err);
-            setError(
-              err instanceof Error
-                ? err.message
-                : "Falha ao salvar no Supabase",
-            );
-          });
-        } else {
-          saveData(refreshed);
-        }
+        void persistAppDataToSupabase(refreshed).catch((err) => {
+          console.error("[AuxPlus] Falha ao salvar no Supabase", err);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Falha ao salvar no Supabase",
+          );
+        });
 
         return refreshed;
       });
@@ -116,34 +101,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (username: string, password: string) => {
-      if (isSupabaseConfigured) {
-        const result = await loginWithSupabase(username, password);
-        if (result.error || !result.user) return result.error || "Erro no login";
-        setSessionUserId(result.user.id);
-        setSessionId(result.user.id);
-        // garante dados atualizados após login
-        try {
-          const remote = await fetchAppDataFromSupabase();
-          setDataState(remote);
-        } catch {
-          /* keep current */
-        }
-        return null;
+      const result = await loginWithSupabase(username, password);
+      if (result.error || !result.user) return result.error || "Erro no login";
+      setSessionUserId(result.user.id);
+      setSessionId(result.user.id);
+      // garante dados atualizados após login
+      try {
+        const remote = await fetchAppDataFromSupabase();
+        setDataState(remote);
+      } catch {
+        /* keep current */
       }
-
-      const found = data.users.find(
-        (u) =>
-          u.username.toLowerCase() === username.toLowerCase() &&
-          u.password === password,
-      );
-      if (!found) return "Nome de usuário ou senha inválidos.";
-      if (!found.isActive)
-        return "Sua conta está desativada. Entre em contato com o suporte.";
-      setSessionUserId(found.id);
-      setSessionId(found.id);
       return null;
     },
-    [data.users],
+    [],
   );
 
   const logout = useCallback(() => {
