@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -46,6 +47,7 @@ const emptyForm = {
   dueDate: "",
   phone: "",
   price: "0",
+  notes: "",
 };
 
 export default function FolderItems() {
@@ -103,6 +105,7 @@ export default function FolderItems() {
       dueDate: item.dueDate ?? "",
       phone: item.phone,
       price: String(item.price ?? 0),
+      notes: item.notes ?? "",
     });
     setFormOpen(true);
   };
@@ -116,6 +119,8 @@ export default function FolderItems() {
       dueDate: form.dueDate || null,
       phone: form.phone.trim(),
       price: Number(form.price) || 0,
+      notes: form.notes.trim(),
+      isActive: true,
     };
     if (editing) {
       setData(
@@ -219,13 +224,14 @@ export default function FolderItems() {
                 <TableHead>Telefone</TableHead>
                 <TableHead>Preço</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Obs.</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-slate-500">
+                  <TableCell colSpan={8} className="py-10 text-center text-slate-500">
                     Nenhum item encontrado.
                   </TableCell>
                 </TableRow>
@@ -248,6 +254,9 @@ export default function FolderItems() {
                       >
                         {item.status}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[140px] truncate text-xs text-slate-500">
+                      {item.notes || "—"}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -321,6 +330,14 @@ export default function FolderItems() {
               <Input
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Observações</Label>
+              <Textarea
+                rows={3}
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
             </div>
             <DialogFooter>

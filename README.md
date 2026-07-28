@@ -1,21 +1,51 @@
 # AuxPlus
 
-Plataforma de gestão de clientes, produtos e vencimentos — pronta para abrir no **Dyad**.
+Plataforma de gestão de clientes, produtos e vencimentos — pronta para o **Dyad**.
 
-## Como abrir no Dyad
+## Dados importados
 
-1. Abra o Dyad
-2. Clique em **+** → **Import App** (ou abra esta pasta se já estiver em `dyad-apps`)
-3. Selecione a pasta `auxplus-app-2`
-4. O Dyad roda `npm run dev` (porta 8080)
+Dump **PostgreSQL** (Neon/Supabase/Dyad): `legacy/auxplus_postgres.sql` ← use este  
+Dump MySQL antigo: `legacy/auxplus_dump.sql` (não roda no Postgres)
 
-## Contas demo
+```bash
+node scripts/export-postgres-sql.mjs
+```
 
-| Perfil | Usuário | Senha    |
-|--------|---------|----------|
-| Usuário | `demo`  | `demo123` |
-| Admin   | `admin` | `admin123` |
+| | Qtd |
+|--|--|
+| Usuários | 10 |
+| Pastas | 16 |
+| Itens | 466 |
+| Tickets | 6 |
 
-## Stack
+## Supabase (plano Free)
 
-Vite + React + TypeScript + Tailwind + shadcn/ui. Dados em `localStorage` (código PHP antigo em `legacy/`).
+A app lê/grava no Supabase quando `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` estão definidos (Dyad injeta isso na integração).
+
+### SQL para rodar no Supabase (nessa ordem)
+
+1. `legacy/auxplus_postgres.sql` — tabelas + dados  
+2. `legacy/auxplus_rls.sql` — políticas RLS (sem isso o anon key bloqueia)
+
+### Contas
+
+| Usuário | Senha |
+|---------|-------|
+| `tarciocq` | `123456` |
+| `admin` | `admin123` |
+
+Se a tela mostrar **Backend: local**, a integração Supabase do Dyad ainda não injetou as variáveis.
+
+## Abrir no Dyad
+
+1. Abra a pasta `auxplus-app-2` no Dyad  
+2. Rode o preview (`npm run dev` / porta 8080)  
+3. Se ainda aparecer dados demo antigos, limpe o `localStorage` do preview (chave `auxplus-data-v2`) ou use aba anônima
+
+## Reimportar dump
+
+```bash
+# coloque o .sql em legacy/auxplus_dump.sql
+node scripts/import-sql.mjs
+node scripts/export-clean-sql.mjs
+```

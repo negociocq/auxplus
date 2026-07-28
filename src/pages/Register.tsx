@@ -19,7 +19,7 @@ export default function Register() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (password !== confirm) {
       setError("As senhas não coincidem.");
@@ -35,7 +35,11 @@ export default function Register() {
       return;
     }
     setData(result.data);
-    login(username.trim(), password);
+    const err = await login(username.trim(), password);
+    if (err) {
+      setError(err);
+      return;
+    }
     navigate("/dashboard");
   };
 

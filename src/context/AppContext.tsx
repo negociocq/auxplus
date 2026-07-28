@@ -15,25 +15,71 @@ import {
   saveData,
   setSessionUserId,
 } from "@/lib/storage";
+import {
+  fetchAppDataFromSupabase,
+  isSupabaseConfigured,
+  loginWithSupabase,
+  persistAppDataToSupabase,
+} from "@/lib/supabaseApi";
 
 interface AppContextValue {
   data: AppData;
   user: User | null;
+  loading: boolean;
+  backend: "supabase" | "local";
+  error: string | null;
   setData: (updater: AppData | ((prev: AppData) => AppData)) => void;
-  login: (username: string, password: string) => string | null;
+  login: (username: string, password: string) => Promise<string | null>;
   logout: () => void;
-  refresh: () => void;
+  refresh: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+const emptyData: AppData = {
+  users: [],
+  folders: [],
+  folderSettings: [],
+  folderMessages: [],
+  whatsappMessages: [],
+  items: [],
+  tickets: [],
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [data, setDataState] = useState<AppData>(() =>
-    refreshItemStatuses(loadData()),
-  );
+  const [data, setDataState] = useState<AppData>(emptyData);
   const [sessionId, setSessionId] = useState<string | null>(() =>
     getSessionUserId(),
   );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [backend] = useState<"supabase" | "local">(() =>
+    isSupabaseConfigured ? "supabase" : "local",
+  );
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (isSupabaseConfigured) {
+        const remote = await fetchAppDataFromSupabase();
+        setDataState(remote);
+      } else {
+        setDataState(refreshItemStatuses(loadData()));
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro ao carregar dados";
+      setError(msg);
+      // fallback local para não travar a UI
+      setDataState(refreshItemStatuses(loadData()));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const setData = useCallback(
     (updater: AppData | ((prev: AppData) => AppData)) => {
@@ -43,7 +89,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ? (updater as (p: AppData) => AppData)(prev)
             : updater;
         const refreshed = refreshItemStatuses(next);
-        saveData(refreshed);
+
+        if (isSupabaseConfigured) {
+          void persistAppDataToSupabase(refreshed).catch((err) => {
+            console.error("[AuxPlus] Falha ao salvar no Supabase", err);
+            setError(
+              err instanceof Error
+                ? err.message
+                : "Falha ao salvar no Supabase",
+            );
+          });
+        } else {
+          saveData(refreshed);
+        }
+
         return refreshed;
       });
     },
@@ -56,7 +115,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const login = useCallback(
-    (username: string, password: string) => {
+    async (username: string, password: string) => {
+      if (isSupabaseConfigured) {
+        const result = await loginWithSupabase(username, password);
+        if (result.error || !result.user) return result.error || "Erro no login";
+        setSessionUserId(result.user.id);
+        setSessionId(result.user.id);
+        // garante dados atualizados após login
+        try {
+          const remote = await fetchAppDataFromSupabase();
+          setDataState(remote);
+        } catch {
+          /* keep current */
+        }
+        return null;
+      }
+
       const found = data.users.find(
         (u) =>
           u.username.toLowerCase() === username.toLowerCase() &&
@@ -77,17 +151,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSessionId(null);
   }, []);
 
-  const refresh = useCallback(() => {
-    setDataState(refreshItemStatuses(loadData()));
-  }, []);
-
-  useEffect(() => {
-    saveData(data);
-  }, [data]);
-
   const value = useMemo(
-    () => ({ data, user, setData, login, logout, refresh }),
-    [data, user, setData, login, logout, refresh],
+    () => ({
+      data,
+      user,
+      loading,
+      backend,
+      error,
+      setData,
+      login,
+      logout,
+      refresh,
+    }),
+    [data, user, loading, backend, error, setData, login, logout, refresh],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

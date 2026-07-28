@@ -1,3 +1,4 @@
+import seed from "@/data/seed.json";
 import type {
   AppData,
   Folder,
@@ -9,80 +10,31 @@ import type {
 } from "@/types";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 
-const STORAGE_KEY = "auxplus-data-v1";
+const STORAGE_KEY = "auxplus-data-v2";
 const SESSION_KEY = "auxplus-session-v1";
 
-function uid(): string {
-  return crypto.randomUUID();
+function nextId(ids: string[]): string {
+  const max = ids.reduce((m, id) => {
+    const n = Number(id);
+    return Number.isFinite(n) ? Math.max(m, n) : m;
+  }, 0);
+  return String(max + 1);
 }
 
 function seedData(): AppData {
-  const adminId = uid();
-  const userId = uid();
-  const folderId = uid();
-
-  return {
-    users: [
-      {
-        id: adminId,
-        username: "admin",
-        password: "admin123",
-        isAdmin: true,
-        isActive: true,
-      },
-      {
-        id: userId,
-        username: "demo",
-        password: "demo123",
-        isAdmin: false,
-        isActive: true,
-      },
-    ],
-    folders: [
-      {
-        id: folderId,
-        userId,
-        type: "Cliente",
-        name: "IPTV",
-      },
-    ],
-    folderSettings: [
-      { folderId, nearDueDays: 3, farDueDays: 10 },
-    ],
-    items: [
-      {
-        id: uid(),
-        folderId,
-        itemId: "1001",
-        name: "Cliente Exemplo",
-        dueDate: new Date().toISOString().slice(0, 10),
-        phone: "+5571999999999",
-        price: 35,
-        status: "Perto de Vencer",
-      },
-      {
-        id: uid(),
-        folderId,
-        itemId: "1002",
-        name: "Cliente Longe",
-        dueDate: new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10),
-        phone: "+5571888888888",
-        price: 40,
-        status: "Longe de Vencer",
-      },
-      {
-        id: uid(),
-        folderId,
-        itemId: "1003",
-        name: "Cliente Vencido",
-        dueDate: new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10),
-        phone: "+5571777777777",
-        price: 30,
-        status: "Já Vencido",
-      },
-    ],
-    tickets: [],
-  };
+  return refreshItemStatuses({
+    users: seed.users as User[],
+    folders: seed.folders as Folder[],
+    folderSettings: seed.folderSettings as FolderSettings[],
+    folderMessages: seed.folderMessages ?? [],
+    whatsappMessages: seed.whatsappMessages ?? [],
+    items: (seed.items as Item[]).map((item) => ({
+      ...item,
+      notes: item.notes ?? "",
+      isActive: item.isActive !== false,
+    })),
+    tickets: seed.tickets as Ticket[],
+  });
 }
 
 export function loadData(): AppData {
@@ -93,7 +45,12 @@ export function loadData(): AppData {
     return seeded;
   }
   try {
-    return JSON.parse(raw) as AppData;
+    const parsed = JSON.parse(raw) as AppData;
+    return refreshItemStatuses({
+      ...parsed,
+      folderMessages: parsed.folderMessages ?? [],
+      whatsappMessages: parsed.whatsappMessages ?? [],
+    });
   } catch {
     const seeded = seedData();
     saveData(seeded);
@@ -103,6 +60,12 @@ export function loadData(): AppData {
 
 export function saveData(data: AppData): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+export function resetToSeed(): AppData {
+  const seeded = seedData();
+  saveData(seeded);
+  return seeded;
 }
 
 export function getSessionUserId(): string | null {
@@ -147,7 +110,7 @@ export function createUser(
     return { data, error: "Nome de usuário já existe." };
   }
   const user: User = {
-    id: uid(),
+    id: nextId(data.users.map((u) => u.id)),
     username,
     password,
     isAdmin: false,
@@ -162,7 +125,12 @@ export function createFolder(
   name: string,
   type: Folder["type"],
 ): AppData {
-  const folder: Folder = { id: uid(), userId, name, type };
+  const folder: Folder = {
+    id: nextId(data.folders.map((f) => f.id)),
+    userId,
+    name,
+    type,
+  };
   const settings: FolderSettings = {
     folderId: folder.id,
     nearDueDays: 3,
@@ -195,6 +163,12 @@ export function deleteFolder(data: AppData, folderId: string): AppData {
     folders: data.folders.filter((f) => f.id !== folderId),
     folderSettings: data.folderSettings.filter((s) => s.folderId !== folderId),
     items: data.items.filter((i) => i.folderId !== folderId),
+    folderMessages: (data.folderMessages ?? []).filter(
+      (m) => m.folderId !== folderId,
+    ),
+    whatsappMessages: (data.whatsappMessages ?? []).filter(
+      (m) => m.folderId !== folderId,
+    ),
   };
 }
 
@@ -207,7 +181,9 @@ export function createItem(
     3;
   const item: Item = {
     ...input,
-    id: uid(),
+    notes: input.notes ?? "",
+    isActive: input.isActive !== false,
+    id: nextId(data.items.map((i) => i.id)),
     status: computeItemStatus(input.dueDate, near),
   };
   return { ...data, items: [...data.items, item] };
@@ -252,7 +228,7 @@ export function createTicket(
   question: string,
 ): AppData {
   const ticket: Ticket = {
-    id: uid(),
+    id: nextId(data.tickets.map((t) => t.id)),
     userId,
     question,
     response: null,

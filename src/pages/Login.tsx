@@ -7,19 +7,31 @@ import { Label } from "@/components/ui/label";
 import { useApp } from "@/context/AppContext";
 
 export default function Login() {
-  const { user, login } = useApp();
+  const { user, login, loading, backend, error: bootError } = useApp();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-900 text-white">
+        Conectando ao Supabase...
+      </div>
+    );
+  }
 
   if (user) {
     return <Navigate to={user.isAdmin ? "/admin" : "/dashboard"} replace />;
   }
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const err = login(username.trim(), password);
+    setSubmitting(true);
+    setError("");
+    const err = await login(username.trim(), password);
+    setSubmitting(false);
     if (err) {
       setError(err);
       return;
@@ -43,6 +55,9 @@ export default function Login() {
           <CardDescription>
             Gestão de clientes, produtos e vencimentos
           </CardDescription>
+          <p className="pt-1 text-xs text-slate-500">
+            Backend: {backend === "supabase" ? "Supabase" : "local"}
+          </p>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={onSubmit}>
@@ -67,13 +82,17 @@ export default function Login() {
                 required
               />
             </div>
-            {error && (
+            {(error || bootError) && (
               <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
-                {error}
+                {error || bootError}
               </p>
             )}
-            <Button type="submit" className="w-full bg-sky-600 hover:bg-sky-700">
-              Entrar
+            <Button
+              type="submit"
+              className="w-full bg-sky-600 hover:bg-sky-700"
+              disabled={submitting}
+            >
+              {submitting ? "Entrando..." : "Entrar"}
             </Button>
           </form>
           <p className="mt-4 text-center text-sm text-slate-600">
@@ -83,7 +102,7 @@ export default function Login() {
             </Link>
           </p>
           <p className="mt-3 rounded-md bg-slate-50 p-3 text-xs text-slate-500">
-            Demo: <strong>demo / demo123</strong> · Admin:{" "}
+            Conta principal: <strong>tarciocq / 123456</strong> · Admin:{" "}
             <strong>admin / admin123</strong>
           </p>
         </CardContent>

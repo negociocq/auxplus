@@ -19,12 +19,25 @@ export interface Folder {
   userId: string;
   type: FolderType;
   name: string;
+  whatsappMessage?: string | null;
 }
 
 export interface FolderSettings {
   folderId: string;
   nearDueDays: number;
   farDueDays: number;
+}
+
+export interface FolderMessage {
+  id: string;
+  folderId: string;
+  message: string;
+}
+
+export interface WhatsappMessage {
+  userId: string;
+  folderId: string;
+  message: string;
 }
 
 export interface Item {
@@ -36,6 +49,9 @@ export interface Item {
   phone: string;
   price: number;
   status: ItemStatus;
+  notes?: string;
+  createdAt?: string | null;
+  isActive?: boolean;
 }
 
 export interface Ticket {
@@ -51,6 +67,8 @@ export interface AppData {
   users: User[];
   folders: Folder[];
   folderSettings: FolderSettings[];
+  folderMessages: FolderMessage[];
+  whatsappMessages: WhatsappMessage[];
   items: Item[];
   tickets: Ticket[];
 }
