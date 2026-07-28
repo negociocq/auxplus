@@ -1,0 +1,267 @@
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    background-color: #f4f4f4; /* Adicionando cor de fundo ao body */
+}
+
+.sidebar {
+    width: 250px;
+    background-color: #333;
+    color: white;
+    padding-top: 70px; /* Espaço para o mini banner */
+    position: fixed;
+    height: 100%;
+    top: 0;
+    left: 0;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 1;
+    overflow-y: auto;
+}
+
+.sidebar.open {
+    transform: translateX(0);
+}
+
+.sidebar .banner {
+    background-color: #007bff;
+    color: white;
+    text-align: center;
+    padding: 10px;
+    font-size: 18px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1;
+}
+
+.sidebar a {
+    display: block;
+    padding: 10px;
+    color: white;
+    text-decoration: none;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.sidebar a:hover {
+    background-color: #444;
+}
+
+.menu-toggle {
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    cursor: pointer;
+    font-size: 24px;
+    background-color: #ddd;
+    padding: 10px;
+    border-radius: 4px;
+    border: none;
+    z-index: 2;
+}
+
+.main-content {
+    margin-left: 250px; /* Espaço para o menu fixo */
+    padding: 20px;
+    flex: 1;
+    transition: margin-left 0.3s ease;
+    margin-top: 70px; /* Espaço para o topo e o banner no menu */
+    height: calc(100vh - 70px); /* Altura da tela menos o topo e o banner */
+    overflow-y: auto;
+    background-color: #fff; /* Fundo branco para o conteúdo principal */
+    width: calc(100% - 250px); /* Largura ajustada para o menu aberto */
+}
+
+.main-content.shifted {
+    margin-left: 0; /* Ajusta quando o menu é fechado */
+    width: 100%; /* Largura total quando o menu está fechado */
+}
+
+.btn-back {
+    display: inline-block;
+    padding: 10px;
+    background-color: #007bff;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+}
+
+.btn-back:hover {
+    background-color: #0056b3;
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        width: 200px;
+    }
+    .main-content {
+        margin-left: 0; /* Oculta o menu no início em telas pequenas */
+        padding: 10px;
+        margin-top: 60px; /* Ajusta para o banner */
+        height: calc(100vh - 60px); /* Altura da tela menos o topo e o banner */
+        width: 100%; /* Largura total em telas pequenas */
+    }
+    .main-content.shifted {
+        margin-left: 200px; /* Ajusta a largura quando o menu é aberto em telas pequenas */
+        width: calc(100% - 200px); /* Ajusta a largura quando o menu é aberto em telas pequenas */
+    }
+}
+    body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            box-sizing: border-box;
+            background-color: #f4f4f4;
+            overflow-x: hidden; /* Evita rolagem horizontal */
+        }
+        header {
+            margin-bottom: 20px;
+        }
+        main {
+            margin: 0;
+            max-height: 70vh; /* Ajuste a altura máxima aqui */
+            overflow-y: scroll; /* Adicione rolagem vertical, mas ocultar a barra */
+            scrollbar-width: none; /* Para navegadores Firefox */
+        }
+        main::-webkit-scrollbar {
+            display: none; /* Para navegadores Webkit */
+        }
+        .button-with-icon {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 15px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-right: 10px;
+            transition: background-color 0.3s ease, transform 0.2s;
+            cursor: pointer;
+        }
+        .button-with-icon:hover {
+            background-color: #0056b3;
+            transform: scale(1.05);
+        }
+        .icon-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            color: inherit;
+            padding: 5px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .icon-button:hover {
+            transform: scale(1.2);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        select, input[type="text"], input[type="date"], input[type="number"] {
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            display: flex;
+            margin: 15px 0; /* Aumentar margem vertical */
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .item-longe {
+            background-color: #d4edda; /* Verde claro */
+        }
+        .item-perto {
+            background-color: #ffeeba; /* Laranja claro */
+        }
+        .item-vencido {
+            background-color: #f8d7da; /* Vermelho claro */
+        }
+        .status-indicator {
+            width: 10px;
+            height: 100%;
+            border-radius: 4px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            margin-right: 10px;
+        }
+        .status-indicator.item-longe {
+            background-color: #28a745; /* Verde */
+        }
+        .status-indicator.item-perto {
+            background-color: #ffc107; /* Amarelo */
+        }
+        .status-indicator.item-vencido {
+            background-color: #dc3545; /* Vermelho */
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+            padding-top: 60px;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 600px;
+            border-radius: 8px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        @media (max-width: 600px) {
+            .button-with-icon {
+                width: 100%;
+                box-sizing: border-box;
+                font-size: 14px;
+                margin: 5px 0;
+            }
+            li {
+                flex-direction: column;
+                padding: 10px;
+                font-size: 14px;
+            }
+            .status-indicator {
+                width: 8px;
+            }
+        }
+        .textarea {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+        }

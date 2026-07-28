@@ -1,0 +1,101 @@
+/* Estilos específicos para o botão do menu */
+
+.menu-toggle {
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    cursor: pointer;
+    font-size: 24px;
+    background-color: #ddd;
+    padding: 10px;
+    border-radius: 4px;
+    border: none;
+    z-index: 2;
+    /* Tamanho fixo para o botão */
+    width: 50px; 
+    height: 50px;
+    box-sizing: border-box; /* Inclui o padding e border no tamanho total */
+}
+
+.menu-toggle span {
+    display: inline-block;
+    line-height: 1; /* Ajusta a linha do ícone */
+}
+
+.sidebar {
+    width: 250px;
+    background-color: #333;
+    color: white;
+    padding-top: 70px; /* Espaço para o mini banner */
+    position: fixed;
+    height: 100%;
+    top: 0;
+    left: 0;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 1;
+    overflow-y: auto;
+}
+
+.sidebar.open {
+    transform: translateX(0);
+}
+
+.sidebar .banner {
+    background-color: #007bff;
+    color: white;
+    text-align: center;
+    padding: 10px;
+    font-size: 18px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1;
+}
+
+.sidebar a {
+    display: block;
+    padding: 10px;
+    color: white;
+    text-decoration: none;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.sidebar a:hover {
+    background-color: #444;
+}
+
+.main-content {
+    margin-left: 0; /* Espaço inicial sem o menu visível */
+    padding: 20px;
+    flex: 1;
+    transition: margin-left 0.3s ease;
+    margin-top: 70px; /* Espaço para o topo e o banner no menu */
+    height: calc(100vh - 70px); /* Altura da tela menos o topo e o banner */
+    overflow-y: auto;
+    width: 100%; /* Largura total */
+}
+
+.main-content.shifted {
+    margin-left: 250px; /* Ajusta quando o menu é aberto */
+    width: calc(100% - 250px); /* Ajusta a largura quando o menu é aberto */
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        width: 200px;
+    }
+    .main-content {
+        margin-left: 0; /* Oculta o menu no início em telas pequenas */
+        padding: 10px;
+        margin-top: 60px; /* Ajusta para o banner */
+        height: calc(100vh - 60px); /* Altura da tela menos o topo e o banner */
+        width: 100%; /* Largura total em telas pequenas */
+    }
+    .main-content.shifted {
+        margin-left: 200px; /* Ajusta a largura quando o menu é aberto em telas pequenas */
+        width: calc(100% - 200px); /* Ajusta a largura quando o menu é aberto em telas pequenas */
+    }
+}
