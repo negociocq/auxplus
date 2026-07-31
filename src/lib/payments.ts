@@ -112,11 +112,18 @@ function parseLocalYmd(value: string): Date {
   return new Date(y, m - 1, d);
 }
 
+/** Extrai YYYY-MM-DD de string ISO/timestamp (evita deslocar dia por fuso). */
+function toDateKey(value: string | null | undefined): string | null {
+  if (value == null || value === "") return null;
+  const m = String(value).trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
 /**
- * Totais mensais iguais ao legacy/items.php:
- * do mês de created_at até o mês atual, soma o preço se o vencimento
- * ainda cobria aquele mês (meses passados: due >= 1º do mês;
- * mês atual: due >= agora).
+ * Totais mensais (Cliente/Produto = lucro):
+ * conta do mês de criação até o mês do vencimento (inclusive).
+ * No mês atual, já vencidos (due < hoje) não entram.
+ * Meses depois do vencimento ficam zerados para esse item.
  */
 export function sumPaymentsByMonth(
   items: Item[],
@@ -139,30 +146,44 @@ export function sumPaymentsByMonth(
   ];
   const months = names.map((name) => ({ name, total: 0, itens: 0 }));
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const endOfSelectedYear = new Date(year, 11, 31, 23, 59, 59, 999);
+  const yearLoopEnd =
+    endOfSelectedYear.getTime() > now.getTime() ? endOfSelectedYear : now;
 
   for (const item of items) {
-    const createdRaw = item.createdAt
-      ? String(item.createdAt).slice(0, 10)
-      : null;
-    const dueRaw = item.dueDate ? String(item.dueDate).slice(0, 10) : null;
-    if (!createdRaw || !dueRaw) continue;
+    const dueRaw = toDateKey(item.dueDate);
+    if (!dueRaw) continue;
 
+    const createdRaw = toDateKey(item.createdAt) ?? "2020-01-01";
     const price = Number(item.price) || 0;
     const dueDate = parseLocalYmd(dueRaw);
+    const dueMonthKey = dueRaw.slice(0, 7);
+    // Para no mês do vencimento (não conta depois de vencido)
+    const dueMonthEnd = new Date(
+      dueDate.getFullYear(),
+      dueDate.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+    const loopEnd = new Date(
+      Math.min(yearLoopEnd.getTime(), dueMonthEnd.getTime()),
+    );
     let cursor = parseLocalYmd(createdRaw);
 
-    while (cursor.getTime() <= now.getTime()) {
+    while (cursor.getTime() <= loopEnd.getTime()) {
       const y = cursor.getFullYear();
       const m = cursor.getMonth();
       const monthKey = `${y}-${String(m + 1).padStart(2, "0")}`;
 
-      if (y === year) {
-        let include = false;
-        if (monthKey < currentMonthKey) {
-          include = dueRaw >= `${monthKey}-01`;
-        } else if (monthKey === currentMonthKey) {
-          // PHP: $due_date >= new DateTime()
-          include = dueDate.getTime() >= now.getTime();
+      if (y === year && monthKey <= dueMonthKey) {
+        let include = true;
+        if (monthKey === currentMonthKey) {
+          // Já vencido hoje não entra no mês corrente
+          include = dueRaw >= todayStr;
         }
         if (include) {
           months[m].total += price;

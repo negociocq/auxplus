@@ -10,12 +10,33 @@ import type {
 } from "@/types";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import {
+  embedDebtInNotes,
+  extractDebtFromNotes,
+  nextOpenDue,
+  stripDebtMarker,
+} from "@/lib/debts";
+import {
   embedPaymentsInNotes,
   getItemPayments,
   paymentsAfterDueChange,
   paymentsForNewItem,
   stripPaymentMarker,
 } from "@/lib/payments";
+
+function stripAllMarkers(notes?: string | null): string {
+  return stripDebtMarker(stripPaymentMarker(notes));
+}
+
+function composeNotes(
+  notes: string | null | undefined,
+  payments: { paidAt: string; amount: number }[],
+  debt: ReturnType<typeof extractDebtFromNotes> | undefined,
+): string {
+  let next = stripAllMarkers(notes);
+  if (debt?.installments?.length) next = embedDebtInNotes(next, debt);
+  next = embedPaymentsInNotes(next, payments);
+  return next;
+}
 
 const STORAGE_KEY = "auxplus-data-v2";
 const SESSION_KEY = "auxplus-session-v1";
@@ -215,14 +236,21 @@ export function createItem(
   const payments = input.payments?.length
     ? input.payments
     : paymentsForNewItem(input);
-  const cleanNotes = stripPaymentMarker(input.notes);
+  const debt =
+    input.debt ??
+    extractDebtFromNotes(input.notes) ??
+    undefined;
+  const dueDate = debt ? nextOpenDue(debt) ?? input.dueDate : input.dueDate;
   const item: Item = {
     ...input,
+    debt: debt ?? undefined,
+    dueDate,
+    price: debt?.total ?? input.price,
     payments,
-    notes: embedPaymentsInNotes(cleanNotes, payments),
+    notes: composeNotes(input.notes, payments, debt),
     isActive: input.isActive !== false,
     id: nextId(data.items.map((i) => i.id)),
-    status: computeItemStatus(input.dueDate, near, far),
+    status: computeItemStatus(dueDate, near, far),
   };
   return { ...data, items: [...data.items, item] };
 }
@@ -242,12 +270,25 @@ export function updateItem(data: AppData, item: Item): AppData {
       ? item.payments
       : paymentsForNewItem(item);
 
-  const cleanNotes = stripPaymentMarker(item.notes);
+  const debt =
+    item.debt ??
+    extractDebtFromNotes(item.notes) ??
+    (previous ? extractDebtFromNotes(previous.notes) : null) ??
+    undefined;
+
+  // Se tem plano de dívida, dueDate = próxima parcela em aberto
+  const dueDate = debt?.installments?.length
+    ? nextOpenDue(debt)
+    : item.dueDate;
+
   const updated: Item = {
     ...item,
+    debt: debt ?? undefined,
+    dueDate,
+    price: debt?.total ?? item.price,
     payments: paymentsFinal,
-    notes: embedPaymentsInNotes(cleanNotes, paymentsFinal),
-    status: computeItemStatus(item.dueDate, near, far),
+    notes: composeNotes(item.notes, paymentsFinal, debt ?? undefined),
+    status: computeItemStatus(dueDate, near, far),
   };
   return {
     ...data,

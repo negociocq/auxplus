@@ -15,7 +15,7 @@ DROP TYPE IF EXISTS folder_type CASCADE;
 DROP TYPE IF EXISTS item_status CASCADE;
 DROP TYPE IF EXISTS ticket_status CASCADE;
 
-CREATE TYPE folder_type AS ENUM ('Produto', 'Cliente');
+CREATE TYPE folder_type AS ENUM ('Produto', 'Cliente', 'Dívida');
 CREATE TYPE item_status AS ENUM ('Longe de Vencer', 'Perto de Vencer', 'Já Vencido', 'Sem Vencimento');
 CREATE TYPE ticket_status AS ENUM ('pending', 'answered');
 
@@ -114,7 +114,7 @@ INSERT INTO folders (id, user_id, type, name, whatsapp_message) VALUES
 (119, 18, 'Cliente', 'IPTV', NULL),
 (106, 16, 'Cliente', 'Clientes 100MB', NULL),
 (104, 15, 'Cliente', 'P2P', NULL),
-(98, 1, 'Produto', 'Dívidas', NULL),
+(98, 1, 'Dívida', 'Dívidas', NULL),
 (105, 15, 'Cliente', 'REVENDEDOR', NULL),
 (103, 15, 'Cliente', 'IPTV', NULL);
 

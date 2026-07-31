@@ -11,6 +11,7 @@ import type {
   WhatsappMessage,
 } from "@/types";
 import { verifyPassword } from "@/lib/password";
+import { extractDebtFromNotes } from "@/lib/debts";
 import { extractPaymentsFromNotes } from "@/lib/payments";
 import { computeItemStatus, refreshItemStatuses } from "@/lib/storage";
 
@@ -31,12 +32,22 @@ function mapUser(row: Record<string, unknown>): User {
   };
 }
 
+function normalizeFolderType(raw: unknown, name: string): Folder["type"] {
+  const t = String(raw ?? "");
+  if (t === "Dívida" || t === "Divida") return "Dívida";
+  // Migração: pasta "Dívidas" antiga vinha como Produto
+  if (/^d[ií]vidas?$/i.test(name.trim())) return "Dívida";
+  if (t === "Produto") return "Produto";
+  return "Cliente";
+}
+
 function mapFolder(row: Record<string, unknown>): Folder {
+  const name = String(row.name ?? "");
   return {
     id: String(row.id),
     userId: String(row.user_id),
-    type: row.type === "Produto" ? "Produto" : "Cliente",
-    name: String(row.name ?? ""),
+    type: normalizeFolderType(row.type, name),
+    name,
     whatsappMessage: (row.whatsapp_message as string) ?? null,
   };
 }
@@ -61,6 +72,7 @@ function mapItem(row: Record<string, unknown>): Item {
   const statusRaw = String(row.status || "");
   const notes = String(row.notes ?? "");
   const payments = extractPaymentsFromNotes(notes);
+  const debt = extractDebtFromNotes(notes);
   return {
     id: String(row.id),
     folderId: String(row.folder_id),
@@ -76,6 +88,7 @@ function mapItem(row: Record<string, unknown>): Item {
     createdAt: row.created_at ? String(row.created_at) : null,
     isActive: row.is_active !== false,
     payments: payments.length ? payments : undefined,
+    debt: debt ?? undefined,
   };
 }
 

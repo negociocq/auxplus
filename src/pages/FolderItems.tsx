@@ -88,6 +88,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { DebtFolderView } from "@/components/debt/DebtFolderView";
+import { isExpenseFolderType } from "@/types";
 
 type DueMode = "com" | "sem";
 
@@ -328,12 +330,29 @@ export default function FolderItems() {
     }));
   }, [counts, folderItems]);
 
-  const totalPrice = useMemo(
-    () => folderItems.reduce((s, i) => s + (i.price || 0), 0),
-    [folderItems],
-  );
+  const totalPrice = useMemo(() => {
+    // Lucro ativo: sem já vencidos (dívidas mantêm a soma completa dos gastos)
+    const list =
+      folder?.type === "Dívida"
+        ? folderItems
+        : folderItems.filter((i) => i.status !== "Já Vencido");
+    return list.reduce((s, i) => s + (i.price || 0), 0);
+  }, [folder?.type, folderItems]);
 
   if (!folder || !user) return <Navigate to="/dashboard" replace />;
+
+  const debtFolder =
+    isExpenseFolderType(folder.type) ||
+    /^d[ií]vidas?$/i.test(folder.name.trim());
+  if (debtFolder) {
+    return (
+      <DebtFolderView
+        folder={
+          folder.type === "Dívida" ? folder : { ...folder, type: "Dívida" }
+        }
+      />
+    );
+  }
 
   const openCreate = () => {
     setEditing(null);
@@ -590,7 +609,9 @@ export default function FolderItems() {
           <div>
             <h2 className="font-semibold tracking-tight">Consultar Anual</h2>
             <p className="text-sm text-muted-foreground">
-              Soma dos valores por mês no ano selecionado
+              {folder.type === "Dívida"
+                ? "Gastos por mês (dívidas) — não entra no lucro da página inicial"
+                : "Lucro até o vencimento · já vencidos não entram no mês atual"}
             </p>
             <p className="mt-2 text-lg font-bold tracking-tight text-primary">
               Saldo anual {chartYear}: {formatMoney(annualBalance)}
@@ -1136,11 +1157,16 @@ export default function FolderItems() {
               </div>
               <div className="rounded-xl border bg-muted/40 p-3">
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Total de Preço
+                  {folder.type === "Dívida" ? "Total de gastos" : "Valor ativo"}
                 </p>
                 <p className="mt-1 text-lg font-bold tabular-nums leading-tight">
                   {formatMoney(totalPrice)}
                 </p>
+                {folder.type !== "Dívida" && counts["Já Vencido"] > 0 ? (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Sem os {counts["Já Vencido"]} já vencidos
+                  </p>
+                ) : null}
               </div>
             </div>
 

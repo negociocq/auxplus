@@ -5,6 +5,7 @@ import {
   addDays,
   endOfMonth,
   endOfWeek,
+  format,
   isWithinInterval,
   parseISO,
   startOfDay,
@@ -15,10 +16,14 @@ import {
   AlertTriangle,
   BarChart3,
   CalendarClock,
+  CheckCircle2,
+  CircleDollarSign,
+  Clock3,
   FolderKanban,
   Pencil,
   Plus,
   Trash2,
+  TrendingDown,
   TrendingUp,
 } from "lucide-react";
 import {
@@ -45,8 +50,15 @@ import {
   annualPaymentBalance,
   sumPaymentsByMonth,
 } from "@/lib/payments";
+import {
+  annualDebtPaid,
+  debtSummary,
+  getDebtPlan,
+  sumDebtPaidByMonth,
+} from "@/lib/debts";
 import type { Folder, FolderType, ItemStatus } from "@/types";
-import { formatMoney } from "@/lib/format";
+import { isExpenseFolderType, isRevenueFolderType } from "@/types";
+import { formatBrDate, formatMoney } from "@/lib/format";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -86,13 +98,26 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [chartYear, setChartYear] = useState(new Date().getFullYear());
+  const [chartFolderId, setChartFolderId] = useState<string>("all");
+  const [workspace, setWorkspace] = useState<FolderType>("Cliente");
+  const isDebtWorkspace = workspace === "Dívida";
 
   const folders = useMemo(
     () =>
       data.folders
         .filter((f) => f.userId === user?.id)
-        .filter((f) => !/^Pasta recuperada\b/i.test(f.name)),
+        .filter((f) => !/^Pasta recuperada\b/i.test(f.name))
+        .map((f) =>
+          /^d[ií]vidas?$/i.test(f.name.trim()) && f.type !== "Dívida"
+            ? { ...f, type: "Dívida" as FolderType }
+            : f,
+        ),
     [data.folders, user?.id],
+  );
+
+  const revenueFolderIds = useMemo(
+    () => new Set(folders.filter((f) => isRevenueFolderType(f.type)).map((f) => f.id)),
+    [folders],
   );
 
   const myItems = useMemo(() => {
@@ -113,20 +138,38 @@ export default function Dashboard() {
       });
   }, [data.items, data.folderSettings, folders]);
 
+  /** Lucro: só Cliente/Produto e ainda não vencidos */
+  const revenueItems = useMemo(
+    () =>
+      myItems.filter(
+        (i) =>
+          revenueFolderIds.has(i.folderId) && i.status !== "Já Vencido",
+      ),
+    [myItems, revenueFolderIds],
+  );
+
   const stats = useMemo(() => {
     return Object.fromEntries(
       folders.map((folder) => {
         const items = myItems.filter((i) => i.folderId === folder.id);
+        const overdue = items.filter((i) => i.status === "Já Vencido").length;
+        // Cliente/Produto: valor só de quem ainda não venceu (lucro ativo)
+        // Dívida: soma os gastos em aberto (também sem já vencidos na conta “ativa”)
+        const activeItems = items.filter((i) => i.status !== "Já Vencido");
         return [
           folder.id,
           {
             count: items.length,
-            total: items.reduce((s, i) => s + (i.price || 0), 0),
-            overdue: items.filter((i) => i.status === "Já Vencido").length,
+            activeCount: activeItems.length,
+            total: activeItems.reduce((s, i) => s + (i.price || 0), 0),
+            overdue,
           },
         ];
       }),
-    ) as Record<string, { count: number; total: number; overdue: number }>;
+    ) as Record<
+      string,
+      { count: number; activeCount: number; total: number; overdue: number }
+    >;
   }, [folders, myItems]);
 
   const kpis = useMemo(() => {
@@ -137,15 +180,17 @@ export default function Dashboard() {
     };
     const month = { start: startOfMonth(today), end: endOfMonth(today) };
 
-    const longe = myItems.filter((i) => i.status === "Longe de Vencer").length;
-    const perto = myItems.filter((i) => i.status === "Perto de Vencer").length;
-    const vencido = myItems.filter((i) => i.status === "Já Vencido").length;
+    const profitItems = myItems.filter((i) => revenueFolderIds.has(i.folderId));
+    const longe = profitItems.filter((i) => i.status === "Longe de Vencer").length;
+    const perto = profitItems.filter((i) => i.status === "Perto de Vencer").length;
+    const vencido = profitItems.filter((i) => i.status === "Já Vencido").length;
     const withDue = longe + perto + vencido;
     const healthy = withDue ? Math.round((longe / withDue) * 100) : 100;
-    const revenue = myItems.reduce((s, i) => s + (i.price || 0), 0);
+    // Carteira / lucro: sem dívidas e sem já vencidos
+    const revenue = revenueItems.reduce((s, i) => s + (i.price || 0), 0);
 
     const dueInRange = (interval: { start: Date; end: Date }) =>
-      myItems.filter((i) => {
+      profitItems.filter((i) => {
         if (!i.dueDate) return false;
         try {
           const d = parseISO(String(i.dueDate).slice(0, 10));
@@ -155,7 +200,7 @@ export default function Dashboard() {
         }
       }).length;
 
-    const next7 = myItems
+    const next7 = profitItems
       .filter((i) => {
         if (!i.dueDate || i.status === "Já Vencido") return false;
         try {
@@ -185,7 +230,7 @@ export default function Dashboard() {
         let streak = 0;
         for (let i = 0; i < 60; i++) {
           const day = addDays(today, -i);
-          const hasOverdueCreated = myItems.some((item) => {
+          const hasOverdueCreated = profitItems.some((item) => {
             if (item.status !== "Já Vencido" || !item.dueDate) return false;
             try {
               return (
@@ -196,11 +241,9 @@ export default function Dashboard() {
               return false;
             }
           });
-          // streak = dias consecutivos até "hoje" sem novos vencidos "do dia"
-          // Simplificado: dias desde o vencimento mais recente no passado
           void hasOverdueCreated;
         }
-        const overdueDates = myItems
+        const overdueDates = profitItems
           .filter((i) => i.status === "Já Vencido" && i.dueDate)
           .map((i) => parseISO(String(i.dueDate).slice(0, 10)).getTime());
         if (!overdueDates.length) return 30;
@@ -212,7 +255,7 @@ export default function Dashboard() {
         return streak;
       })(),
     };
-  }, [myItems]);
+  }, [myItems, revenueFolderIds, revenueItems]);
 
   const statusPie = useMemo(
     () => [
@@ -235,19 +278,28 @@ export default function Dashboard() {
     return [...years].sort((a, b) => b - a);
   }, [myItems]);
 
+  const chartItems = useMemo(() => {
+    if (chartFolderId === "all") {
+      // Lucro: todas as pastas Cliente/Produto (dívidas ficam de fora)
+      return myItems.filter((i) => revenueFolderIds.has(i.folderId));
+    }
+    return myItems.filter((i) => i.folderId === chartFolderId);
+  }, [chartFolderId, myItems, revenueFolderIds]);
+
   const monthlyChart = useMemo(
-    () => sumPaymentsByMonth(myItems, chartYear),
-    [chartYear, myItems],
+    () => sumPaymentsByMonth(chartItems, chartYear),
+    [chartYear, chartItems],
   );
 
   const annualBalance = useMemo(
-    () => annualPaymentBalance(myItems, chartYear),
-    [chartYear, myItems],
+    () => annualPaymentBalance(chartItems, chartYear),
+    [chartYear, chartItems],
   );
 
   const ranking = useMemo(
     () =>
       [...folders]
+        .filter((f) => isRevenueFolderType(f.type))
         .map((f) => ({
           folder: f,
           total: stats[f.id]?.total || 0,
@@ -260,15 +312,142 @@ export default function Dashboard() {
   );
 
   const byType = useMemo(() => {
-    const map: Record<FolderType, Folder[]> = { Cliente: [], Produto: [] };
+    const map: Record<FolderType, Folder[]> = {
+      Cliente: [],
+      Produto: [],
+      Dívida: [],
+    };
     for (const f of folders) map[f.type].push(f);
     return map;
   }, [folders]);
 
+  const debtFolderIds = useMemo(
+    () => new Set(folders.filter((f) => isExpenseFolderType(f.type)).map((f) => f.id)),
+    [folders],
+  );
+
+  const debtItems = useMemo(
+    () => myItems.filter((i) => debtFolderIds.has(i.folderId)),
+    [myItems, debtFolderIds],
+  );
+
+  const debtRows = useMemo(
+    () =>
+      debtItems.map((item) => {
+        const plan = getDebtPlan(item);
+        const summary = debtSummary(plan);
+        return { item, plan, summary };
+      }),
+    [debtItems],
+  );
+
+  const debtKpis = useMemo(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const weekEnd = format(addDays(new Date(), 7), "yyyy-MM-dd");
+    let aberto = 0;
+    let atrasadoValor = 0;
+    let atrasadas = 0;
+    let emDia = 0;
+    let encerradas = 0;
+    let ilimitadas = 0;
+    const nextDue: {
+      id: string;
+      name: string;
+      dueDate: string;
+      amount: number;
+    }[] = [];
+
+    for (const { item, plan, summary } of debtRows) {
+      if (summary.lifecycle === "quitada") encerradas += 1;
+      else if (summary.lifecycle === "atrasada") atrasadas += 1;
+      else emDia += 1;
+      if (summary.unlimited && !summary.closed) ilimitadas += 1;
+      if (!summary.closed) aberto += summary.openAmount;
+      for (const inst of plan.installments) {
+        if (!inst.paidAt && inst.dueDate < today) atrasadoValor += inst.amount;
+        if (
+          !inst.paidAt &&
+          !summary.closed &&
+          inst.dueDate >= today &&
+          inst.dueDate <= weekEnd
+        ) {
+          nextDue.push({
+            id: `${item.id}-${inst.n}`,
+            name: item.name,
+            dueDate: inst.dueDate,
+            amount: inst.amount,
+          });
+        }
+      }
+    }
+
+    nextDue.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+    return {
+      aberto: Math.round(aberto * 100) / 100,
+      atrasadoValor: Math.round(atrasadoValor * 100) / 100,
+      atrasadas,
+      emDia,
+      encerradas,
+      ilimitadas,
+      total: debtRows.length,
+      nextDue: nextDue.slice(0, 8),
+      pie: [
+        { name: "Em dia", value: emDia, color: "hsl(var(--warning))" },
+        { name: "Atraso", value: atrasadas, color: "hsl(var(--destructive))" },
+        { name: "Encerrada", value: encerradas, color: "hsl(var(--success))" },
+      ],
+    };
+  }, [debtRows]);
+
+  const debtMonthlyChart = useMemo(
+    () => sumDebtPaidByMonth(debtItems, chartYear),
+    [debtItems, chartYear],
+  );
+
+  const debtAnnualPaid = useMemo(
+    () => annualDebtPaid(debtItems, chartYear),
+    [debtItems, chartYear],
+  );
+
+  const debtRanking = useMemo(
+    () =>
+      [...folders]
+        .filter((f) => isExpenseFolderType(f.type))
+        .map((f) => {
+          const rows = debtRows.filter((r) => r.item.folderId === f.id);
+          const open = rows
+            .filter((r) => !r.summary.closed)
+            .reduce((s, r) => s + r.summary.openAmount, 0);
+          const overdue = rows.filter(
+            (r) => r.summary.lifecycle === "atrasada",
+          ).length;
+          return {
+            folder: f,
+            total: Math.round(open * 100) / 100,
+            count: rows.length,
+            overdue,
+          };
+        })
+        .sort((a, b) => b.total - a.total),
+    [folders, debtRows],
+  );
+
+  const debtDueDates = useMemo(() => {
+    const dates: (string | null)[] = [];
+    for (const { plan, summary } of debtRows) {
+      if (summary.closed) continue;
+      for (const inst of plan.installments) {
+        if (!inst.paidAt) dates.push(inst.dueDate);
+      }
+    }
+    return dates;
+  }, [debtRows]);
+
   const openCreate = () => {
     setEditFolder(null);
     setName("");
-    setType("Cliente");
+    setType(workspace);
     setFormOpen(true);
   };
 
@@ -305,35 +484,69 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader
-        title="Operações"
-        description="Visão geral de pastas, vencimentos e valores em carteira."
+        title={isDebtWorkspace ? "Dívidas" : "Operações"}
+        description={
+          isDebtWorkspace
+            ? "Gastos, parcelas e contas a pagar — separado do lucro."
+            : "Visão geral de pastas, vencimentos e valores em carteira."
+        }
         actions={
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
-            Nova pasta
+            {isDebtWorkspace ? "Nova pasta de dívida" : "Nova pasta"}
           </Button>
         }
       />
 
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">Minhas pastas</h2>
+          <h2 className="text-lg font-semibold tracking-tight">
+            {isDebtWorkspace ? "Pastas de dívidas" : "Minhas pastas"}
+          </h2>
           <p className="text-sm text-muted-foreground">
-            Abra uma pasta para gerenciar itens
+            {isDebtWorkspace
+              ? "Abra para lançar gastos e marcar parcelas"
+              : "Abra uma pasta para gerenciar itens"}
           </p>
         </div>
-        <Tabs defaultValue="Cliente">
+        <Tabs
+          value={workspace}
+          onValueChange={(v) => setWorkspace(v as FolderType)}
+        >
           <TabsList>
             <TabsTrigger value="Cliente">Clientes</TabsTrigger>
             <TabsTrigger value="Produto">Produtos</TabsTrigger>
+            <TabsTrigger value="Dívida">Dívidas</TabsTrigger>
           </TabsList>
-          {(["Cliente", "Produto"] as FolderType[]).map((t) => (
+          {(["Cliente", "Produto", "Dívida"] as FolderType[]).map((t) => (
             <TabsContent key={t} value={t} className="mt-4">
               {byType[t].length === 0 ? (
                 <EmptyState
-                  icon={FolderKanban}
-                  title={`Sem pastas de ${t.toLowerCase()}`}
-                  description="Organize sua carteira criando uma pasta."
+                  icon={t === "Dívida" ? CircleDollarSign : FolderKanban}
+                  title={
+                    t === "Dívida"
+                      ? "Sem pastas de dívidas"
+                      : `Sem pastas de ${t.toLowerCase()}`
+                  }
+                  description={
+                    t === "Dívida"
+                      ? "Crie uma pasta para aluguel, planos, cartão e outros gastos."
+                      : "Organize sua carteira criando uma pasta."
+                  }
+                  action={
+                    <Button
+                      onClick={() => {
+                        setWorkspace(t);
+                        setEditFolder(null);
+                        setName("");
+                        setType(t);
+                        setFormOpen(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Nova pasta
+                    </Button>
+                  }
                 />
               ) : (
                 <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -361,7 +574,7 @@ export default function Dashboard() {
                           {folder.name}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {stats[folder.id]?.count || 0} itens ·{" "}
+                          {stats[folder.id]?.activeCount || 0} ativos ·{" "}
                           {formatMoney(stats[folder.id]?.total || 0)}
                         </p>
                       </Link>
@@ -403,254 +616,588 @@ export default function Dashboard() {
         </Tabs>
       </section>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-        <StatCard
-          label="Pastas"
-          value={folders.length}
-          icon={FolderKanban}
-          hint={`${byType.Cliente.length} clientes · ${byType.Produto.length} produtos`}
-          delay={0.02}
-        />
-        <StatCard
-          label="Itens ativos"
-          value={myItems.length}
-          icon={CalendarClock}
-          hint={`${kpis.day} vencem hoje · ${kpis.week} na semana`}
-          delay={0.06}
-        />
-        <StatCard
-          label="Em atraso"
-          value={kpis.vencido}
-          icon={AlertTriangle}
-          tone={kpis.vencido ? "danger" : "success"}
-          hint={`${kpis.perto} perto de vencer`}
-          delay={0.1}
-        />
-        <StatCard
-          label="Carteira"
-          value={formatMoney(kpis.revenue)}
-          icon={TrendingUp}
-          tone="success"
-          hint={`Saúde ${kpis.healthy}% em dia`}
-          delay={0.14}
-        />
-        <StatCard
-          label={`Saldo anual ${chartYear}`}
-          value={formatMoney(annualBalance)}
-          icon={BarChart3}
-          tone="default"
-          hint="Soma dos valores com vencimento no ano"
-          delay={0.18}
-        />
-      </div>
-
-      <div className="mb-6 grid gap-3 sm:grid-cols-3">
-        {[
-          { label: "Hoje", value: kpis.day },
-          { label: "Esta semana", value: kpis.week },
-          { label: "Este mês", value: kpis.month },
-        ].map((item) => (
-          <div key={item.label} className="ax-surface flex items-center justify-between p-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Vencimentos · {item.label}
-              </p>
-              <p className="mt-1 text-2xl font-bold">{item.value}</p>
-            </div>
-            <BarChart3 className="h-5 w-5 text-primary/70" />
+      {isDebtWorkspace ? (
+        <>
+          <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+            <StatCard
+              label="Pastas de dívida"
+              value={byType.Dívida.length}
+              icon={FolderKanban}
+              hint={`${debtKpis.total} dívidas cadastradas`}
+              delay={0.02}
+            />
+            <StatCard
+              label="Em aberto"
+              value={formatMoney(debtKpis.aberto)}
+              icon={CircleDollarSign}
+              hint={`${debtKpis.ilimitadas} recorrentes / ilimitadas`}
+              delay={0.06}
+            />
+            <StatCard
+              label="Em atraso"
+              value={debtKpis.atrasadas}
+              icon={AlertTriangle}
+              tone={debtKpis.atrasadas ? "danger" : "success"}
+              hint={formatMoney(debtKpis.atrasadoValor)}
+              delay={0.1}
+            />
+            <StatCard
+              label="Em dia"
+              value={debtKpis.emDia}
+              icon={Clock3}
+              tone="warning"
+              hint={`${debtKpis.encerradas} encerradas`}
+              delay={0.14}
+            />
+            <StatCard
+              label={`Pago em ${chartYear}`}
+              value={formatMoney(debtAnnualPaid)}
+              icon={TrendingDown}
+              tone="default"
+              hint="Soma das parcelas já pagas no ano"
+              delay={0.18}
+            />
           </div>
-        ))}
-      </div>
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <div className="ax-surface p-5 lg:col-span-2">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="font-semibold tracking-tight">Receita por mês</h2>
-              <p className="text-sm text-muted-foreground">
-                Soma dos valores com vencimento no ano
-              </p>
-              <p className="mt-2 text-lg font-bold tracking-tight text-primary">
-                Saldo anual {chartYear}: {formatMoney(annualBalance)}
-              </p>
-            </div>
-            <Select
-              value={String(chartYear)}
-              onValueChange={(v) => setChartYear(Number(v))}
-            >
-              <SelectTrigger className="w-[120px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {chartYears.map((y) => (
-                  <SelectItem key={y} value={String(y)}>
-                    {y}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyChart}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="hsl(var(--border))"
-                />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-                  stroke="hsl(var(--border))"
-                />
-                <YAxis
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-                  stroke="hsl(var(--border))"
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "hsl(var(--popover))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: 8,
-                    color: "hsl(var(--popover-foreground))",
-                  }}
-                  labelStyle={{ color: "hsl(var(--foreground))" }}
-                  formatter={(value: number, key: string) =>
-                    key === "total"
-                      ? [formatMoney(Number(value)), "Total"]
-                      : [value, "Itens"]
-                  }
-                />
-                <Bar
-                  dataKey="total"
-                  fill="hsl(var(--primary))"
-                  radius={[6, 6, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="ax-surface p-5">
-          <h2 className="font-semibold tracking-tight">Distribuição</h2>
-          <p className="mb-2 text-sm text-muted-foreground">Status dos itens</p>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={statusPie}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={48}
-                  outerRadius={72}
-                  paddingAngle={3}
-                >
-                  {statusPie.map((entry) => (
-                    <Cell key={entry.name} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-2 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Taxa em dia</span>
-              <span className="font-semibold">{kpis.healthy}%</span>
-            </div>
-            <Progress value={kpis.healthy} />
-            <p className="text-xs text-muted-foreground">
-              Sequência sem novo atraso crítico: {kpis.streakDays} dia(s)
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <div className="ax-surface p-5 lg:col-span-2">
-          <h2 className="mb-4 font-semibold tracking-tight">
-            Mapa de vencimentos
-          </h2>
-          <DueHeatmap dueDates={collectDueDates(myItems)} />
-        </div>
-        <div className="ax-surface p-5">
-          <h2 className="mb-3 font-semibold tracking-tight">Próximos 7 dias</h2>
-          {kpis.next7.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nenhum vencimento nos próximos 7 dias.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {kpis.next7.map((item) => (
-                <li
-                  key={item.id}
-                  className="rounded-lg border bg-muted/40 px-3 py-2 text-sm"
-                >
-                  <p className="font-medium">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {String(item.dueDate).slice(0, 10).split("-").reverse().join("/")}{" "}
-                    · {formatMoney(item.price || 0)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <div className="mb-6 ax-surface p-5">
-        <h2 className="mb-4 font-semibold tracking-tight">
-          Ranking por valor
-        </h2>
-        {ranking.length === 0 ? (
-          <EmptyState
-            icon={FolderKanban}
-            title="Nenhuma pasta ainda"
-            description="Crie sua primeira pasta para começar."
-            action={
-              <Button onClick={openCreate}>
-                <Plus className="h-4 w-4" />
-                Nova pasta
-              </Button>
-            }
-          />
-        ) : (
-          <div className="space-y-3">
-            {ranking.map((row, idx) => (
-              <motion.div
-                key={row.folder.id}
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.04 }}
-                className="flex items-center gap-3"
+          <div className="mb-6 grid gap-3 sm:grid-cols-3">
+            {[
+              {
+                label: "Em dia",
+                value: debtKpis.emDia,
+                icon: Clock3,
+              },
+              {
+                label: "Em atraso",
+                value: debtKpis.atrasadas,
+                icon: AlertTriangle,
+              },
+              {
+                label: "Encerradas",
+                value: debtKpis.encerradas,
+                icon: CheckCircle2,
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="ax-surface flex items-center justify-between p-4"
               >
-                <span className="w-6 text-sm font-bold text-muted-foreground">
-                  {idx + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <Link
-                      to={`/folders/${row.folder.id}`}
-                      className="truncate font-medium hover:text-primary"
-                    >
-                      {row.folder.name}
-                    </Link>
-                    <span className="shrink-0 text-sm font-semibold">
-                      {formatMoney(row.total)}
-                    </span>
-                  </div>
-                  <Progress
-                    value={
-                      kpis.revenue
-                        ? Math.min(100, (row.total / kpis.revenue) * 100)
-                        : 0
-                    }
-                  />
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Dívidas · {item.label}
+                  </p>
+                  <p className="mt-1 text-2xl font-bold">{item.value}</p>
                 </div>
-              </motion.div>
+                <item.icon className="h-5 w-5 text-primary/70" />
+              </div>
             ))}
           </div>
-        )}
-      </div>
+
+          <div className="mb-6 grid gap-4 lg:grid-cols-3">
+            <div className="ax-surface p-5 lg:col-span-2">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold tracking-tight">
+                    Gastos pagos por mês
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Parcelas marcadas como pagas no ano
+                  </p>
+                  <p className="mt-2 text-lg font-bold tracking-tight text-primary">
+                    Total pago {chartYear}: {formatMoney(debtAnnualPaid)}
+                  </p>
+                </div>
+                <Select
+                  value={String(chartYear)}
+                  onValueChange={(v) => setChartYear(Number(v))}
+                >
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {chartYears.map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={debtMonthlyChart}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                    />
+                    <XAxis
+                      dataKey="name"
+                      tick={{
+                        fontSize: 12,
+                        fill: "hsl(var(--muted-foreground))",
+                      }}
+                      stroke="hsl(var(--border))"
+                    />
+                    <YAxis
+                      tick={{
+                        fontSize: 12,
+                        fill: "hsl(var(--muted-foreground))",
+                      }}
+                      stroke="hsl(var(--border))"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "hsl(var(--popover))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                        color: "hsl(var(--popover-foreground))",
+                      }}
+                      formatter={(value: number) => [
+                        formatMoney(Number(value)),
+                        "Pago",
+                      ]}
+                    />
+                    <Bar
+                      dataKey="total"
+                      fill="hsl(var(--destructive))"
+                      radius={[6, 6, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="ax-surface p-5">
+              <h2 className="font-semibold tracking-tight">Distribuição</h2>
+              <p className="mb-2 text-sm text-muted-foreground">
+                Situação das dívidas
+              </p>
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={debtKpis.pie}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={48}
+                      outerRadius={72}
+                      paddingAngle={3}
+                    >
+                      {debtKpis.pie.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Em aberto</span>
+                  <span className="font-semibold">
+                    {formatMoney(debtKpis.aberto)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Atrasado</span>
+                  <span className="font-semibold text-destructive">
+                    {formatMoney(debtKpis.atrasadoValor)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-6 grid gap-4 lg:grid-cols-3">
+            <div className="ax-surface p-5 lg:col-span-2">
+              <h2 className="mb-4 font-semibold tracking-tight">
+                Mapa de vencimentos das parcelas
+              </h2>
+              <DueHeatmap dueDates={debtDueDates} />
+            </div>
+            <div className="ax-surface p-5">
+              <h2 className="mb-3 font-semibold tracking-tight">
+                Parcelas nos próximos 7 dias
+              </h2>
+              {debtKpis.nextDue.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma parcela vence nos próximos 7 dias.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {debtKpis.nextDue.map((row) => (
+                    <li
+                      key={row.id}
+                      className="rounded-lg border bg-muted/40 px-3 py-2 text-sm"
+                    >
+                      <p className="font-medium">{row.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatBrDate(row.dueDate)} ·{" "}
+                        {formatMoney(row.amount)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="mb-6 ax-surface p-5">
+            <h2 className="mb-4 font-semibold tracking-tight">
+              Ranking · valor em aberto
+            </h2>
+            {debtRanking.length === 0 ? (
+              <EmptyState
+                icon={CircleDollarSign}
+                title="Nenhuma pasta de dívida"
+                description="Crie uma pasta Dívida para começar."
+                action={
+                  <Button onClick={openCreate}>
+                    <Plus className="h-4 w-4" />
+                    Nova pasta
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="space-y-3">
+                {debtRanking.map((row, idx) => (
+                  <motion.div
+                    key={row.folder.id}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.04 }}
+                    className="flex items-center gap-3"
+                  >
+                    <span className="w-6 text-sm font-bold text-muted-foreground">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <Link
+                          to={`/folders/${row.folder.id}`}
+                          className="truncate font-medium hover:text-primary"
+                        >
+                          {row.folder.name}
+                        </Link>
+                        <span className="shrink-0 text-sm font-semibold">
+                          {formatMoney(row.total)}
+                        </span>
+                      </div>
+                      <Progress
+                        value={
+                          debtKpis.aberto
+                            ? Math.min(
+                                100,
+                                (row.total / debtKpis.aberto) * 100,
+                              )
+                            : 0
+                        }
+                      />
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {row.count} dívidas
+                        {row.overdue ? ` · ${row.overdue} em atraso` : ""}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+            <StatCard
+              label="Pastas"
+              value={byType.Cliente.length + byType.Produto.length}
+              icon={FolderKanban}
+              hint={`${byType.Cliente.length} clientes · ${byType.Produto.length} produtos`}
+              delay={0.02}
+            />
+            <StatCard
+              label="Itens ativos"
+              value={revenueItems.length}
+              icon={CalendarClock}
+              hint={`${kpis.day} vencem hoje · ${kpis.week} na semana`}
+              delay={0.06}
+            />
+            <StatCard
+              label="Em atraso"
+              value={kpis.vencido}
+              icon={AlertTriangle}
+              tone={kpis.vencido ? "danger" : "success"}
+              hint={`${kpis.perto} perto de vencer`}
+              delay={0.1}
+            />
+            <StatCard
+              label="Carteira"
+              value={formatMoney(kpis.revenue)}
+              icon={TrendingUp}
+              tone="success"
+              hint={`Saúde ${kpis.healthy}% em dia`}
+              delay={0.14}
+            />
+            <StatCard
+              label={`Saldo anual ${chartYear}`}
+              value={formatMoney(annualBalance)}
+              icon={BarChart3}
+              tone="default"
+              hint="Lucro Cliente/Produto · sem dívidas nem vencidos"
+              delay={0.18}
+            />
+          </div>
+
+          <div className="mb-6 grid gap-3 sm:grid-cols-3">
+            {[
+              { label: "Hoje", value: kpis.day },
+              { label: "Esta semana", value: kpis.week },
+              { label: "Este mês", value: kpis.month },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="ax-surface flex items-center justify-between p-4"
+              >
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Vencimentos · {item.label}
+                  </p>
+                  <p className="mt-1 text-2xl font-bold">{item.value}</p>
+                </div>
+                <BarChart3 className="h-5 w-5 text-primary/70" />
+              </div>
+            ))}
+          </div>
+
+          <div className="mb-6 grid gap-4 lg:grid-cols-3">
+            <div className="ax-surface p-5 lg:col-span-2">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold tracking-tight">
+                    Receita por mês
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Cliente/Produto até o vencimento · sem dívidas
+                  </p>
+                  <p className="mt-2 text-lg font-bold tracking-tight text-primary">
+                    Saldo anual {chartYear}: {formatMoney(annualBalance)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={chartFolderId}
+                    onValueChange={setChartFolderId}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Pasta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Lucro (sem dívidas)</SelectItem>
+                      {folders
+                        .filter((f) => isRevenueFolderType(f.type))
+                        .map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={String(chartYear)}
+                    onValueChange={(v) => setChartYear(Number(v))}
+                  >
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {chartYears.map((y) => (
+                        <SelectItem key={y} value={String(y)}>
+                          {y}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyChart}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                    />
+                    <XAxis
+                      dataKey="name"
+                      tick={{
+                        fontSize: 12,
+                        fill: "hsl(var(--muted-foreground))",
+                      }}
+                      stroke="hsl(var(--border))"
+                    />
+                    <YAxis
+                      tick={{
+                        fontSize: 12,
+                        fill: "hsl(var(--muted-foreground))",
+                      }}
+                      stroke="hsl(var(--border))"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "hsl(var(--popover))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                        color: "hsl(var(--popover-foreground))",
+                      }}
+                      labelStyle={{ color: "hsl(var(--foreground))" }}
+                      formatter={(value: number, key: string) =>
+                        key === "total"
+                          ? [formatMoney(Number(value)), "Total"]
+                          : [value, "Itens"]
+                      }
+                    />
+                    <Bar
+                      dataKey="total"
+                      fill="hsl(var(--primary))"
+                      radius={[6, 6, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="ax-surface p-5">
+              <h2 className="font-semibold tracking-tight">Distribuição</h2>
+              <p className="mb-2 text-sm text-muted-foreground">
+                Status dos itens
+              </p>
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={statusPie}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={48}
+                      outerRadius={72}
+                      paddingAngle={3}
+                    >
+                      {statusPie.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Taxa em dia</span>
+                  <span className="font-semibold">{kpis.healthy}%</span>
+                </div>
+                <Progress value={kpis.healthy} />
+                <p className="text-xs text-muted-foreground">
+                  Sequência sem novo atraso crítico: {kpis.streakDays} dia(s)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-6 grid gap-4 lg:grid-cols-3">
+            <div className="ax-surface p-5 lg:col-span-2">
+              <h2 className="mb-4 font-semibold tracking-tight">
+                Mapa de vencimentos
+              </h2>
+              <DueHeatmap
+                dueDates={collectDueDates(
+                  myItems.filter((i) => revenueFolderIds.has(i.folderId)),
+                )}
+              />
+            </div>
+            <div className="ax-surface p-5">
+              <h2 className="mb-3 font-semibold tracking-tight">
+                Próximos 7 dias
+              </h2>
+              {kpis.next7.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhum vencimento nos próximos 7 dias.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {kpis.next7.map((item) => (
+                    <li
+                      key={item.id}
+                      className="rounded-lg border bg-muted/40 px-3 py-2 text-sm"
+                    >
+                      <p className="font-medium">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {String(item.dueDate)
+                          .slice(0, 10)
+                          .split("-")
+                          .reverse()
+                          .join("/")}{" "}
+                        · {formatMoney(item.price || 0)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="mb-6 ax-surface p-5">
+            <h2 className="mb-4 font-semibold tracking-tight">
+              Ranking por valor
+            </h2>
+            {ranking.length === 0 ? (
+              <EmptyState
+                icon={FolderKanban}
+                title="Nenhuma pasta ainda"
+                description="Crie sua primeira pasta para começar."
+                action={
+                  <Button onClick={openCreate}>
+                    <Plus className="h-4 w-4" />
+                    Nova pasta
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="space-y-3">
+                {ranking.map((row, idx) => (
+                  <motion.div
+                    key={row.folder.id}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.04 }}
+                    className="flex items-center gap-3"
+                  >
+                    <span className="w-6 text-sm font-bold text-muted-foreground">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <Link
+                          to={`/folders/${row.folder.id}`}
+                          className="truncate font-medium hover:text-primary"
+                        >
+                          {row.folder.name}
+                        </Link>
+                        <span className="shrink-0 text-sm font-semibold">
+                          {formatMoney(row.total)}
+                        </span>
+                      </div>
+                      <Progress
+                        value={
+                          kpis.revenue
+                            ? Math.min(100, (row.total / kpis.revenue) * 100)
+                            : 0
+                        }
+                      />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent>
@@ -672,6 +1219,7 @@ export default function Dashboard() {
                 <SelectContent>
                   <SelectItem value="Cliente">Cliente</SelectItem>
                   <SelectItem value="Produto">Produto</SelectItem>
+                  <SelectItem value="Dívida">Dívida</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -681,7 +1229,11 @@ export default function Dashboard() {
                 id="folder-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex.: IPTV, Internet…"
+                placeholder={
+                  type === "Dívida"
+                    ? "Ex.: Pessoal, Casa, Cartões…"
+                    : "Ex.: IPTV, Internet…"
+                }
                 required
               />
             </div>
