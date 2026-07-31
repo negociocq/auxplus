@@ -13,12 +13,50 @@ const sqlPath = process.argv[2]
   : path.join(root, "legacy", "auxplus_dump.sql");
 const outPath = path.join(root, "src", "data", "seed.json");
 
+/** Corrige UTF-8 lido como Windows-1252/Latin1 (ex: UsuÃ¡rio → Usuário, ðŸ”” → 🔔) */
+const WIN1252_TO_BYTE = {
+  0x20ac: 0x80,
+  0x201a: 0x82,
+  0x0192: 0x83,
+  0x201e: 0x84,
+  0x2026: 0x85,
+  0x2020: 0x86,
+  0x2021: 0x87,
+  0x02c6: 0x88,
+  0x2030: 0x89,
+  0x0160: 0x8a,
+  0x2039: 0x8b,
+  0x0152: 0x8c,
+  0x017d: 0x8e,
+  0x2018: 0x91,
+  0x2019: 0x92,
+  0x201c: 0x93,
+  0x201d: 0x94,
+  0x2022: 0x95,
+  0x2013: 0x96,
+  0x2014: 0x97,
+  0x02dc: 0x98,
+  0x2122: 0x99,
+  0x0161: 0x9a,
+  0x203a: 0x9b,
+  0x0153: 0x9c,
+  0x017e: 0x9e,
+  0x0178: 0x9f,
+};
+
 function fixEnc(s) {
   if (s == null) return s;
   const str = String(s);
-  if (!/[ÃÂ]/.test(str) && !/Ã/.test(str)) return str;
+  if (!/[ÃÂð]|Ã.|â.|Ÿ/.test(str)) return str;
+  const bytes = [];
+  for (const ch of str) {
+    const cp = ch.codePointAt(0);
+    if (cp <= 0xff) bytes.push(cp);
+    else if (WIN1252_TO_BYTE[cp] != null) bytes.push(WIN1252_TO_BYTE[cp]);
+    else return str;
+  }
   try {
-    const fixed = Buffer.from(str, "latin1").toString("utf8");
+    const fixed = Buffer.from(bytes).toString("utf8");
     if (fixed.includes("\uFFFD")) return str;
     const badBefore = (str.match(/Ã./g) || []).length;
     const badAfter = (fixed.match(/Ã./g) || []).length;
@@ -196,27 +234,27 @@ for (const f of foldersRaw) {
   if (!userIds.has(String(f.user_id))) stubNeeded.add(String(f.user_id));
 }
 
-const PASSWORDS = {
-  admin: "admin123",
-};
+// bcrypt de "123456" (cost 10) — só stubs sem conta no dump
+const stubPasswordHash =
+  "$2a$10$w7s.EQndU.opZHnEooLP0u0E8GFx3src6gDCBH0YJC2dH8xERwKnO";
 
 const users = [
   ...usersRaw.map((u) => ({
     id: String(u.id),
     username: String(u.username),
-    password: PASSWORDS[u.username] || "123456",
+    // Mantém hash bcrypt original do dump (não força 123456)
+    password: String(u.password ?? ""),
     isAdmin: Boolean(Number(u.is_admin)),
     isActive: u.is_active == null ? true : Boolean(Number(u.is_active)),
   })),
   ...[...stubNeeded].map((id) => ({
     id,
     username: `usuario_${id}`,
-    password: "123456",
+    password: stubPasswordHash,
     isAdmin: false,
     isActive: true,
   })),
 ];
-
 const folders = foldersRaw.map((f) => ({
   id: String(f.id),
   userId: String(f.user_id),
@@ -225,38 +263,89 @@ const folders = foldersRaw.map((f) => ({
   whatsappMessage: f.whatsapp_message ? fixEnc(String(f.whatsapp_message)) : null,
 }));
 
-const folderSettings = folderSettingsRaw.map((s) => ({
-  folderId: String(s.folder_id),
-  nearDueDays: Number(s.near_due_days) || 3,
-  farDueDays: Number(s.far_due_days) || 3,
-}));
+const folderIdSet = new Set(folders.map((f) => f.id));
+// Pastas órfãs do dump incompleto: descartar (não criar "Pasta recuperada")
+const DROP_ORPHAN_FOLDERS = new Set([
+  "10",
+  "24",
+  "28",
+  "33",
+  "99",
+  "100",
+  "113",
+  "115",
+]);
 
-const folderMessages = folderMessagesRaw.map((m) => ({
-  id: String(m.id),
-  folderId: String(m.folder_id),
-  message: fixEnc(String(m.message || "")),
-}));
+function remapOrphanFolderId(id) {
+  const s = String(id);
+  if (folderIdSet.has(s)) return s;
+  if (DROP_ORPHAN_FOLDERS.has(s)) return null;
+  return null;
+}
 
-const whatsappMessages = whatsappRaw.map((m) => ({
-  userId: String(m.user_id),
-  folderId: String(m.folder_id),
-  message: fixEnc(String(m.message || "")),
-}));
+const folderSettings = folderSettingsRaw
+  .map((s) => ({
+    folderId: String(s.folder_id),
+    nearDueDays: Number(s.near_due_days) || 3,
+    farDueDays: Number(s.far_due_days) || 3,
+  }))
+  .filter((s) => folderIdSet.has(s.folderId));
 
-const items = itemsRaw.map((it) => ({
-  id: String(it.id),
-  folderId: String(it.folder_id),
-  itemId: String(it.item_id ?? "").trim(),
-  name: fixEnc(String(it.name || "")).trim(),
-  dueDate: it.due_date ? String(it.due_date).slice(0, 10) : null,
-  phone: String(it.phone ?? "").trim(),
-  price: it.price == null || it.price === "" ? 0 : Number(it.price),
-  notes: it.notes ? fixEnc(String(it.notes)) : "",
-  createdAt: it.created_at ? String(it.created_at).replace(" ", "T") : null,
-  isActive: it.is_active == null ? true : Boolean(Number(it.is_active)),
-  status: statusOrEmpty(it.status ? fixEnc(String(it.status)) : ""),
-}));
+const folderMessages = folderMessagesRaw
+  .map((m) => {
+    const folderId = remapOrphanFolderId(m.folder_id);
+    if (!folderId) return null;
+    return {
+      id: String(m.id),
+      folderId,
+      message: fixEnc(String(m.message || "")),
+    };
+  })
+  .filter(Boolean);
 
+const whatsappMessages = whatsappRaw
+  .map((m) => {
+    const folderId = remapOrphanFolderId(m.folder_id);
+    if (!folderId) return null;
+    return {
+      userId: String(m.user_id),
+      folderId,
+      message: fixEnc(String(m.message || "")),
+    };
+  })
+  .filter(Boolean);
+
+// Dedup whatsapp por (userId, folderId) — mantém o último
+const waMap = new Map();
+for (const m of whatsappMessages) {
+  waMap.set(`${m.userId}:${m.folderId}`, m);
+}
+const whatsappMessagesDedup = [...waMap.values()];
+
+let droppedOrphans = 0;
+let remappedOrphans = 0;
+const items = [];
+for (const it of itemsRaw) {
+  const mapped = remapOrphanFolderId(it.folder_id);
+  if (!mapped) {
+    droppedOrphans++;
+    continue;
+  }
+  if (String(mapped) !== String(it.folder_id)) remappedOrphans++;
+  items.push({
+    id: String(it.id),
+    folderId: mapped,
+    itemId: String(it.item_id ?? "").trim(),
+    name: fixEnc(String(it.name || "")).trim(),
+    dueDate: it.due_date ? String(it.due_date).slice(0, 10) : null,
+    phone: String(it.phone ?? "").trim(),
+    price: it.price == null || it.price === "" ? 0 : Number(it.price),
+    notes: it.notes ? fixEnc(String(it.notes)) : "",
+    createdAt: it.created_at ? String(it.created_at).replace(" ", "T") : null,
+    isActive: it.is_active == null ? true : Boolean(Number(it.is_active)),
+    status: statusOrEmpty(it.status ? fixEnc(String(it.status)) : ""),
+  });
+}
 const tickets = ticketsRaw.map((t) => ({
   id: String(t.id),
   userId: String(t.user_id),
@@ -275,7 +364,7 @@ const seed = {
   folders,
   folderSettings,
   folderMessages,
-  whatsappMessages,
+  whatsappMessages: whatsappMessagesDedup,
   items,
   tickets,
 };
@@ -289,7 +378,10 @@ console.log({
   folders: folders.length,
   folderSettings: folderSettings.length,
   folderMessages: folderMessages.length,
-  whatsappMessages: whatsappMessages.length,
+  whatsappMessages: whatsappMessagesDedup.length,
   items: items.length,
   tickets: tickets.length,
+  droppedOrphans,
+  remappedOrphans,
+  passwordsPreserved: users.filter((u) => String(u.password).startsWith("$2")).length,
 });

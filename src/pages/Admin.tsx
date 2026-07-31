@@ -1,18 +1,17 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { format, parseISO } from "date-fns";
+import { KeyRound, LifeBuoy, Search, Trash2, UserCog } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import { useApp } from "@/context/AppContext";
+import { hashPassword } from "@/lib/password";
+import { respondTicket } from "@/lib/storage";
+import type { Ticket, User } from "@/types";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -21,10 +20,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
-import { useApp } from "@/context/AppContext";
-import { respondTicket } from "@/lib/storage";
-import type { Ticket, User } from "@/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function AdminUsers() {
   const { user, data, setData } = useApp();
@@ -37,104 +39,78 @@ export function AdminUsers() {
     return data.users.filter((u) => !q || u.username.toLowerCase().includes(q));
   }, [data.users, search]);
 
-  const toggleActive = (target: User) => {
-    if (target.id === user?.id) {
-      toast.error("Você não pode desativar a si mesmo.");
-      return;
-    }
-    setData({
-      ...data,
-      users: data.users.map((u) =>
-        u.id === target.id ? { ...u, isActive: !u.isActive } : u,
-      ),
-    });
-    toast.success(target.isActive ? "Usuário desativado." : "Usuário ativado.");
-  };
-
-  const removeUser = (target: User) => {
-    if (target.id === user?.id) {
-      toast.error("Você não pode excluir a si mesmo.");
-      return;
-    }
-    setData({
-      ...data,
-      users: data.users.filter((u) => u.id !== target.id),
-      folders: data.folders.filter((f) => f.userId !== target.id),
-      items: data.items.filter(
-        (i) =>
-          !data.folders.some((f) => f.userId === target.id && f.id === i.folderId),
-      ),
-      tickets: data.tickets.filter((t) => t.userId !== target.id),
-    });
-    toast.success("Usuário excluído.");
-  };
-
-  const onChangePassword = (e: FormEvent) => {
-    e.preventDefault();
-    if (!pwdUser || !newPassword) return;
-    setData({
-      ...data,
-      users: data.users.map((u) =>
-        u.id === pwdUser.id ? { ...u, password: newPassword } : u,
-      ),
-    });
-    setPwdUser(null);
-    setNewPassword("");
-    toast.success("Senha atualizada.");
-  };
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Gerenciar usuários</h1>
-        <p className="text-sm text-slate-600">Painel administrativo do AuxPlus</p>
-      </div>
-
-      <Input
-        placeholder="Buscar usuário..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-sm"
+    <div>
+      <PageHeader
+        title="Usuários"
+        description="Gerencie acesso, status e senhas das contas."
       />
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Usuário</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Pastas</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell className="font-medium">{u.username}</TableCell>
-                  <TableCell>
-                    {u.isAdmin ? (
-                      <Badge className="bg-violet-600">Admin</Badge>
-                    ) : (
-                      <Badge variant="secondary">Usuário</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {u.isActive ? (
-                      <Badge className="bg-emerald-600">Ativo</Badge>
-                    ) : (
-                      <Badge variant="destructive">Inativo</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {data.folders.filter((f) => f.userId === u.id).length}
-                  </TableCell>
-                  <TableCell className="space-x-1 text-right">
-                    <Button size="sm" variant="outline" onClick={() => toggleActive(u)}>
+      <div className="relative mb-4 max-w-sm">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          className="pl-9"
+          placeholder="Buscar usuário…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      <div className="ax-surface overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Usuário</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Pastas</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.map((u) => (
+              <TableRow key={u.id}>
+                <TableCell className="font-medium">{u.username}</TableCell>
+                <TableCell>
+                  <Badge variant="secondary">
+                    {u.isAdmin ? "Admin" : "Usuário"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={u.isActive ? "default" : "destructive"}>
+                    {u.isActive ? "Ativo" : "Inativo"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {data.folders.filter((f) => f.userId === u.id).length}
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={u.id === user?.id}
+                      onClick={() => {
+                        if (u.id === user?.id) return;
+                        setData({
+                          ...data,
+                          users: data.users.map((x) =>
+                            x.id === u.id
+                              ? { ...x, isActive: !x.isActive }
+                              : x,
+                          ),
+                        });
+                        toast.success(
+                          u.isActive ? "Usuário desativado" : "Usuário ativado",
+                        );
+                      }}
+                    >
+                      <UserCog className="h-3.5 w-3.5" />
                       {u.isActive ? "Desativar" : "Ativar"}
                     </Button>
                     <Button
+                      type="button"
                       size="sm"
                       variant="outline"
                       onClick={() => {
@@ -142,30 +118,64 @@ export function AdminUsers() {
                         setNewPassword("");
                       }}
                     >
+                      <KeyRound className="h-3.5 w-3.5" />
                       Senha
                     </Button>
                     <Button
+                      type="button"
                       size="sm"
                       variant="destructive"
-                      onClick={() => removeUser(u)}
                       disabled={u.id === user?.id}
+                      onClick={() => {
+                        if (u.id === user?.id) return;
+                        setData({
+                          ...data,
+                          users: data.users.filter((x) => x.id !== u.id),
+                          folders: data.folders.filter((f) => f.userId !== u.id),
+                          items: data.items.filter(
+                            (i) =>
+                              !data.folders.some(
+                                (f) =>
+                                  f.userId === u.id && f.id === i.folderId,
+                              ),
+                          ),
+                          tickets: data.tickets.filter((t) => t.userId !== u.id),
+                        });
+                        toast.success("Usuário excluído");
+                      }}
                     >
+                      <Trash2 className="h-3.5 w-3.5" />
                       Excluir
                     </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
 
       <Dialog open={!!pwdUser} onOpenChange={(o) => !o && setPwdUser(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Alterar senha de {pwdUser?.username}</DialogTitle>
+            <DialogTitle>Senha de {pwdUser?.username}</DialogTitle>
           </DialogHeader>
-          <form className="space-y-3" onSubmit={onChangePassword}>
+          <form
+            className="space-y-4"
+            onSubmit={async (e: FormEvent) => {
+              e.preventDefault();
+              if (!pwdUser) return;
+              const hashed = await hashPassword(newPassword);
+              setData({
+                ...data,
+                users: data.users.map((x) =>
+                  x.id === pwdUser.id ? { ...x, password: hashed } : x,
+                ),
+              });
+              setPwdUser(null);
+              toast.success("Senha atualizada");
+            }}
+          >
             <div className="space-y-2">
               <Label>Nova senha</Label>
               <Input
@@ -176,9 +186,7 @@ export function AdminUsers() {
               />
             </div>
             <DialogFooter>
-              <Button type="submit" className="bg-sky-600 hover:bg-sky-700">
-                Salvar
-              </Button>
+              <Button type="submit">Salvar</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -192,85 +200,93 @@ export function AdminTickets() {
   const [replying, setReplying] = useState<Ticket | null>(null);
   const [response, setResponse] = useState("");
 
-  const onReply = (e: FormEvent) => {
-    e.preventDefault();
-    if (!replying || !response.trim()) return;
-    setData(respondTicket(data, replying.id, response.trim()));
-    setReplying(null);
-    setResponse("");
-    toast.success("Resposta enviada.");
-  };
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Tickets de suporte</h1>
-        <p className="text-sm text-slate-600">
-          {data.tickets.filter((t) => !t.response).length} pendentes
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        title="Tickets de suporte"
+        description="Responda às dúvidas dos usuários."
+      />
 
-      <div className="space-y-3">
-        {data.tickets.length === 0 ? (
-          <p className="rounded-lg border border-dashed bg-white p-6 text-sm text-slate-500">
-            Nenhum ticket.
-          </p>
-        ) : (
-          data.tickets.map((ticket) => {
+      {data.tickets.length === 0 ? (
+        <EmptyState
+          icon={LifeBuoy}
+          title="Nenhum ticket"
+          description="Quando os usuários enviarem dúvidas, elas aparecem aqui."
+        />
+      ) : (
+        <div className="space-y-3">
+          {data.tickets.map((ticket) => {
             const owner = data.users.find((u) => u.id === ticket.userId);
             return (
-              <Card key={ticket.id}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-                    <span>{owner?.username ?? "Usuário removido"}</span>
-                    <span className="text-xs font-normal text-slate-500">
-                      {format(parseISO(ticket.createdAt), "dd/MM/yyyy HH:mm")}
+              <div
+                key={ticket.id}
+                className={`ax-surface p-4 ${
+                  ticket.response ? "border-primary/30" : ""
+                }`}
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <p className="font-semibold">
+                    {owner?.username ?? "Usuário"}
+                  </p>
+                  <Badge variant={ticket.response ? "default" : "secondary"}>
+                    {ticket.response ? "Respondido" : "Pendente"}
+                  </Badge>
+                </div>
+                <p className="text-sm">
+                  <span className="font-medium">Pergunta: </span>
+                  {ticket.question}
+                </p>
+                {ticket.response ? (
+                  <p className="mt-2 border-t pt-2 text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">
+                      Resposta:{" "}
                     </span>
-                    {!ticket.response && (
-                      <Badge className="bg-amber-500">Pendente</Badge>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p>{ticket.question}</p>
-                  {ticket.response ? (
-                    <div className="rounded-md bg-sky-50 p-3 text-sm">
-                      <strong>Resposta:</strong> {ticket.response}
-                    </div>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setReplying(ticket);
-                      setResponse(ticket.response ?? "");
-                    }}
-                  >
-                    {ticket.response ? "Editar resposta" : "Responder"}
-                  </Button>
-                </CardContent>
-              </Card>
+                    {ticket.response}
+                  </p>
+                ) : null}
+                <Button
+                  type="button"
+                  className="mt-3"
+                  size="sm"
+                  onClick={() => {
+                    setReplying(ticket);
+                    setResponse(ticket.response ?? "");
+                  }}
+                >
+                  {ticket.response ? "Editar resposta" : "Responder"}
+                </Button>
+              </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
 
-      <Dialog open={!!replying} onOpenChange={(o) => !o && setReplying(null)}>
+      <Dialog
+        open={!!replying}
+        onOpenChange={(o) => !o && setReplying(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Responder ticket</DialogTitle>
           </DialogHeader>
-          <form className="space-y-3" onSubmit={onReply}>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!replying) return;
+              setData(respondTicket(data, replying.id, response.trim()));
+              setReplying(null);
+              toast.success("Resposta enviada");
+            }}
+          >
             <Textarea
-              rows={4}
+              className="min-h-[140px]"
               value={response}
               onChange={(e) => setResponse(e.target.value)}
               required
             />
             <DialogFooter>
-              <Button type="submit" className="bg-sky-600 hover:bg-sky-700">
-                Enviar
-              </Button>
+              <Button type="submit">Enviar</Button>
             </DialogFooter>
           </form>
         </DialogContent>

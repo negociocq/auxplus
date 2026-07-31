@@ -89,16 +89,16 @@ CREATE TABLE whatsapp_messages (
 );
 
 INSERT INTO users (id, username, password, is_admin, is_active) VALUES
-(1, 'tarciocq', '123456', FALSE, TRUE),
-(9, 'admin', 'admin123', TRUE, TRUE),
-(12, 'eronvitor', '123456', FALSE, TRUE),
-(18, 'natu', '123456', FALSE, TRUE),
-(16, 'andrelima', '123456', FALSE, TRUE),
-(17, 'ginhocapu', '123456', FALSE, TRUE),
-(3, 'usuario_3', '123456', FALSE, TRUE),
-(2, 'usuario_2', '123456', FALSE, TRUE),
-(4, 'usuario_4', '123456', FALSE, TRUE),
-(15, 'usuario_15', '123456', FALSE, TRUE);
+(1, 'tarciocq', '$2y$10$cp75Q2VPuS4bujVF9d70v.VY3lO0dlRHKh9pzvVv70zsmUMCQmk9O', FALSE, TRUE),
+(9, 'admin', '$2y$10$7HGd2bF/zWbJE8SN6.ntJu9WrVHG97KxtDShcDCoFA6rLcKWum5By', TRUE, TRUE),
+(12, 'eronvitor', '$2y$10$FjcxXOjFc5RSQ9Bh/0y/CenFNwxXYsO8xcgAl3ChLlm.7MATgcGdG', FALSE, TRUE),
+(18, 'natu', '$2y$10$64Y3ZdI2rRQNsPegpvJUfO4WS1ZJqkkIlVvyU68kRqQX6Y8oX9ER.', FALSE, TRUE),
+(16, 'andrelima', '$2y$10$fIMAbzuBIlFFgRS..vRJDO0jqjGLuLBrVyrSDGkGf3t7GHhaXcMMu', FALSE, TRUE),
+(17, 'ginhocapu', '$2y$10$wMl5lg7XjJSJBnpftiJ8.erTX.zt1hP1wCkBvE19Vs.60XZsLTzJi', FALSE, TRUE),
+(3, 'usuario_3', '$2a$10$w7s.EQndU.opZHnEooLP0u0E8GFx3src6gDCBH0YJC2dH8xERwKnO', FALSE, TRUE),
+(2, 'usuario_2', '$2a$10$w7s.EQndU.opZHnEooLP0u0E8GFx3src6gDCBH0YJC2dH8xERwKnO', FALSE, TRUE),
+(4, 'usuario_4', '$2a$10$w7s.EQndU.opZHnEooLP0u0E8GFx3src6gDCBH0YJC2dH8xERwKnO', FALSE, TRUE),
+(15, 'usuario_15', '$2a$10$w7s.EQndU.opZHnEooLP0u0E8GFx3src6gDCBH0YJC2dH8xERwKnO', FALSE, TRUE);
 
 INSERT INTO folders (id, user_id, type, name, whatsapp_message) VALUES
 (3, 1, 'Cliente', 'IPTV', NULL),
@@ -116,15 +116,7 @@ INSERT INTO folders (id, user_id, type, name, whatsapp_message) VALUES
 (104, 15, 'Cliente', 'P2P', NULL),
 (98, 1, 'Produto', 'Dívidas', NULL),
 (105, 15, 'Cliente', 'REVENDEDOR', NULL),
-(103, 15, 'Cliente', 'IPTV', NULL),
-(28, 1, 'Cliente', 'Pasta recuperada 28', NULL),
-(113, 1, 'Cliente', 'Pasta recuperada 113', NULL),
-(24, 1, 'Cliente', 'Pasta recuperada 24', NULL),
-(33, 1, 'Cliente', 'Pasta recuperada 33', NULL),
-(99, 1, 'Cliente', 'Pasta recuperada 99', NULL),
-(100, 1, 'Cliente', 'Pasta recuperada 100', NULL),
-(115, 1, 'Cliente', 'Pasta recuperada 115', NULL),
-(10, 1, 'Cliente', 'Pasta recuperada 10', NULL);
+(103, 15, 'Cliente', 'IPTV', NULL);
 
 INSERT INTO folder_settings (folder_id, near_due_days, far_due_days) VALUES
 (3, 2, 2),
@@ -140,13 +132,8 @@ INSERT INTO folder_settings (folder_id, near_due_days, far_due_days) VALUES
 (104, 3, 3),
 (105, 3, 3),
 (106, 3, 3),
-(107, 3, 3),
-(108, 3, 3),
-(111, 3, 3),
 (119, 2, 2),
 (114, 3, 3),
-(116, 3, 3),
-(120, 3, 3),
 (122, 3, 3);
 
 INSERT INTO folder_messages (id, folder_id, message) VALUES
@@ -163,21 +150,9 @@ Não esqueça de renovar para continuar assistindo sem interrupções.
 Aproveite seus programas favoritos! ??
 
 > Obrigado pela sua preferência! ?'),
-(2, 5, 'Mensagem específica para a pasta Banda larga 30MB'),
-(3, 10, '{getGreeting}
-
-Gostaríamos de lembrá-lo(a) sobre o vencimento do seguinte produto:
-
-Produto: {name}
-
-{dateText} {due_date}
-
-Por favor, tome as medidas necessárias para gerenciar este produto antes da data de vencimento. Se precisar de mais informações ou assistência, estamos à disposição.
-
-Obrigado pela atenção.');
+(2, 5, 'Mensagem específica para a pasta Banda larga 30MB');
 
 INSERT INTO items (id, folder_id, item_id, name, due_date, phone, status, price, notes, created_at, is_active) VALUES
-(716, 28, 'usuario', 'nome', NULL, 'celular', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
 (1051, 3, '473917283', 'João Primo IboCQ', '2026-08-26', '+5571994119424', 'Sem Vencimento', 30, 'Mac Address: 23:44:AB:80:0E:AB
 Device Key: 747729', '2024-02-21 00:00:00', TRUE),
 (1050, 3, '441113572', 'xota natu', '2024-10-30', '+5571986164082', 'Sem Vencimento', 30, NULL, '2024-09-29 00:00:00', TRUE),
@@ -232,82 +207,6 @@ Só vai pagar até 20/08', '2025-03-24 00:00:00', TRUE),
 (999, 3, '179501790', 'André Netgool', '2026-08-04', '+557199366866', 'Sem Vencimento', 30, 'Utiliza o XC IPTV', '2024-05-21 00:00:00', TRUE),
 (998, 3, '83322258', 'Wallace Kevin', '2026-08-09', '+557581724715', 'Sem Vencimento', 30, 'IPTV Smarters', '2024-04-23 00:00:00', TRUE),
 (997, 3, '51551124', 'Noelia Ribeiro - Theilane', '2026-08-09', '+557188590161', 'Sem Vencimento', 52.9, 'Prime IPTV', '2024-07-26 00:00:00', TRUE),
-(717, 28, '564373065', 'Daniel Bueno', '2025-09-14', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(718, 28, '24542157', 'Cristina Altamiro', '2024-11-18', '+5571986164082', 'Longe de Vencer', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(719, 28, '168618488', 'Gilmar andre netgool', '2024-11-05', '+5571986164082', 'Perto de Vencer', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(720, 28, '1112544', 'Tio Fernando', '2024-11-04', '+5571986164082', 'Perto de Vencer', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(721, 28, '36115150', 'André Pai Andressa', '2024-11-03', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(722, 28, '96239966', 'Richard', '2024-11-03', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(723, 28, '3333451', 'Tamires lorena', '2024-11-03', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(724, 28, '523893325', 'Nilton Cristina', '2024-11-03', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(725, 28, '34615128', 'Gal NETGOOL', '2024-11-02', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(726, 28, '651666274', 'Alef Ragah', '2024-11-02', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(727, 28, '150869207', 'Biel Castro', '2024-11-02', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(728, 28, '2555441', 'Caique tolate', '2024-10-31', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(729, 28, '64818115', 'Vinicius Grande poli', '2024-10-31', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(730, 28, '814853', 'Tarcisio e Outros', '2024-10-31', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-10-02 17:11:22', TRUE),
-(731, 28, '441113572', 'xota natu', '2024-10-30', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(732, 28, '51298445', 'João Primo IboCQ', '2024-10-30', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(733, 28, '215422', 'Banana Guilherme banda', '2024-10-29', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(734, 28, '641818', 'Leo Jean IboCQ', '2024-10-27', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(735, 28, '51551124', 'Noelia Ribeiro - Theilane', '2024-10-27', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(736, 28, '83322258', 'Wallace Kevin', '2024-10-27', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(737, 28, '9148546', 'André Netgool', '2024-10-27', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(738, 28, '895941628', 'Antonio DDD 83', '2024-10-26', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(739, 28, '185129949', 'Wadson Banda', '2024-10-26', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(740, 28, '807431997', 'Diego cadu ubas', '2024-10-26', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(741, 28, '542751845', 'Francine INSTA DDD31', '2024-10-26', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(742, 28, '215433542', 'Ramon Rua', '2024-10-25', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(743, 28, '986999436', 'Matheus DDD83', '2024-10-24', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(744, 28, '8461312', 'Vitor sobreira', '2024-10-24', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(745, 28, '999613270', 'Aline ddd 63', '2024-10-24', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(746, 28, '646455', 'Eliete vó', '2024-10-24', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(747, 28, '518181', 'Marcelo Rua Xcloud', '2024-10-23', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(748, 28, '5134818919', 'Luiz Carlos João Xcloud', '2024-10-22', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(749, 28, '12526634', 'Khall IboCQ', '2024-10-22', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-02-15 17:11:22', TRUE),
-(750, 28, '81297485', 'Tatiane Pessoa Cliente Xcloud', '2024-10-22', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(751, 28, '245121558', 'Lucas de valmar', '2024-10-22', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(752, 28, '54254007', 'Gerson ian', '2024-10-20', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(753, 28, '615181818', 'Cadu ubas Xcloud', '2024-10-20', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(754, 28, '51315814', 'William Wallace de Noelia', '2024-10-19', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(755, 28, '87675811', 'Alessandra lorena prima', '2024-10-18', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(756, 28, '9132451', 'Vitoria Netgool', '2024-10-18', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(757, 28, '496464818', 'Junior de kevin', '2024-10-18', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(758, 28, '54518191', 'Isidio Moura', '2024-10-18', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(759, 28, '64431251', 'Renan Oliveira DDD73', '2024-10-18', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(760, 28, '8445218', 'Liane sogra de vinicius', '2024-10-17', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(761, 28, '94648181', 'Jessica Andressa', '2024-10-17', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(762, 28, '628327287', 'Carlos tia eliane', '2024-10-17', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(763, 28, '81464432', 'Hozana DDD22', '2024-10-17', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(764, 28, '561561521', 'Mauricio Helber', '2024-10-16', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(765, 28, '818161', 'Jean STF Xcloud', '2024-10-15', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(766, 28, '21315542', 'Vanessa Altamiro', '2024-10-14', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(767, 28, '9994884', 'Davidson vizinho', '2024-10-14', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(768, 28, '64640081', 'Altamiro vizinho', '2024-10-12', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(769, 28, '958353987', 'rafael chapa quente', '2024-10-11', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(770, 28, '4651888', 'Sapo barbearia', '2024-10-11', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(771, 28, '81601610', 'Everaldo Netgool', '2024-10-10', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(772, 28, '8484543', 'Geilson PI Xcloud', '2024-10-10', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(773, 28, '6404810', 'Davi de levi', '2024-10-09', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(774, 28, '2254471', 'Viviane Sogra de João', '2024-10-09', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(775, 28, '94646788', 'João JT', '2024-10-08', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(776, 28, '370089801', 'Gustavo DDD 54', '2024-10-07', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(777, 28, '851432900', 'Tio alexandre IboCQ', '2024-10-06', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(778, 28, '452452452', 'deisiane vinicius', '2024-10-06', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(779, 28, '7545558', 'Gleidson poli', '2024-10-06', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(780, 28, '524592208', 'Neilton Alencar', '2024-10-05', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(781, 28, '812215125', 'Magdiel Constâncio DDD89', '2024-09-28', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(782, 28, '563742', 'Ruan - Davidson', '2024-09-25', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(783, 28, '3186181121', 'Adler DDD55', '2024-09-24', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(784, 28, '51318154319', 'Guilherme filho de luiz joao Xcloud', '2024-09-21', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(785, 28, '542151', 'Marcos primo de João JT', '2024-09-21', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(786, 28, '528524284', 'Hilmar Netgool', '2024-09-19', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(787, 28, '2435211', 'Jessica Insta DDD41', '2024-09-19', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(788, 28, '51408806885', 'Josemar STF', '2024-09-16', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(789, 28, '61615181', 'Williane DDD65', '2024-09-16', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(790, 28, '9434251', 'Geraldo DDD71', '2024-09-11', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(791, 28, '61132754', 'Iago fenix', '2024-09-08', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
-(792, 28, '5455580', 'Ian gerson', '2024-09-07', '+5571986164082', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
 (2211, 3, '745970016', 'Lineia Ddd62', '2025-12-26', '+5562 9373-5338', 'Sem Vencimento', 29.8, NULL, '2025-08-17 00:00:00', TRUE),
 (995, 3, '807391052', 'Leo Jean IboCQ', '2026-08-16', '+5571987783521', 'Sem Vencimento', 30, '50 Megas', '2024-01-18 00:00:00', TRUE),
 (2208, 3, '246834307', 'Alana ddd35', '2025-10-12', '+5535 9993-3807', 'Sem Vencimento', 29.8, NULL, '2025-08-11 00:00:00', TRUE),
@@ -351,7 +250,6 @@ Device Key: 829588
 Mac Address: D0:F4:8A:B4:A6:2D
 Device Key: 996884', '2025-04-23 00:00:00', TRUE),
 (1803, 3, '335519894', 'Luiza namorada de Joao de wallace', '2025-07-21', '+5571991256224', 'Sem Vencimento', 30, NULL, '2025-04-19 00:00:00', TRUE),
-(1701, 113, '555266930', 'Veron Buja', '2025-05-13', '+5571992046224', 'Longe de Vencer', 0, NULL, '2025-04-08 18:02:41', TRUE),
 (1177, 3, '891075674', 'Caique ATENTO andressa', '2026-07-15', '+557199720-8178', 'Sem Vencimento', 29, '18:71:22:10:57:39
 prime', '2024-11-09 00:00:00', TRUE),
 (1176, 3, '213199870', 'Williane Ddd 65', '2026-07-21', '+5565 9279-3513', 'Sem Vencimento', 30, NULL, '2024-08-16 00:00:00', TRUE),
@@ -371,7 +269,7 @@ prime', '2024-11-09 00:00:00', TRUE),
 (1063, 3, '81464432', 'Hozana DDD22', '2024-10-17', '+5522998019696', 'Sem Vencimento', 30, NULL, '2024-08-15 00:00:00', TRUE),
 (1064, 3, '561561521', 'Mauricio Helber', '2025-11-16', '+557192882607', 'Sem Vencimento', 30, NULL, '2024-04-30 00:00:00', TRUE),
 (1066, 3, '370089801', 'Gustavo DDD 54', '2024-10-07', '+555496371923', 'Sem Vencimento', 30, NULL, '2024-11-06 00:00:00', TRUE),
-(1076, 24, '3899363', 'Vitinho', '2026-02-19', '+5571986164082', 'Longe de Vencer', 0, NULL, '2024-11-06 17:11:22', TRUE),
+(1076, 3, '3899363', 'Vitinho', '2026-02-19', '+5571986164082', 'Longe de Vencer', 0, NULL, '2024-11-06 17:11:22', TRUE),
 (2328, 106, 'Alvaro', 'Alvaro', '2026-08-20', '+55 71 9655-549', 'Sem Vencimento', 50, 'Cliente tem essa cortesia até o dia 
 20/08/2026.
 ', '2026-06-05 04:20:37', TRUE),
@@ -379,10 +277,10 @@ prime', '2024-11-09 00:00:00', TRUE),
 (1081, 31, '1', 'Eron', NULL, '+5571986164082', 'Sem Vencimento', 400, '44 clientes - 80x5= 400', '2024-11-06 00:00:00', TRUE),
 (1083, 31, '2', 'Jorginho', NULL, '+5571986164082', 'Sem Vencimento', 80, '11clientes- 80x1= 80', '2024-11-06 00:00:00', TRUE),
 (1666, 106, 'joaquim', 'joaquim', '2026-08-20', '+5571987889966', 'Sem Vencimento', 50, NULL, '2025-03-24 00:00:00', TRUE),
-(1131, 33, '1', 'TARCIO', '2024-10-29', '+5571986164082', 'Sem Vencimento', 300, 'JUROS 3%', '2024-11-06 17:11:22', TRUE),
-(1132, 33, '2', 'Tarcisio', '2024-11-20', '+5571986164082', 'Sem Vencimento', 2000, 'JUROS 2%', '2024-11-06 17:11:22', TRUE),
-(1133, 33, '3', 'GYJH', '2024-11-06', '+5571986164082', 'Sem Vencimento', 250, 'JUROS 4', '2024-11-06 17:11:22', TRUE),
-(1135, 33, '33', 'HJBJJB', NULL, '+55', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
+(1131, 98, '1', 'TARCIO', '2024-10-29', '+5571986164082', 'Sem Vencimento', 300, 'JUROS 3%', '2024-11-06 17:11:22', TRUE),
+(1132, 98, '2', 'Tarcisio', '2024-11-20', '+5571986164082', 'Sem Vencimento', 2000, 'JUROS 2%', '2024-11-06 17:11:22', TRUE),
+(1133, 98, '3', 'GYJH', '2024-11-06', '+5571986164082', 'Sem Vencimento', 250, 'JUROS 4', '2024-11-06 17:11:22', TRUE),
+(1135, 98, '33', 'HJBJJB', NULL, '+55', 'Sem Vencimento', 0, NULL, '2024-11-06 17:11:22', TRUE),
 (1140, 3, '635637856', 'Tarcisio e Outros', '2026-06-15', '+5571992520681', 'Sem Vencimento', 0, 'Khall CELULAR - 22:59:B0:F2:43:9E
 554476
 
@@ -418,13 +316,13 @@ Kauan vizinho prime iptv
 B0:37:95:9D:3D:AA
 854200', '2024-01-15 00:00:00', TRUE),
 (1609, 103, '2525252', 'Felipe Andrade', '2024-11-09', '+5511743210987', 'Longe de Vencer', 30, NULL, '2025-03-20 16:32:56', TRUE),
-(1145, 99, 'Feijao', 'Campeão', NULL, NULL, 'Sem Vencimento', 8.78, NULL, '2024-11-07 12:14:31', TRUE),
+(1145, 98, 'Feijao', 'Campeão', NULL, NULL, 'Sem Vencimento', 8.78, NULL, '2024-11-07 12:14:31', TRUE),
 (1610, 103, '2626262', 'Marcio Rocha', '2024-10-08', '+5511732109876', 'Longe de Vencer', 30, NULL, '2025-03-20 16:32:56', TRUE),
 (1608, 103, '2424242', 'Rosana Pereira', '2024-12-10', '+5511754321098', 'Longe de Vencer', 30, NULL, '2025-03-20 16:32:56', TRUE),
 (1605, 103, '2020202', 'Leonardo Souza', '2024-04-22', '+5511798765432', 'Longe de Vencer', 30, NULL, '2025-03-20 16:32:56', TRUE),
 (1607, 103, '2222222', 'Vitor Almeida', '2024-02-20', '+5511776543210', 'Longe de Vencer', 30, NULL, '2025-03-20 16:32:56', TRUE),
-(1159, 100, '2', '2 novembro', NULL, '+55', 'Sem Vencimento', 230, NULL, '2024-11-07 19:30:27', TRUE),
-(1158, 100, '1', '1 novembro', NULL, '+55', 'Sem Vencimento', 200, NULL, '2024-11-07 19:30:02', TRUE),
+(1159, 98, '2', '2 novembro', NULL, '+55', 'Sem Vencimento', 230, NULL, '2024-11-07 19:30:27', TRUE),
+(1158, 98, '1', '1 novembro', NULL, '+55', 'Sem Vencimento', 200, NULL, '2024-11-07 19:30:02', TRUE),
 (2114, 3, '830609882', 'João de Anderson de Jr black', '2026-07-16', '+5571992612754', 'Sem Vencimento', 30, NULL, '2025-06-07 00:00:00', TRUE),
 (1606, 103, '2121212', 'Cristina Lima', '2024-03-21', '+5511787654321', 'Longe de Vencer', 30, NULL, '2025-03-20 16:32:56', TRUE),
 (1179, 3, '643688', 'Diego M7', '2024-12-14', '+5571984354655', 'Sem Vencimento', 30, NULL, '2024-11-13 00:00:00', TRUE),
@@ -544,7 +442,6 @@ Key - 567632', '2025-03-18 00:00:00', TRUE),
 (1499, 3, '62146236', 'Matheus Janaina', '2026-08-11', '+557181898318', 'Sem Vencimento', 30, NULL, '2025-03-18 00:00:00', TRUE),
 (1498, 3, '331109078', 'vinicius grande poli', '2026-08-11', '+5571983739054', 'Sem Vencimento', 30, NULL, '2024-06-21 00:00:00', TRUE),
 (1497, 3, '161027641', 'Heron Deposito', '2026-08-06', '+557181249363', 'Sem Vencimento', 30, NULL, '2025-03-18 00:00:00', TRUE),
-(1702, 113, '93046224', 'Ele Irmao', '2025-05-12', '+5571993046224', 'Longe de Vencer', 0, NULL, '2025-04-08 18:02:41', TRUE),
 (1495, 3, '523424873', 'alex big do marido de andria prima', '2026-08-23', '+557192069406', 'Sem Vencimento', 30, NULL, '2025-03-18 00:00:00', TRUE),
 (1494, 3, '259311897', 'Daniel Zidane', '2026-07-28', '+557191109506', 'Sem Vencimento', 30, NULL, '2025-03-18 00:00:00', TRUE),
 (1493, 3, '745129018', 'Danilo ddd11', '2026-10-08', '+5511989611806', 'Sem Vencimento', 37.5, NULL, '2025-03-18 00:00:00', TRUE),
@@ -601,7 +498,6 @@ Device Key: 877240', '2025-09-13 00:00:00', TRUE),
 (1696, 3, '92843361', 'Débora Cristina ddd98', '2025-05-07', '+5598999088825', 'Sem Vencimento', 45, NULL, '2025-04-06 08:02:24', TRUE),
 (1697, 106, 'Nunes', 'Nunes', '2026-08-20', '+5571994027335', 'Sem Vencimento', 50, NULL, '2025-04-06 00:00:00', TRUE),
 (2233, 29, '50900551', 'Guilherme(Instagram)', '2025-11-03', '+5547984234452', 'Sem Vencimento', 30, NULL, '2025-10-04 00:00:00', TRUE),
-(1703, 113, '7199293', 'Dinho Nery', '2025-05-09', '+5571992936636', 'Longe de Vencer', 0, NULL, '2025-04-08 18:02:41', TRUE),
 (1704, 114, '555266930', 'Chapinha', '2025-12-12', '71 98629-6878', 'Sem Vencimento', 30, NULL, '2025-04-08 00:00:00', TRUE),
 (1705, 114, '507426993', 'Lara Veron', '2026-07-13', '+55 71 98740-93', 'Sem Vencimento', 30, NULL, '2025-04-08 00:00:00', TRUE),
 (1706, 114, '93046224', 'Ele Irmao', '2025-12-06', '+5571993046224', 'Sem Vencimento', 30, NULL, '2025-04-08 00:00:00', TRUE),
@@ -611,15 +507,6 @@ Device Key: 877240', '2025-09-13 00:00:00', TRUE),
 (1710, 114, '695839260', 'Veron', '2025-12-05', '+557198612-8458', 'Sem Vencimento', 30, NULL, '2025-04-08 00:00:00', TRUE),
 (1711, 114, '998642472', 'Jaú Feira', '2025-11-25', '+557198612-8458', 'Sem Vencimento', 30, NULL, '2025-10-25 00:00:00', TRUE),
 (1712, 114, '423539617', 'Dilsinho Cabra', '2025-12-04', '992631310', 'Sem Vencimento', 30, NULL, '2025-04-08 00:00:00', TRUE),
-(1713, 115, '555266930', 'Veron Buja', '2025-05-13', '+5571986164082', 'Longe de Vencer', 30, NULL, '2025-04-08 18:19:05', TRUE),
-(1714, 115, '507426993', 'Lara Veron', '2025-05-13', '+5571986164082', 'Longe de Vencer', 30, NULL, '2025-04-08 18:19:05', TRUE),
-(1715, 115, '93046224', 'Ele Irmao', '2025-05-12', '+5571986164082', 'Longe de Vencer', 30, NULL, '2025-04-08 18:19:05', TRUE),
-(1716, 115, '7199293', 'Dinho Nery', '2025-05-09', '+5571986164082', 'Longe de Vencer', 30, NULL, '2025-04-08 18:19:05', TRUE),
-(1717, 115, '91389971', 'Jaciara Ivn', '2025-05-05', '+5571986164082', 'Longe de Vencer', 30, NULL, '2025-04-08 18:19:05', TRUE),
-(1718, 115, '237178459', 'Sandra', '2025-04-29', '+5571986164082', 'Longe de Vencer', 30, NULL, '2025-04-08 18:19:05', TRUE),
-(1719, 115, '695839260', 'Luana Tarcila', '2025-04-11', '+5571986164082', 'Longe de Vencer', 30, NULL, '2025-04-08 18:19:05', TRUE),
-(1720, 115, '998642472', 'Tarcila', '2025-04-10', '+5571986164082', 'Longe de Vencer', 30, NULL, '2025-04-08 18:19:05', TRUE),
-(1721, 115, '423539617', 'Bomfim Ivan', '2025-04-06', '+5571986164082', 'Longe de Vencer', 30, NULL, '2025-04-08 18:19:05', TRUE),
 (2229, 3, '585466568', 'Kelton Vieira Ddd94', '2026-03-24', '+5594 8139-9728', 'Sem Vencimento', 29.8, NULL, '2025-09-29 00:00:00', TRUE),
 (2227, 29, '99182872881', 'Antonio(Indicado de Paulo Gustavo)', '2025-11-23', '5511977351725', 'Sem Vencimento', 30, NULL, '2025-09-24 00:00:00', TRUE),
 (2225, 3, '700829614', 'Helen prima', '2025-11-19', '+5571 8124-9395', 'Sem Vencimento', 30, NULL, '2025-09-18 00:00:00', TRUE),
@@ -791,17 +678,6 @@ Segue melhorando
 Abraço', '2024-11-13 04:14:30');
 
 INSERT INTO whatsapp_messages (user_id, folder_id, message) VALUES
-(1, 10, '{getGreeting}
-
-Gostaríamos de lembrá-lo(a) sobre o vencimento do seguinte produto:
-
-Produto: {name}
-
-{dateText} {due_date}
-
-Por favor, tome as medidas necessárias para gerenciar este produto antes da data de vencimento. Se precisar de mais informações ou assistência, estamos à disposição.
-
-Obrigado pela atenção.'),
 (1, 3, '{getGreeting}
 
 ðŸ”” Lembrete da T&E ðŸ””
@@ -899,19 +775,6 @@ NÃ£o esqueÃ§a de renovar para continuar assistindo sem interrupÃ§Ãµes.
 Aproveite seus programas favoritos! ðŸ“ºâœ¨
 
 > Obrigado pela sua preferÃªncia! ðŸŒŸ'),
-(1, 115, '{getGreeting}
-
-ðŸ”” Lembrete da "Empresa" ðŸ””
-
-UsuÃ¡rio: {item_id}
-
-{dateText} {due_date}
-
-NÃ£o esqueÃ§a de renovar para continuar assistindo sem interrupÃ§Ãµes.
-
-Aproveite seus programas favoritos! ðŸ“ºâœ¨
-
-> Obrigado pela sua preferÃªncia! ðŸŒŸ'),
 (18, 119, '{getGreeting}
 
 ðŸ”” Lembrete ðŸ””
@@ -958,6 +821,6 @@ SELECT setval('users_id_seq', 18);
 SELECT setval('folders_id_seq', 122);
 SELECT setval('items_id_seq', 2346);
 SELECT setval('tickets_id_seq', 6);
-SELECT setval('folder_messages_id_seq', 3);
+SELECT setval('folder_messages_id_seq', 2);
 
 COMMIT;

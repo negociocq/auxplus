@@ -10,6 +10,8 @@ import type {
   User,
   WhatsappMessage,
 } from "@/types";
+import { verifyPassword } from "@/lib/password";
+import { extractPaymentsFromNotes } from "@/lib/payments";
 import { computeItemStatus, refreshItemStatuses } from "@/lib/storage";
 
 const VALID_STATUS: ItemStatus[] = [
@@ -39,22 +41,41 @@ function mapFolder(row: Record<string, unknown>): Folder {
   };
 }
 
+function normalizeDueDate(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "string") {
+    const m = value.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : null;
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    // date do Postgres vem como UTC midnight — usar UTC para não voltar 1 dia
+    const y = value.getUTCFullYear();
+    const m = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(value.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
+
 function mapItem(row: Record<string, unknown>): Item {
   const statusRaw = String(row.status || "");
+  const notes = String(row.notes ?? "");
+  const payments = extractPaymentsFromNotes(notes);
   return {
     id: String(row.id),
     folderId: String(row.folder_id),
     itemId: String(row.item_id ?? ""),
     name: String(row.name ?? ""),
-    dueDate: row.due_date ? String(row.due_date).slice(0, 10) : null,
+    dueDate: normalizeDueDate(row.due_date),
     phone: String(row.phone ?? ""),
     price: Number(row.price) || 0,
     status: VALID_STATUS.includes(statusRaw as ItemStatus)
       ? (statusRaw as ItemStatus)
       : "Sem Vencimento",
-    notes: String(row.notes ?? ""),
+    notes,
     createdAt: row.created_at ? String(row.created_at) : null,
     isActive: row.is_active !== false,
+    payments: payments.length ? payments : undefined,
   };
 }
 
@@ -169,7 +190,10 @@ export async function persistAppDataToSupabase(data: AppData): Promise<void> {
   if (!supabase) throw new Error("Supabase não configurado");
 
   const settingsMap = new Map(
-    data.folderSettings.map((s) => [s.folderId, s.nearDueDays]),
+    data.folderSettings.map((s) => [
+      s.folderId,
+      { near: s.nearDueDays, far: s.farDueDays ?? s.nearDueDays },
+    ]),
   );
 
   await syncTable(
@@ -209,8 +233,8 @@ export async function persistAppDataToSupabase(data: AppData): Promise<void> {
   await syncTable(
     "items",
     data.items.map((i) => {
-      const near = settingsMap.get(i.folderId) ?? 3;
-      const status = computeItemStatus(i.dueDate, near);
+      const th = settingsMap.get(i.folderId) ?? { near: 3, far: 3 };
+      const status = computeItemStatus(i.dueDate, th.near, th.far);
       return {
         id: Number(i.id),
         folder_id: Number(i.folderId),
@@ -291,7 +315,8 @@ export async function loginWithSupabase(
   if (!data) return { error: "Nome de usuário ou senha inválidos." };
 
   const user = mapUser(data as Record<string, unknown>);
-  if (user.password !== password) {
+  const ok = await verifyPassword(password, user.password);
+  if (!ok) {
     return { error: "Nome de usuário ou senha inválidos." };
   }
   if (!user.isActive) {

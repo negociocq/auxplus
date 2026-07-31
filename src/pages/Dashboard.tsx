@@ -1,29 +1,61 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { format } from "date-fns";
+import { motion } from "framer-motion";
 import {
-  FolderPlus,
-  Pencil,
-  Trash2,
-  CalendarClock,
-  Package,
-  Users,
+  addDays,
+  endOfMonth,
+  endOfWeek,
+  isWithinInterval,
+  parseISO,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+} from "date-fns";
+import {
+  AlertTriangle,
   BarChart3,
-  PieChart,
+  CalendarClock,
+  FolderKanban,
+  Pencil,
+  Plus,
+  Trash2,
   TrendingUp,
-  AlertCircle,
 } from "lucide-react";
-import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { useApp } from "@/context/AppContext";
+import { verifyPassword } from "@/lib/password";
+import {
+  computeItemStatus,
+  createFolder,
+  deleteFolder,
+  updateFolder,
+} from "@/lib/storage";
+import {
+  annualPaymentBalance,
+  getItemPayments,
+  sumPaymentsByMonth,
+} from "@/lib/payments";
+import type { Folder, FolderType, ItemStatus } from "@/types";
+import { formatMoney } from "@/lib/format";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatCard } from "@/components/shared/StatCard";
+import { EmptyState } from "@/components/shared/EmptyState";
+import {
+  DueHeatmap,
+  collectDueDates,
+} from "@/components/dashboard/DueHeatmap";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,430 +65,607 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useApp } from "@/context/AppContext";
-import { createFolder, deleteFolder, updateFolder } from "@/lib/storage";
-import type { Folder, FolderType } from "@/types";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  Legend,
-} from "recharts";
-
-const COLORS = ["#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const { user, data, setData } = useApp();
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editFolder, setEditFolder] = useState<Folder | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Folder | null>(null);
   const [name, setName] = useState("");
   const [type, setType] = useState<FolderType>("Cliente");
+  const [editFolder, setEditFolder] = useState<Folder | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Folder | null>(null);
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
+  const [chartYear, setChartYear] = useState(new Date().getFullYear());
 
   const folders = useMemo(
-    () => data.folders.filter((f) => f.userId === user?.id),
+    () =>
+      data.folders
+        .filter((f) => f.userId === user?.id)
+        .filter((f) => !/^Pasta recuperada\b/i.test(f.name)),
     [data.folders, user?.id],
   );
 
-  const foldersByType = useMemo(() => {
-    const map: Record<string, Folder[]> = { Cliente: [], Produto: [] };
-    for (const f of folders) {
-      (map[f.type] ??= []).push(f);
+  const myItems = useMemo(() => {
+    const settingsMap = new Map(
+      data.folderSettings.map((s) => [
+        s.folderId,
+        { near: s.nearDueDays, far: s.farDueDays ?? s.nearDueDays },
+      ]),
+    );
+    return data.items
+      .filter((i) => folders.some((f) => f.id === i.folderId))
+      .map((i) => {
+        const th = settingsMap.get(i.folderId) ?? { near: 3, far: 3 };
+        return {
+          ...i,
+          status: computeItemStatus(i.dueDate, th.near, th.far) as ItemStatus,
+        };
+      });
+  }, [data.items, data.folderSettings, folders]);
+
+  const stats = useMemo(() => {
+    return Object.fromEntries(
+      folders.map((folder) => {
+        const items = myItems.filter((i) => i.folderId === folder.id);
+        return [
+          folder.id,
+          {
+            count: items.length,
+            total: items.reduce((s, i) => s + (i.price || 0), 0),
+            overdue: items.filter((i) => i.status === "Já Vencido").length,
+          },
+        ];
+      }),
+    ) as Record<string, { count: number; total: number; overdue: number }>;
+  }, [folders, myItems]);
+
+  const kpis = useMemo(() => {
+    const today = startOfDay(new Date());
+    const week = {
+      start: startOfWeek(today, { weekStartsOn: 1 }),
+      end: endOfWeek(today, { weekStartsOn: 1 }),
+    };
+    const month = { start: startOfMonth(today), end: endOfMonth(today) };
+
+    const longe = myItems.filter((i) => i.status === "Longe de Vencer").length;
+    const perto = myItems.filter((i) => i.status === "Perto de Vencer").length;
+    const vencido = myItems.filter((i) => i.status === "Já Vencido").length;
+    const withDue = longe + perto + vencido;
+    const healthy = withDue ? Math.round((longe / withDue) * 100) : 100;
+    const revenue = myItems.reduce((s, i) => s + (i.price || 0), 0);
+
+    const dueInRange = (interval: { start: Date; end: Date }) =>
+      myItems.filter((i) => {
+        if (!i.dueDate) return false;
+        try {
+          const d = parseISO(String(i.dueDate).slice(0, 10));
+          return isWithinInterval(d, interval);
+        } catch {
+          return false;
+        }
+      }).length;
+
+    const next7 = myItems
+      .filter((i) => {
+        if (!i.dueDate || i.status === "Já Vencido") return false;
+        try {
+          const d = parseISO(String(i.dueDate).slice(0, 10));
+          return isWithinInterval(d, {
+            start: today,
+            end: addDays(today, 7),
+          });
+        } catch {
+          return false;
+        }
+      })
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))
+      .slice(0, 8);
+
+    return {
+      longe,
+      perto,
+      vencido,
+      healthy,
+      revenue,
+      day: dueInRange({ start: today, end: today }),
+      week: dueInRange(week),
+      month: dueInRange(month),
+      next7,
+      streakDays: (() => {
+        let streak = 0;
+        for (let i = 0; i < 60; i++) {
+          const day = addDays(today, -i);
+          const hasOverdueCreated = myItems.some((item) => {
+            if (item.status !== "Já Vencido" || !item.dueDate) return false;
+            try {
+              return (
+                parseISO(String(item.dueDate).slice(0, 10)).getTime() <=
+                day.getTime()
+              );
+            } catch {
+              return false;
+            }
+          });
+          // streak = dias consecutivos até "hoje" sem novos vencidos "do dia"
+          // Simplificado: dias desde o vencimento mais recente no passado
+          void hasOverdueCreated;
+        }
+        const overdueDates = myItems
+          .filter((i) => i.status === "Já Vencido" && i.dueDate)
+          .map((i) => parseISO(String(i.dueDate).slice(0, 10)).getTime());
+        if (!overdueDates.length) return 30;
+        const latest = Math.max(...overdueDates);
+        streak = Math.max(
+          0,
+          Math.floor((today.getTime() - latest) / 86400000),
+        );
+        return streak;
+      })(),
+    };
+  }, [myItems]);
+
+  const statusPie = useMemo(
+    () => [
+      { name: "Longe", value: kpis.longe, color: "hsl(var(--success))" },
+      { name: "Perto", value: kpis.perto, color: "hsl(var(--warning))" },
+      { name: "Vencido", value: kpis.vencido, color: "hsl(var(--destructive))" },
+    ],
+    [kpis],
+  );
+
+  const chartYears = useMemo(() => {
+    const years = new Set<number>([new Date().getFullYear()]);
+    for (const item of myItems) {
+      for (const pay of getItemPayments(item)) {
+        const y = Number(pay.paidAt.slice(0, 4));
+        if (y >= 2020) years.add(y);
+      }
     }
+    return [...years].sort((a, b) => b - a);
+  }, [myItems]);
+
+  const monthlyChart = useMemo(
+    () => sumPaymentsByMonth(myItems, chartYear),
+    [chartYear, myItems],
+  );
+
+  const annualBalance = useMemo(
+    () => annualPaymentBalance(myItems, chartYear),
+    [chartYear, myItems],
+  );
+
+  const ranking = useMemo(
+    () =>
+      [...folders]
+        .map((f) => ({
+          folder: f,
+          total: stats[f.id]?.total || 0,
+          count: stats[f.id]?.count || 0,
+          overdue: stats[f.id]?.overdue || 0,
+        }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 6),
+    [folders, stats],
+  );
+
+  const byType = useMemo(() => {
+    const map: Record<FolderType, Folder[]> = { Cliente: [], Produto: [] };
+    for (const f of folders) map[f.type].push(f);
     return map;
   }, [folders]);
 
-  const folderStats = useMemo(() => {
-    const today = format(new Date(), "yyyy-MM-dd");
-    const tomorrow = format(new Date(Date.now() + 86400000), "yyyy-MM-dd");
-    const dayAfter = format(new Date(Date.now() + 2 * 86400000), "yyyy-MM-dd");
-
-    return folders.map((folder) => {
-      const items = data.items.filter((i) => i.folderId === folder.id);
-      return {
-        folder,
-        count: items.length,
-        total: items.reduce((s, i) => s + (i.price || 0), 0),
-        today: items.filter((i) => i.dueDate === today).length,
-        tomorrow: items.filter((i) => i.dueDate === tomorrow).length,
-        twoDays: items.filter((i) => i.dueDate === dayAfter).length,
-        overdue: items.filter((i) => i.status === "Já Vencido").length,
-      };
-    });
-  }, [folders, data.items]);
-
-  const totals = useMemo(
-    () => ({
-      count: folderStats.reduce((s, f) => s + f.count, 0),
-      total: folderStats.reduce((s, f) => s + f.total, 0),
-    }),
-    [folderStats],
-  );
-
-  // Chart data
-  const barChartData = useMemo(() => {
-    const typeCounts: Record<string, { name: string; value: number }> = {};
-    for (const type of ["Cliente", "Produto"]) {
-      const count = foldersByType[type]?.length ?? 0;
-      const itemTotal = (foldersByType[type]?.length ?? 0) * 5; // placeholder
-      typeCounts[type] = { name: type, value: count };
-    }
-    return Object.values(typeCounts);
-  }, [foldersByType]);
-
-  const pieChartData = useMemo(() => {
-    const statusCounts: Record<string, number> = {};
-    for (const item of data.items) {
-      const status = item.status || "Sem Vencimento";
-      statusCounts[status] = (statusCounts[status] || 0) + 1;
-    }
-    return Object.entries(statusCounts).map(([name, value]) => ({
-      name,
-      value,
-    }));
-  }, [data.items]);
-
-  const lineChartData = useMemo(() => {
-    const days = ["Hoje", "Amanhã", "2 dias"];
-    const counts = [
-      folderStats.reduce((s, f) => s + f.today, 0),
-      folderStats.reduce((s, f) => s + f.tomorrow, 0),
-      folderStats.reduce((s, f) => s + f.twoDays, 0),
-    ];
-    return days.map((name, i) => ({ name, value: counts[i] }));
-  }, [folderStats]);
-
-  const overdueCount = useMemo(
-    () => folderStats.reduce((s, f) => s + f.overdue, 0),
-    [folderStats],
-  );
-
-  const onCreate = (e: FormEvent) => {
-    e.preventDefault();
-    if (!user || !name.trim()) return;
-    setData(createFolder(data, user.id, name.trim(), type));
+  const openCreate = () => {
+    setEditFolder(null);
     setName("");
     setType("Cliente");
-    setCreateOpen(false);
-    toast.success("Pasta criada.");
+    setFormOpen(true);
   };
 
-  const onEdit = (e: FormEvent) => {
+  const onSaveFolder = (e: FormEvent) => {
     e.preventDefault();
-    if (!editFolder || !name.trim()) return;
-    setData(updateFolder(data, editFolder.id, name.trim(), type));
+    if (!user || !name.trim()) return;
+    if (editFolder) {
+      setData(updateFolder(data, editFolder.id, name.trim(), type));
+      toast.success("Pasta atualizada");
+    } else {
+      setData(createFolder(data, user.id, name.trim(), type));
+      toast.success("Pasta criada");
+    }
+    setFormOpen(false);
+    setName("");
     setEditFolder(null);
-    toast.success("Pasta atualizada.");
   };
 
-  const onDelete = (e: FormEvent) => {
+  const onDelete = async (e: FormEvent) => {
     e.preventDefault();
     if (!deleteTarget || !user) return;
-    if (password !== user.password) {
-      toast.error("Senha incorreta!");
+    const ok = await verifyPassword(password, user.password);
+    if (!ok) {
+      setError("Senha incorreta!");
       return;
     }
     setData(deleteFolder(data, deleteTarget.id));
     setDeleteTarget(null);
     setPassword("");
-    toast.success("Pasta excluída.");
-  };
-
-  const openEdit = (folder: Folder) => {
-    setEditFolder(folder);
-    setName(folder.name);
-    setType(folder.type);
+    setError("");
+    toast.success("Pasta excluída");
   };
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total de Itens</CardTitle>
-            <BarChart3 className="h-4 w-4 text-slate-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totals.count}</div>
-            <p className="text-xs text-slate-500">
-              em {folders.length} pastas
-            </p>
-          </CardContent>
-        </Card>
+    <div>
+      <PageHeader
+        title="Operações"
+        description="Visão geral de pastas, vencimentos e valores em carteira."
+        actions={
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Nova pasta
+          </Button>
+        }
+      />
 
-        <Card className="border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
-            <TrendingUp className="h-4 w-4 text-slate-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              R$ {totals.total.toFixed(2)}
-            </div>
-            <p className="text-xs text-slate-500">
-              valor acumulado
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-amber-200 bg-amber-50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-amber-800">
-              Vencidos
-            </CardTitle>
-            <AlertCircle className="h-4 w-4 text-amber-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-800">{overdueCount}</div>
-            <p className="text-xs text-amber-700">
-              itens vencidos
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-sky-200 bg-sky-50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-sky-800">
-              Ativos
-            </CardTitle>
-            <CalendarClock className="h-4 w-4 text-sky-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-sky-800">
-              {totals.count - overdueCount}
-            </div>
-            <p className="text-xs text-sky-700">
-              itens ativos
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts Section */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Distribuição por Tipo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="value" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Status dos Itens</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <RechartsPieChart>
-                <Tooltip />
-                <Legend />
-                <Pie
-                  data={pieChartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {pieChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-              </RechartsPieChart>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Itens por Dias</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={lineChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#0ea5e9"
-                    strokeWidth={2}
-                    activeDot={{ r: 8 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Folder List Section */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Suas pastas</h1>
-          <p className="text-sm text-slate-600">
-            {totals.count} itens · R$ {totals.total.toFixed(2)}
+      <section className="mb-8">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold tracking-tight">Minhas pastas</h2>
+          <p className="text-sm text-muted-foreground">
+            Abra uma pasta para gerenciar itens
           </p>
         </div>
-        <Button
-          className="bg-sky-600 hover:bg-sky-700"
-          onClick={() => {
-            setName("");
-            setType("Cliente");
-            setCreateOpen(true);
-          }}
-        >
-          <FolderPlus className="h-4 w-4" />
-          Nova pasta
-        </Button>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {folderStats.slice(0, 4).map((s) => (
-          <Card key={s.folder.id} className="border-slate-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="truncate text-base">{s.folder.name}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm text-slate-600">
-              <p className="flex items-center gap-2">
-                <CalendarClock className="h-4 w-4 text-amber-500" />
-                Hoje: <strong>{s.today}</strong> · Amanhã: <strong>{s.tomorrow}</strong>
-              </p>
-              <p>
-                Em 2 dias: <strong>{s.twoDays}</strong> · Vencidos:{" "}
-                <strong className="text-red-600">{s.overdue}</strong>
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Folder Types Section */}
-      {(["Cliente", "Produto"] as FolderType[]).map((folderType) => (
-        <section key={folderType} className="space-y-3">
-          <div className="flex items-center gap-2">
-            {folderType === "Cliente" ? (
-              <Users className="h-5 w-5 text-sky-600" />
-            ) : (
-              <Package className="h-5 w-5 text-emerald-600" />
-            )}
-            <h2 className="text-lg font-semibold">{folderType}s</h2>
-            <Badge variant="secondary">
-              {foldersByType[folderType]?.length ?? 0}
-            </Badge>
-          </div>
-
-          {(foldersByType[folderType] ?? []).length === 0 ? (
-            <p className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
-              Nenhuma pasta de {folderType.toLowerCase()} ainda.
-            </p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {(foldersByType[folderType] ?? []).map((folder) => {
-                const stats = folderStats.find((s) => s.folder.id === folder.id)!;
-                return (
-                  <Card
-                    key={folder.id}
-                    className="group border-slate-200 transition hover:border-sky-300 hover:shadow-md"
-                  >
-                    <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                      <div>
-                        <CardTitle className="text-lg">
-                          <Link
-                            to={`/folders/${folder.id}`}
-                            className="hover:text-sky-700 hover:underline"
-                          >
-                            {folder.name}
-                          </Link>
-                        </CardTitle>
-                        <p className="mt-1 text-sm text-slate-500">
-                          {stats.count} itens · R$ {stats.total.toFixed(2)}
+        <Tabs defaultValue="Cliente">
+          <TabsList>
+            <TabsTrigger value="Cliente">Clientes</TabsTrigger>
+            <TabsTrigger value="Produto">Produtos</TabsTrigger>
+          </TabsList>
+          {(["Cliente", "Produto"] as FolderType[]).map((t) => (
+            <TabsContent key={t} value={t} className="mt-4">
+              {byType[t].length === 0 ? (
+                <EmptyState
+                  icon={FolderKanban}
+                  title={`Sem pastas de ${t.toLowerCase()}`}
+                  description="Organize sua carteira criando uma pasta."
+                />
+              ) : (
+                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {byType[t].map((folder, idx) => (
+                    <motion.li
+                      key={folder.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.03 }}
+                      className="ax-surface group flex items-center gap-3 p-4 transition hover:-translate-y-0.5"
+                    >
+                      <Link
+                        to={`/folders/${folder.id}`}
+                        className="min-w-0 flex-1"
+                      >
+                        <div className="mb-1 flex items-center gap-2">
+                          <Badge variant="secondary">{folder.type}</Badge>
+                          {(stats[folder.id]?.overdue || 0) > 0 ? (
+                            <Badge variant="destructive">
+                              {stats[folder.id].overdue} atrasados
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="truncate font-semibold group-hover:text-primary">
+                          {folder.name}
                         </p>
-                      </div>
-                      <div className="flex gap-1 opacity-70 group-hover:opacity-100">
+                        <p className="text-sm text-muted-foreground">
+                          {stats[folder.id]?.count || 0} itens ·{" "}
+                          {formatMoney(stats[folder.id]?.total || 0)}
+                        </p>
+                      </Link>
+                      <div className="flex gap-1">
                         <Button
+                          type="button"
                           size="icon"
                           variant="ghost"
-                          onClick={() => openEdit(folder)}
+                          aria-label="Editar"
+                          onClick={() => {
+                            setEditFolder(folder);
+                            setName(folder.name);
+                            setType(folder.type);
+                            setFormOpen(true);
+                          }}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
+                          type="button"
                           size="icon"
                           variant="ghost"
-                          className="text-red-600"
+                          aria-label="Excluir"
                           onClick={() => {
                             setDeleteTarget(folder);
                             setPassword("");
+                            setError("");
                           }}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <Link
-                        to={`/folders/${folder.id}`}
-                        className="text-sm font-medium text-sky-700 hover:underline"
-                      >
-                        Abrir pasta →
-                      </Link>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    </motion.li>
+                  ))}
+                </ul>
+              )}
+            </TabsContent>
+          ))}
+        </Tabs>
+      </section>
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+        <StatCard
+          label="Pastas"
+          value={folders.length}
+          icon={FolderKanban}
+          hint={`${byType.Cliente.length} clientes · ${byType.Produto.length} produtos`}
+          delay={0.02}
+        />
+        <StatCard
+          label="Itens ativos"
+          value={myItems.length}
+          icon={CalendarClock}
+          hint={`${kpis.day} vencem hoje · ${kpis.week} na semana`}
+          delay={0.06}
+        />
+        <StatCard
+          label="Em atraso"
+          value={kpis.vencido}
+          icon={AlertTriangle}
+          tone={kpis.vencido ? "danger" : "success"}
+          hint={`${kpis.perto} perto de vencer`}
+          delay={0.1}
+        />
+        <StatCard
+          label="Carteira"
+          value={formatMoney(kpis.revenue)}
+          icon={TrendingUp}
+          tone="success"
+          hint={`Saúde ${kpis.healthy}% em dia`}
+          delay={0.14}
+        />
+        <StatCard
+          label={`Saldo anual ${chartYear}`}
+          value={formatMoney(annualBalance)}
+          icon={BarChart3}
+          tone="default"
+          hint="Soma dos valores com vencimento no ano"
+          delay={0.18}
+        />
+      </div>
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        {[
+          { label: "Hoje", value: kpis.day },
+          { label: "Esta semana", value: kpis.week },
+          { label: "Este mês", value: kpis.month },
+        ].map((item) => (
+          <div key={item.label} className="ax-surface flex items-center justify-between p-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Vencimentos · {item.label}
+              </p>
+              <p className="mt-1 text-2xl font-bold">{item.value}</p>
             </div>
+            <BarChart3 className="h-5 w-5 text-primary/70" />
+          </div>
+        ))}
+      </div>
+
+      <div className="mb-6 grid gap-4 lg:grid-cols-3">
+        <div className="ax-surface p-5 lg:col-span-2">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold tracking-tight">Receita por mês</h2>
+              <p className="text-sm text-muted-foreground">
+                Soma dos valores com vencimento no ano
+              </p>
+              <p className="mt-2 text-lg font-bold tracking-tight text-primary">
+                Saldo anual {chartYear}: {formatMoney(annualBalance)}
+              </p>
+            </div>
+            <Select
+              value={String(chartYear)}
+              onValueChange={(v) => setChartYear(Number(v))}
+            >
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {chartYears.map((y) => (
+                  <SelectItem key={y} value={String(y)}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyChart}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="hsl(var(--border))"
+                />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  stroke="hsl(var(--border))"
+                />
+                <YAxis
+                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  stroke="hsl(var(--border))"
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "hsl(var(--popover))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 8,
+                    color: "hsl(var(--popover-foreground))",
+                  }}
+                  labelStyle={{ color: "hsl(var(--foreground))" }}
+                  formatter={(value: number, key: string) =>
+                    key === "total"
+                      ? [formatMoney(Number(value)), "Total"]
+                      : [value, "Itens"]
+                  }
+                />
+                <Bar
+                  dataKey="total"
+                  fill="hsl(var(--primary))"
+                  radius={[6, 6, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="ax-surface p-5">
+          <h2 className="font-semibold tracking-tight">Distribuição</h2>
+          <p className="mb-2 text-sm text-muted-foreground">Status dos itens</p>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={statusPie}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={48}
+                  outerRadius={72}
+                  paddingAngle={3}
+                >
+                  {statusPie.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-2 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Taxa em dia</span>
+              <span className="font-semibold">{kpis.healthy}%</span>
+            </div>
+            <Progress value={kpis.healthy} />
+            <p className="text-xs text-muted-foreground">
+              Sequência sem novo atraso crítico: {kpis.streakDays} dia(s)
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-6 grid gap-4 lg:grid-cols-3">
+        <div className="ax-surface p-5 lg:col-span-2">
+          <h2 className="mb-4 font-semibold tracking-tight">
+            Mapa de vencimentos
+          </h2>
+          <DueHeatmap dueDates={collectDueDates(myItems)} />
+        </div>
+        <div className="ax-surface p-5">
+          <h2 className="mb-3 font-semibold tracking-tight">Próximos 7 dias</h2>
+          {kpis.next7.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhum vencimento nos próximos 7 dias.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {kpis.next7.map((item) => (
+                <li
+                  key={item.id}
+                  className="rounded-lg border bg-muted/40 px-3 py-2 text-sm"
+                >
+                  <p className="font-medium">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {String(item.dueDate).slice(0, 10).split("-").reverse().join("/")}{" "}
+                    · {formatMoney(item.price || 0)}
+                  </p>
+                </li>
+              ))}
+            </ul>
           )}
-        </section>
-      ))}
+        </div>
+      </div>
 
-      {/* Create Folder Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <div className="mb-6 ax-surface p-5">
+        <h2 className="mb-4 font-semibold tracking-tight">
+          Ranking por valor
+        </h2>
+        {ranking.length === 0 ? (
+          <EmptyState
+            icon={FolderKanban}
+            title="Nenhuma pasta ainda"
+            description="Crie sua primeira pasta para começar."
+            action={
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" />
+                Nova pasta
+              </Button>
+            }
+          />
+        ) : (
+          <div className="space-y-3">
+            {ranking.map((row, idx) => (
+              <motion.div
+                key={row.folder.id}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.04 }}
+                className="flex items-center gap-3"
+              >
+                <span className="w-6 text-sm font-bold text-muted-foreground">
+                  {idx + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <Link
+                      to={`/folders/${row.folder.id}`}
+                      className="truncate font-medium hover:text-primary"
+                    >
+                      {row.folder.name}
+                    </Link>
+                    <span className="shrink-0 text-sm font-semibold">
+                      {formatMoney(row.total)}
+                    </span>
+                  </div>
+                  <Progress
+                    value={
+                      kpis.revenue
+                        ? Math.min(100, (row.total / kpis.revenue) * 100)
+                        : 0
+                    }
+                  />
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nova pasta</DialogTitle>
+            <DialogTitle>
+              {editFolder ? "Editar pasta" : "Nova pasta"}
+            </DialogTitle>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={onCreate}>
-            <div className="space-y-2">
-              <Label>Nome</Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
+          <form className="space-y-4" onSubmit={onSaveFolder}>
             <div className="space-y-2">
               <Label>Tipo</Label>
-              <Select value={type} onValueChange={(v) => setType(v as FolderType)}>
+              <Select
+                value={type}
+                onValueChange={(v) => setType(v as FolderType)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -466,65 +675,45 @@ export default function Dashboard() {
                 </SelectContent>
               </Select>
             </div>
-            <DialogFooter>
-              <Button type="submit" className="bg-sky-600 hover:bg-sky-700">
-                Criar
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Folder Dialog */}
-      <Dialog open={!!editFolder} onOpenChange={(o) => !o && setEditFolder(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar pasta</DialogTitle>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={onEdit}>
             <div className="space-y-2">
-              <Label>Nome</Label>
+              <Label htmlFor="folder-name">Nome</Label>
               <Input
+                id="folder-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                placeholder="Ex.: IPTV, Internet…"
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select value={type} onValueChange={(v) => setType(v as FolderType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Cliente">Cliente</SelectItem>
-                  <SelectItem value="Produto">Produto</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <DialogFooter>
-              <Button type="submit" className="bg-sky-600 hover:bg-sky-700">
-                Salvar
+              <Button type="submit">
+                {editFolder ? "Salvar" : "Criar pasta"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Folder Dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Excluir pasta</DialogTitle>
           </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Confirme sua senha para excluir{" "}
+            <strong>{deleteTarget?.name}</strong>.
+          </p>
+          {error ? (
+            <p className="text-sm font-medium text-destructive">{error}</p>
+          ) : null}
           <form className="space-y-4" onSubmit={onDelete}>
-            <p className="text-sm text-slate-600">
-              Confirme sua senha para excluir <strong>{deleteTarget?.name}</strong> e
-              todos os itens.
-            </p>
             <div className="space-y-2">
-              <Label>Senha</Label>
+              <Label htmlFor="del-pass">Senha</Label>
               <Input
+                id="del-pass"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

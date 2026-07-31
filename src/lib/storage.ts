@@ -9,6 +9,13 @@ import type {
   User,
 } from "@/types";
 import { differenceInCalendarDays, parseISO } from "date-fns";
+import {
+  embedPaymentsInNotes,
+  getItemPayments,
+  paymentsAfterDueChange,
+  paymentsForNewItem,
+  stripPaymentMarker,
+} from "@/lib/payments";
 
 const STORAGE_KEY = "auxplus-data-v2";
 const SESSION_KEY = "auxplus-session-v1";
@@ -77,26 +84,54 @@ export function setSessionUserId(userId: string | null): void {
   else localStorage.removeItem(SESSION_KEY);
 }
 
+/** Data local YYYY-MM-DD (evita fuso UTC que atrasa 1 dia no Brasil). */
+export function parseLocalDateOnly(value: string): Date {
+  const raw = value.trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!m) return parseISO(raw);
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function startOfTodayLocal(): Date {
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+}
+
+/** Espelha o CASE do items.php: Longe = dias > far; Perto = 0..near; senão Vencido. */
 export function computeItemStatus(
   dueDate: string | null,
   nearDueDays: number,
+  farDueDays: number = nearDueDays,
 ): ItemStatus {
   if (!dueDate) return "Sem Vencimento";
-  const days = differenceInCalendarDays(parseISO(dueDate), new Date());
+  const days = differenceInCalendarDays(
+    parseLocalDateOnly(dueDate),
+    startOfTodayLocal(),
+  );
   if (days < 0) return "Já Vencido";
   if (days <= nearDueDays) return "Perto de Vencer";
-  return "Longe de Vencer";
+  if (days > farDueDays) return "Longe de Vencer";
+  // Intervalo (near, far]: no PHP cai no ELSE → vencido
+  return "Já Vencido";
+}
+
+function folderThresholds(
+  data: AppData,
+  folderId: string,
+): { near: number; far: number } {
+  const s = data.folderSettings.find((x) => x.folderId === folderId);
+  return {
+    near: s?.nearDueDays ?? 3,
+    far: s?.farDueDays ?? s?.nearDueDays ?? 3,
+  };
 }
 
 export function refreshItemStatuses(data: AppData): AppData {
-  const settingsMap = new Map(
-    data.folderSettings.map((s) => [s.folderId, s.nearDueDays]),
-  );
   return {
     ...data,
     items: data.items.map((item) => {
-      const near = settingsMap.get(item.folderId) ?? 3;
-      return { ...item, status: computeItemStatus(item.dueDate, near) };
+      const { near, far } = folderThresholds(data, item.folderId);
+      return { ...item, status: computeItemStatus(item.dueDate, near, far) };
     }),
   };
 }
@@ -176,26 +211,43 @@ export function createItem(
   data: AppData,
   input: Omit<Item, "id" | "status">,
 ): AppData {
-  const near =
-    data.folderSettings.find((s) => s.folderId === input.folderId)?.nearDueDays ??
-    3;
+  const { near, far } = folderThresholds(data, input.folderId);
+  const payments = input.payments?.length
+    ? input.payments
+    : paymentsForNewItem(input);
+  const cleanNotes = stripPaymentMarker(input.notes);
   const item: Item = {
     ...input,
-    notes: input.notes ?? "",
+    payments,
+    notes: embedPaymentsInNotes(cleanNotes, payments),
     isActive: input.isActive !== false,
     id: nextId(data.items.map((i) => i.id)),
-    status: computeItemStatus(input.dueDate, near),
+    status: computeItemStatus(input.dueDate, near, far),
   };
   return { ...data, items: [...data.items, item] };
 }
 
 export function updateItem(data: AppData, item: Item): AppData {
-  const near =
-    data.folderSettings.find((s) => s.folderId === item.folderId)?.nearDueDays ??
-    3;
-  const updated = {
+  const { near, far } = folderThresholds(data, item.folderId);
+  const previous = data.items.find((i) => i.id === item.id);
+  const oldDue = previous?.dueDate?.slice(0, 10) ?? null;
+  const newDue = item.dueDate?.slice(0, 10) ?? null;
+  const renewed = Boolean(oldDue && newDue && newDue > oldDue);
+
+  const paymentsFinal = previous
+    ? renewed
+      ? paymentsAfterDueChange(previous, item)
+      : getItemPayments(previous)
+    : item.payments?.length
+      ? item.payments
+      : paymentsForNewItem(item);
+
+  const cleanNotes = stripPaymentMarker(item.notes);
+  const updated: Item = {
     ...item,
-    status: computeItemStatus(item.dueDate, near),
+    payments: paymentsFinal,
+    notes: embedPaymentsInNotes(cleanNotes, paymentsFinal),
+    status: computeItemStatus(item.dueDate, near, far),
   };
   return {
     ...data,
@@ -205,6 +257,47 @@ export function updateItem(data: AppData, item: Item): AppData {
 
 export function deleteItem(data: AppData, itemId: string): AppData {
   return { ...data, items: data.items.filter((i) => i.id !== itemId) };
+}
+
+export function deleteAllItemsInFolder(
+  data: AppData,
+  folderId: string,
+): AppData {
+  return {
+    ...data,
+    items: data.items.filter((i) => i.folderId !== folderId),
+  };
+}
+
+export function upsertWhatsappMessage(
+  data: AppData,
+  userId: string,
+  folderId: string,
+  message: string,
+): AppData {
+  const others = (data.whatsappMessages ?? []).filter(
+    (m) => !(m.userId === userId && m.folderId === folderId),
+  );
+  return {
+    ...data,
+    whatsappMessages: [...others, { userId, folderId, message }],
+  };
+}
+
+export function moveItem(
+  data: AppData,
+  itemId: string,
+  targetFolderId: string,
+): AppData {
+  const { near, far } = folderThresholds(data, targetFolderId);
+  return {
+    ...data,
+    items: data.items.map((i) => {
+      if (i.id !== itemId) return i;
+      const next = { ...i, folderId: targetFolderId };
+      return { ...next, status: computeItemStatus(next.dueDate, near, far) };
+    }),
+  };
 }
 
 export function updateFolderSettings(

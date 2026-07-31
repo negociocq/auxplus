@@ -29,12 +29,17 @@ A app lê/grava no Supabase quando `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY
 
 ### Contas
 
-| Usuário | Senha |
-|---------|-------|
-| `tarciocq` | `123456` |
-| `admin` | `admin123` |
+Senhas vêm do dump original (hash bcrypt). Use a **mesma senha do site antigo** (InfinityFree).
 
-Se a tela mostrar **Backend: local**, a integração Supabase do Dyad ainda não injetou as variáveis.
+Contas stub (`usuario_2`, `usuario_3`, …) → senha `123456`.
+
+Para regenerar seed/SQL a partir do dump MySQL e publicar no Supabase:
+
+```bash
+node scripts/import-sql.mjs
+node scripts/export-postgres-sql.mjs
+node scripts/push-seed-to-supabase.mjs
+```
 
 ## Abrir no Dyad
 

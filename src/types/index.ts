@@ -40,6 +40,11 @@ export interface WhatsappMessage {
   message: string;
 }
 
+export interface ItemPayment {
+  paidAt: string;
+  amount: number;
+}
+
 export interface Item {
   id: string;
   folderId: string;
@@ -52,6 +57,8 @@ export interface Item {
   notes?: string;
   createdAt?: string | null;
   isActive?: boolean;
+  /** Histórico de pagamentos/renovações (para o gráfico mensal) */
+  payments?: ItemPayment[];
 }
 
 export interface Ticket {

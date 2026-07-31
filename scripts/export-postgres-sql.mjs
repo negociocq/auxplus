@@ -12,29 +12,16 @@ const seed = JSON.parse(
   fs.readFileSync(path.join(root, "src", "data", "seed.json"), "utf8"),
 );
 
-// Pastas referenciadas por items/messages mas ausentes no dump original
+// Descarta itens/mensagens com folder_id inexistente (não cria "Pasta recuperada")
 const folderIds = new Set(seed.folders.map((f) => String(f.id)));
-const orphanFolderIds = new Set();
-for (const item of seed.items) {
-  if (!folderIds.has(String(item.folderId))) orphanFolderIds.add(String(item.folderId));
-}
-for (const m of seed.folderMessages || []) {
-  if (!folderIds.has(String(m.folderId))) orphanFolderIds.add(String(m.folderId));
-}
-for (const m of seed.whatsappMessages || []) {
-  if (!folderIds.has(String(m.folderId))) orphanFolderIds.add(String(m.folderId));
-}
-const ownerFallback = seed.users.find((u) => u.username === "tarciocq")?.id || seed.users[0]?.id || "1";
-const folders = [
-  ...seed.folders,
-  ...[...orphanFolderIds].map((id) => ({
-    id,
-    userId: String(ownerFallback),
-    type: "Cliente",
-    name: `Pasta recuperada ${id}`,
-    whatsappMessage: null,
-  })),
-];
+const folders = seed.folders;
+const items = seed.items.filter((it) => folderIds.has(String(it.folderId)));
+const folderMessages = (seed.folderMessages || []).filter((m) =>
+  folderIds.has(String(m.folderId)),
+);
+const whatsappMessages = (seed.whatsappMessages || []).filter((m) =>
+  folderIds.has(String(m.folderId)),
+);
 
 function esc(v) {
   if (v == null) return "NULL";
@@ -177,11 +164,14 @@ lines.push(
 );
 lines.push("");
 
+const folderSettings = (seed.folderSettings || []).filter((s) =>
+  folderIds.has(String(s.folderId)),
+);
 lines.push(
   "INSERT INTO folder_settings (folder_id, near_due_days, far_due_days) VALUES",
 );
 lines.push(
-  seed.folderSettings
+  folderSettings
     .map(
       (s) =>
         `(${Number(s.folderId)}, ${Number(s.nearDueDays)}, ${Number(s.farDueDays)})`,
@@ -190,10 +180,10 @@ lines.push(
 );
 lines.push("");
 
-if (seed.folderMessages?.length) {
+if (folderMessages.length) {
   lines.push("INSERT INTO folder_messages (id, folder_id, message) VALUES");
   lines.push(
-    seed.folderMessages
+    folderMessages
       .map(
         (m) =>
           `(${Number(m.id)}, ${Number(m.folderId)}, ${esc(m.message)})`,
@@ -214,7 +204,7 @@ lines.push(
   "INSERT INTO items (id, folder_id, item_id, name, due_date, phone, status, price, notes, created_at, is_active) VALUES",
 );
 lines.push(
-  seed.items
+  items
     .map((i) => {
       const status = validStatuses.has(i.status) ? i.status : "Sem Vencimento";
       const created = i.createdAt
@@ -239,12 +229,12 @@ lines.push(
 );
 lines.push("");
 
-if (seed.whatsappMessages?.length) {
+if (whatsappMessages.length) {
   lines.push(
     "INSERT INTO whatsapp_messages (user_id, folder_id, message) VALUES",
   );
   lines.push(
-    seed.whatsappMessages
+    whatsappMessages
       .map(
         (m) =>
           `(${Number(m.userId)}, ${Number(m.folderId)}, ${esc(m.message)})`,
@@ -308,7 +298,7 @@ console.log("PostgreSQL SQL:", out);
 console.log({
   users: seed.users.length,
   folders: folders.length,
-  stubFolders: orphanFolderIds.size,
-  items: seed.items.length,
+  items: items.length,
+  itemsDroppedOrphan: seed.items.length - items.length,
   tickets: seed.tickets.length,
 });

@@ -70,6 +70,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  // Evita tela com dados antigos em memória (ex.: datas/órfãos já corrigidos no banco)
+  useEffect(() => {
+    const onFocus = () => {
+      void fetchAppDataFromSupabase()
+        .then((remote) => setDataState(remote))
+        .catch(() => undefined);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
   const setData = useCallback(
     (updater: AppData | ((prev: AppData) => AppData)) => {
       setDataState((prev) => {

@@ -1,16 +1,23 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { format, parseISO } from "date-fns";
+import { LifeBuoy, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useApp } from "@/context/AppContext";
 import { createTicket } from "@/lib/storage";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 export default function Tickets() {
   const { user, data, setData } = useApp();
   const [question, setQuestion] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const tickets = useMemo(
     () => data.tickets.filter((t) => t.userId === user?.id),
@@ -22,65 +29,74 @@ export default function Tickets() {
     if (!user || !question.trim()) return;
     setData(createTicket(data, user.id, question.trim()));
     setQuestion("");
-    toast.success("Ticket enviado com sucesso!");
+    toast.success("Ticket enviado com sucesso");
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Suporte</h1>
-        <p className="text-sm text-slate-600">Envie dúvidas ou problemas para o admin.</p>
-      </div>
+    <div className="mx-auto max-w-3xl">
+      <PageHeader
+        title="Tickets"
+        description="Fale com o suporte do AuxPlus."
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Novo ticket</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-3" onSubmit={onSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="question">Sua mensagem</Label>
-              <Textarea
-                id="question"
-                rows={4}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Descreva seu problema..."
-                required
-              />
-            </div>
-            <Button type="submit" className="bg-sky-600 hover:bg-sky-700">
-              Enviar
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <form className="ax-surface mb-6 space-y-3 p-5" onSubmit={onSubmit}>
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <MessageSquare className="h-4 w-4 text-primary" />
+          Nova solicitação
+        </div>
+        <Textarea
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Descreva sua dúvida…"
+          required
+          className="min-h-[120px]"
+        />
+        <Button type="submit">Enviar ticket</Button>
+      </form>
 
-      <div className="space-y-3">
-        {tickets.length === 0 ? (
-          <p className="rounded-lg border border-dashed bg-white p-6 text-sm text-slate-500">
-            Nenhum ticket ainda.
-          </p>
-        ) : (
-          tickets.map((ticket) => (
-            <Card key={ticket.id}>
-              <CardContent className="space-y-2 pt-6">
-                <p className="text-xs text-slate-500">
-                  {format(parseISO(ticket.createdAt), "dd/MM/yyyy HH:mm")}
+      <h2 className="mb-3 text-lg font-semibold tracking-tight">Meus tickets</h2>
+      {tickets.length === 0 ? (
+        <EmptyState
+          icon={LifeBuoy}
+          title="Nenhum ticket ainda"
+          description="Quando enviar uma dúvida, ela aparecerá aqui."
+        />
+      ) : (
+        <div className="space-y-3">
+          {tickets.map((ticket) => (
+            <Collapsible
+              key={ticket.id}
+              open={openId === ticket.id}
+              onOpenChange={(o) => setOpenId(o ? ticket.id : null)}
+            >
+              <div
+                className={`ax-surface p-4 ${
+                  ticket.response ? "border-primary/30" : ""
+                }`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <Badge variant={ticket.response ? "default" : "secondary"}>
+                    {ticket.response ? "Respondido" : "Aberto"}
+                  </Badge>
+                  <CollapsibleTrigger asChild>
+                    <Button type="button" variant="ghost" size="sm">
+                      {openId === ticket.id ? "Ocultar" : "Ver resposta"}
+                    </Button>
+                  </CollapsibleTrigger>
+                </div>
+                <p className="text-sm">
+                  <span className="font-semibold">Pergunta: </span>
+                  {ticket.question}
                 </p>
-                <p className="font-medium">{ticket.question}</p>
-                {ticket.response ? (
-                  <div className="rounded-md bg-sky-50 p-3 text-sm text-sky-900">
-                    <strong>Resposta:</strong> {ticket.response}
-                  </div>
-                ) : (
-                  <p className="text-sm text-amber-600">Aguardando resposta...</p>
-                )}
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+                <CollapsibleContent className="mt-3 border-t pt-3 text-sm">
+                  <span className="font-semibold">Resposta: </span>
+                  {ticket.response || "Nenhuma resposta ainda."}
+                </CollapsibleContent>
+              </div>
+            </Collapsible>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
