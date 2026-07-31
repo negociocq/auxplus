@@ -107,10 +107,21 @@ export function paymentsForNewItem(item: Omit<Item, "id" | "status"> | Item): It
   return [{ paidAt, amount: item.price || 0 }];
 }
 
-/** Soma valores por mês com base nos pagamentos (não espalha entre criação e due). */
+function parseLocalYmd(value: string): Date {
+  const [y, m, d] = value.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * Totais mensais iguais ao legacy/items.php:
+ * do mês de created_at até o mês atual, soma o preço se o vencimento
+ * ainda cobria aquele mês (meses passados: due >= 1º do mês;
+ * mês atual: due >= agora).
+ */
 export function sumPaymentsByMonth(
   items: Item[],
   year: number,
+  now: Date = new Date(),
 ): { name: string; total: number; itens: number }[] {
   const names = [
     "Jan",
@@ -127,19 +138,49 @@ export function sumPaymentsByMonth(
     "Dez",
   ];
   const months = names.map((name) => ({ name, total: 0, itens: 0 }));
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   for (const item of items) {
-    for (const pay of getItemPayments(item)) {
-      if (!pay.paidAt.startsWith(String(year))) continue;
-      const month = Number(pay.paidAt.slice(5, 7)) - 1;
-      if (month < 0 || month > 11) continue;
-      months[month].total += pay.amount || 0;
-      months[month].itens += 1;
+    const createdRaw = item.createdAt
+      ? String(item.createdAt).slice(0, 10)
+      : null;
+    const dueRaw = item.dueDate ? String(item.dueDate).slice(0, 10) : null;
+    if (!createdRaw || !dueRaw) continue;
+
+    const price = Number(item.price) || 0;
+    const dueDate = parseLocalYmd(dueRaw);
+    let cursor = parseLocalYmd(createdRaw);
+
+    while (cursor.getTime() <= now.getTime()) {
+      const y = cursor.getFullYear();
+      const m = cursor.getMonth();
+      const monthKey = `${y}-${String(m + 1).padStart(2, "0")}`;
+
+      if (y === year) {
+        let include = false;
+        if (monthKey < currentMonthKey) {
+          include = dueRaw >= `${monthKey}-01`;
+        } else if (monthKey === currentMonthKey) {
+          // PHP: $due_date >= new DateTime()
+          include = dueDate.getTime() >= now.getTime();
+        }
+        if (include) {
+          months[m].total += price;
+          months[m].itens += 1;
+        }
+      }
+
+      cursor = new Date(y, m + 1, 1);
     }
   }
+
   return months;
 }
 
-export function annualPaymentBalance(items: Item[], year: number): number {
-  return sumPaymentsByMonth(items, year).reduce((s, m) => s + m.total, 0);
+export function annualPaymentBalance(
+  items: Item[],
+  year: number,
+  now: Date = new Date(),
+): number {
+  return sumPaymentsByMonth(items, year, now).reduce((s, m) => s + m.total, 0);
 }

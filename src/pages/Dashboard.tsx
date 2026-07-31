@@ -43,7 +43,6 @@ import {
 } from "@/lib/storage";
 import {
   annualPaymentBalance,
-  getItemPayments,
   sumPaymentsByMonth,
 } from "@/lib/payments";
 import type { Folder, FolderType, ItemStatus } from "@/types";
@@ -227,8 +226,9 @@ export default function Dashboard() {
   const chartYears = useMemo(() => {
     const years = new Set<number>([new Date().getFullYear()]);
     for (const item of myItems) {
-      for (const pay of getItemPayments(item)) {
-        const y = Number(pay.paidAt.slice(0, 4));
+      for (const raw of [item.createdAt, item.dueDate]) {
+        if (!raw) continue;
+        const y = Number(String(raw).slice(0, 4));
         if (y >= 2020) years.add(y);
       }
     }

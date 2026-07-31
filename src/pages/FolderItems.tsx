@@ -47,7 +47,6 @@ import {
 import { formatBrDate, formatMoney } from "@/lib/format";
 import {
   annualPaymentBalance,
-  getItemPayments,
   stripPaymentMarker,
   sumPaymentsByMonth,
 } from "@/lib/payments";
@@ -292,8 +291,9 @@ export default function FolderItems() {
     const yNow = new Date().getFullYear();
     const years = new Set<number>([yNow]);
     for (const item of folderItems) {
-      for (const pay of getItemPayments(item)) {
-        const y = Number(pay.paidAt.slice(0, 4));
+      for (const raw of [item.createdAt, item.dueDate]) {
+        if (!raw) continue;
+        const y = Number(String(raw).slice(0, 4));
         if (y >= 2020 && y <= yNow + 1) years.add(y);
       }
     }
