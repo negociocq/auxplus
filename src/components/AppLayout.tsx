@@ -15,10 +15,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Search,
-  Settings2,
+  Settings,
   Shield,
   Trash2,
   Users,
+  Workflow,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -82,13 +83,15 @@ export function AppLayout() {
   const clientLinks = [
     { to: "/dashboard", label: "Pastas", icon: FolderKanban },
     { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
+    { to: "/automations", label: "Automações", icon: Workflow },
     { to: "/tickets", label: "Tickets", icon: LifeBuoy },
-    { to: "/settings", label: "Configuração", icon: Settings2 },
+    { to: "/settings", label: "Configuração", icon: Settings },
   ];
   const adminLinks = [
     { to: "/admin", label: "Usuários", icon: Users },
     { to: "/admin/tickets", label: "Tickets", icon: LifeBuoy },
     { to: "/admin/api", label: "API", icon: KeyRound },
+    { to: "/admin/automations", label: "Automações", icon: Workflow },
   ];
   const links = isAdminArea ? adminLinks : clientLinks;
 

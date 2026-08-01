@@ -109,10 +109,10 @@ export function defaultWhatsappAutomation(): WhatsappAutomationSettings {
     sendTime: "09:30",
     messageBefore: DEFAULT_MESSAGE_BEFORE,
     messageOnDay: DEFAULT_MESSAGE_ONDAY,
-    minIntervalSec: 75,
-    jitterSec: 40,
-    maxPerDay: 40,
-    maxPerHour: 12,
+    minIntervalSec: 60,
+    jitterSec: 30,
+    maxPerDay: 100,
+    maxPerHour: 25,
   };
 }
 

@@ -15,6 +15,20 @@ export default defineConfig(() => ({
         secure: false,
         rewrite: (p) => p.replace(/^\/evolution-api/, ""),
       },
+      // API do painel IPTV (gesapioffice).
+      // A API rejeita login sem Origin do front do painel ("Credencias não encontradas").
+      "/ges-api": {
+        target: "https://gesapioffice.com",
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p) => p.replace(/^\/ges-api/, "/api"),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("Origin", "https://searchdefense.top");
+            proxyReq.setHeader("Referer", "https://searchdefense.top/");
+          });
+        },
+      },
     },
   },
   plugins: [dyadComponentTagger(), react()],

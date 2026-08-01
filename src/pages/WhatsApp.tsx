@@ -4,6 +4,7 @@ import {
   Link2,
   Loader2,
   MessageSquareText,
+  ChevronDown,
   Power,
   QrCode,
   RefreshCw,
@@ -23,6 +24,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   acquireWhatsappSendLock,
   buildTodayQueue,
@@ -82,6 +88,7 @@ export default function WhatsAppPage() {
   const [sending, setSending] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [logs, setLogs] = useState<WaSendLog[]>([]);
+  const [limitsOpen, setLimitsOpen] = useState(false);
   const sendingRef = useRef(false);
   const pollRef = useRef<number | null>(null);
 
@@ -482,29 +489,33 @@ export default function WhatsAppPage() {
             </div>
           ) : null}
 
-          <div className="flex min-h-[220px] items-center justify-center rounded-xl border bg-muted/30 p-4">
-            {status === "open" ? (
-              <div className="text-center">
-                <CheckCircle2 className="mx-auto h-10 w-10 text-success" />
-                <p className="mt-2 font-medium">WhatsApp conectado</p>
+          {status === "open" ? (
+            <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3">
+              <CheckCircle2 className="h-8 w-8 shrink-0 text-success" />
+              <div className="min-w-0">
+                <p className="font-medium">WhatsApp conectado</p>
                 <p className="text-sm text-muted-foreground">
                   Pronto para enviar lembretes com intervalo seguro.
                 </p>
               </div>
-            ) : qrBase64 ? (
-              <img
-                src={qrBase64}
-                alt="QR Code WhatsApp"
-                className="max-h-56 rounded-lg bg-white p-2"
-              />
-            ) : (
-              <div className="max-w-sm text-center text-sm text-muted-foreground">
-                <Link2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
-                Gere o QR Code e escaneie no WhatsApp do celular (Aparelhos
-                conectados).
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="flex min-h-[200px] items-center justify-center rounded-xl border bg-muted/30 p-4">
+              {qrBase64 ? (
+                <img
+                  src={qrBase64}
+                  alt="QR Code WhatsApp"
+                  className="max-h-56 rounded-lg bg-white p-2"
+                />
+              ) : (
+                <div className="max-w-sm text-center text-sm text-muted-foreground">
+                  <Link2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
+                  Gere o QR Code e escaneie no WhatsApp do celular (Aparelhos
+                  conectados).
+                </div>
+              )}
+            </div>
+          )}
 
           {pairingCode ? (
             <p className="text-center text-sm text-muted-foreground">
@@ -619,76 +630,143 @@ export default function WhatsAppPage() {
 
           <Separator />
 
-          <div>
-            <h3 className="mb-3 text-sm font-semibold">Limites anti-ban</h3>
-            <p className="mb-3 text-xs text-muted-foreground">
-              Entre cada pessoa: intervalo mínimo + variação aleatória (ex.:
-              75s + até 40s ≈ 1m15s a 1m55s). Máx. por hora e por dia param a
-              fila até liberar.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Intervalo mínimo (seg)</Label>
-                <Input
-                  type="number"
-                  min={30}
-                  max={600}
-                  value={settings.minIntervalSec}
-                  onChange={(e) =>
-                    patch(
-                      "minIntervalSec",
-                      Math.max(30, Number(e.target.value) || 75),
-                    )
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Variação aleatória (seg)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={300}
-                  value={settings.jitterSec}
-                  onChange={(e) =>
-                    patch(
-                      "jitterSec",
-                      Math.max(0, Number(e.target.value) || 0),
-                    )
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Máx. por hora</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={60}
-                  value={settings.maxPerHour}
-                  onChange={(e) =>
-                    patch(
-                      "maxPerHour",
-                      Math.max(1, Number(e.target.value) || 12),
-                    )
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Máx. por dia</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={200}
-                  value={settings.maxPerDay}
-                  onChange={(e) =>
-                    patch(
-                      "maxPerDay",
-                      Math.max(1, Number(e.target.value) || 40),
-                    )
-                  }
-                />
-              </div>
+          <Collapsible open={limitsOpen} onOpenChange={setLimitsOpen}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-muted/50"
+                >
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                      limitsOpen && "rotate-180",
+                    )}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">Limites anti-ban</p>
+                    <p className="text-xs text-muted-foreground">
+                      {settings.minIntervalSec}s + até {settings.jitterSec}s ·{" "}
+                      {settings.maxPerHour}/hora · {settings.maxPerDay}/dia
+                      {!limitsOpen ? " · toque para editar" : ""}
+                    </p>
+                  </div>
+                </button>
+              </CollapsibleTrigger>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const d = defaultWhatsappAutomation();
+                  persist({
+                    ...settings,
+                    minIntervalSec: d.minIntervalSec,
+                    jitterSec: d.jitterSec,
+                    maxPerHour: d.maxPerHour,
+                    maxPerDay: d.maxPerDay,
+                  });
+                  toast.success("Limites restaurados ao padrão");
+                }}
+              >
+                Restaurar padrão
+              </Button>
             </div>
-          </div>
+
+            <CollapsibleContent className="mt-3 space-y-3">
+              <div className="space-y-1.5 rounded-lg border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                <p>
+                  Só quem está na{" "}
+                  <strong className="text-foreground">fila do dia</strong> recebe
+                  mensagem (vence hoje e/ou daqui X dias) — não é a pasta
+                  inteira.
+                </p>
+                <p>
+                  Sugestão: intervalo{" "}
+                  <strong className="text-foreground">45–60s</strong>, variação{" "}
+                  <strong className="text-foreground">20–40s</strong>, máx.{" "}
+                  <strong className="text-foreground">20–30/hora</strong> e{" "}
+                  <strong className="text-foreground">80–120/dia</strong>.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Intervalo mínimo (seg)</Label>
+                  <Input
+                    type="number"
+                    min={30}
+                    max={600}
+                    value={settings.minIntervalSec}
+                    onChange={(e) =>
+                      patch(
+                        "minIntervalSec",
+                        Math.max(30, Number(e.target.value) || 60),
+                      )
+                    }
+                  />
+                  <p className="text-[11px] leading-snug text-muted-foreground">
+                    Espera mínima entre um cliente e o próximo. Ex.: 60 = pelo
+                    menos 1 minuto.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Variação aleatória (seg)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={300}
+                    value={settings.jitterSec}
+                    onChange={(e) =>
+                      patch(
+                        "jitterSec",
+                        Math.max(0, Number(e.target.value) || 0),
+                      )
+                    }
+                  />
+                  <p className="text-[11px] leading-snug text-muted-foreground">
+                    Soma um tempo aleatório (0 até este valor). Com 60 + 30 ≈
+                    1m a 1m30s entre envios.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Máx. por hora</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={settings.maxPerHour}
+                    onChange={(e) =>
+                      patch(
+                        "maxPerHour",
+                        Math.max(1, Number(e.target.value) || 25),
+                      )
+                    }
+                  />
+                  <p className="text-[11px] leading-snug text-muted-foreground">
+                    Máximo em 60 minutos (não são “horas”). Ex.: 25 clientes/hora.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Máx. por dia</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={settings.maxPerDay}
+                    onChange={(e) =>
+                      patch(
+                        "maxPerDay",
+                        Math.max(1, Number(e.target.value) || 100),
+                      )
+                    }
+                  />
+                  <p className="text-[11px] leading-snug text-muted-foreground">
+                    Teto do dia. Ex.: 100 = para no 100º e segue amanhã.
+                  </p>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </section>
       </div>
 

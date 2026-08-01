@@ -830,7 +830,9 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                                 className="gap-2 text-destructive focus:text-destructive"
                                 onClick={() => {
                                   if (confirm(`Excluir "${item.name}"?`)) {
-                                    setData(deleteItem(data, item.id));
+                                    setData((prev) =>
+                                      deleteItem(prev, item.id),
+                                    );
                                     toast.success("Dívida excluída");
                                   }
                                 }}

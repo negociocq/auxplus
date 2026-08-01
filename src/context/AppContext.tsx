@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -53,11 +54,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const backend = "supabase" as const;
 
+  /** Evita persist antigo sobrescrever exclusão recente */
+  const pendingPersist = useRef<AppData | null>(null);
+  const persisting = useRef(false);
+  const dirty = useRef(false);
+
+  const flushPersist = useCallback(async () => {
+    if (persisting.current) return;
+    persisting.current = true;
+    try {
+      while (pendingPersist.current) {
+        const snapshot = pendingPersist.current;
+        pendingPersist.current = null;
+        try {
+          await persistAppDataToSupabase(snapshot);
+        } catch (err) {
+          console.error("[AuxPlus] Falha ao salvar no Supabase", err);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Falha ao salvar no Supabase",
+          );
+        }
+      }
+    } finally {
+      persisting.current = false;
+      if (!pendingPersist.current) dirty.current = false;
+      else void flushPersist();
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const remote = await fetchAppDataFromSupabase();
+      if (dirty.current) return;
       setDataState(mergeLocalAvatars(remote));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao carregar dados";
@@ -71,20 +103,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  // Evita tela com dados antigos em memória (ex.: datas/órfãos já corrigidos no banco)
+  // Evita tela com dados antigos — mas não sobrescreve enquanto há save pendente
   useEffect(() => {
-    const onFocus = () => {
+    const pull = () => {
+      if (dirty.current || persisting.current) return;
       void fetchAppDataFromSupabase()
-        .then((remote) => setDataState(mergeLocalAvatars(remote)))
+        .then((remote) => {
+          if (dirty.current || persisting.current) return;
+          setDataState(mergeLocalAvatars(remote));
+        })
         .catch(() => undefined);
     };
     const onVisibility = () => {
-      if (document.visibilityState === "visible") onFocus();
+      if (document.visibilityState === "visible") pull();
     };
-    window.addEventListener("focus", onFocus);
+    window.addEventListener("focus", pull);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("focus", pull);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
@@ -97,20 +133,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ? (updater as (p: AppData) => AppData)(prev)
             : updater;
         const refreshed = refreshItemStatuses(next);
-
-        void persistAppDataToSupabase(refreshed).catch((err) => {
-          console.error("[AuxPlus] Falha ao salvar no Supabase", err);
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Falha ao salvar no Supabase",
-          );
-        });
-
+        dirty.current = true;
+        pendingPersist.current = refreshed;
+        void flushPersist();
         return refreshed;
       });
     },
-    [],
+    [flushPersist],
   );
 
   const user = useMemo(
@@ -124,7 +153,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (result.error || !result.user) return result.error || "Erro no login";
       setSessionUserId(result.user.id);
       setSessionId(result.user.id);
-      // garante dados atualizados após login
       try {
         const remote = await fetchAppDataFromSupabase();
         setDataState(remote);

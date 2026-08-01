@@ -1,0 +1,138 @@
+import { useEffect, useState, type FormEvent } from "react";
+import { MonitorPlay, Save, Shield } from "lucide-react";
+import { toast } from "sonner";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  defaultIptvPlatformConfig,
+  loadIptvPlatformConfig,
+  saveIptvPlatformConfig,
+  type IptvPlatformConfig,
+} from "@/lib/platformApi";
+
+export default function AdminAutomations() {
+  const [form, setForm] = useState<IptvPlatformConfig>(
+    defaultIptvPlatformConfig(),
+  );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void loadIptvPlatformConfig()
+      .then(setForm)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const onSave = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!form.apiBaseUrl.trim()) {
+      toast.error("Informe a API base");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await saveIptvPlatformConfig(form);
+      if (result.warning) toast.message(result.warning);
+      else toast.success("UniPlay configurado para todos os clientes");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Automações"
+        description="Configuração global do UniPlay (painel IPTV). Os clientes só ligam a conta deles."
+      />
+
+      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+        <div className="flex gap-2">
+          <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <p className="text-muted-foreground">
+            API, pacote, reg_password e URL do painel ficam aqui. No app do
+            cliente aparece só como <strong className="text-foreground">UniPlay</strong>{" "}
+            — login da conta + renovar/teste/ativar app.
+          </p>
+        </div>
+      </div>
+
+      <form
+        onSubmit={(e) => void onSave(e)}
+        className="ax-surface mx-auto max-w-xl space-y-4 p-5"
+      >
+        <div className="flex items-center gap-2 font-semibold">
+          <MonitorPlay className="h-4 w-4 text-primary" />
+          UniPlay / painel IPTV
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="iptv-api">API base</Label>
+          <Input
+            id="iptv-api"
+            value={form.apiBaseUrl}
+            disabled={loading}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, apiBaseUrl: e.target.value }))
+            }
+            placeholder="https://gesapioffice.com/api"
+            required
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="iptv-pkg">Pacote</Label>
+          <Input
+            id="iptv-pkg"
+            value={form.packageId}
+            disabled={loading}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, packageId: e.target.value }))
+            }
+            placeholder="1"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="iptv-reg">reg_password</Label>
+          <Input
+            id="iptv-reg"
+            type="password"
+            value={form.regPassword}
+            disabled={loading}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, regPassword: e.target.value }))
+            }
+            placeholder="Só se a listagem exigir"
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="iptv-url">URL do painel</Label>
+          <Input
+            id="iptv-url"
+            value={form.panelUrl}
+            disabled={loading}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, panelUrl: e.target.value }))
+            }
+            placeholder="https://…/#/…"
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">
+            Usada no botão “Abrir painel” do cliente (depois do login interno,
+            se possível).
+          </p>
+        </div>
+
+        <Button type="submit" disabled={loading || saving}>
+          <Save className="h-4 w-4" />
+          {saving ? "Salvando…" : "Salvar"}
+        </Button>
+      </form>
+    </div>
+  );
+}

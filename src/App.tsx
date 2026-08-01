@@ -18,6 +18,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const FolderItems = lazy(() => import("./pages/FolderItems"));
 const Tickets = lazy(() => import("./pages/Tickets"));
 const WhatsApp = lazy(() => import("./pages/WhatsApp"));
+const Automations = lazy(() => import("./pages/Automations"));
 const Settings = lazy(() => import("./pages/Settings"));
 const AdminUsers = lazy(() =>
   import("./pages/Admin").then((m) => ({ default: m.AdminUsers })),
@@ -26,6 +27,7 @@ const AdminTickets = lazy(() =>
   import("./pages/Admin").then((m) => ({ default: m.AdminTickets })),
 );
 const AdminApi = lazy(() => import("./pages/AdminApi"));
+const AdminAutomations = lazy(() => import("./pages/AdminAutomations"));
 
 const queryClient = new QueryClient();
 
@@ -52,6 +54,7 @@ const App = () => (
                     />
                     <Route path="/tickets" element={<Tickets />} />
                     <Route path="/whatsapp" element={<WhatsApp />} />
+                    <Route path="/automations" element={<Automations />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route
                       path="/change-password"
@@ -65,6 +68,10 @@ const App = () => (
                     <Route path="/admin" element={<AdminUsers />} />
                     <Route path="/admin/tickets" element={<AdminTickets />} />
                     <Route path="/admin/api" element={<AdminApi />} />
+                    <Route
+                      path="/admin/automations"
+                      element={<AdminAutomations />}
+                    />
                   </Route>
                 </Route>
 

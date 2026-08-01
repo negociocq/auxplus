@@ -10,10 +10,12 @@ import {
   ChartColumn,
   ChevronDown,
   ChevronUp,
+  Loader2,
   MoreVertical,
   Package,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Settings2,
   Trash2,
@@ -97,6 +99,22 @@ import {
 import { cn } from "@/lib/utils";
 import { DebtFolderView } from "@/components/debt/DebtFolderView";
 import { isExpenseFolderType } from "@/types";
+import {
+  loadAutomationsConfig,
+  saveAutomationsConfig,
+} from "@/lib/automationsConfig";
+import { loadIptvPlatformConfig } from "@/lib/platformApi";
+import {
+  ensureIptvToken,
+  getLastIssuedIptvToken,
+  listIptvUsers,
+} from "@/lib/iptvPanelApi";
+import { syncIptvUsersToFolder } from "@/lib/iptvAutomation";
+import {
+  excludeFromSync,
+  excludedUsernamesForFolder,
+  includeInSync,
+} from "@/lib/syncExclusions";
 
 type DueMode = "com" | "sem";
 
@@ -231,11 +249,90 @@ export default function FolderItems() {
   const [nearDays, setNearDays] = useState(3);
   const [farDays, setFarDays] = useState(3);
   const [whatsMsg, setWhatsMsg] = useState("");
+  const [syncingUniplay, setSyncingUniplay] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folder = data.folders.find(
     (f) => f.id === folderId && f.userId === user?.id,
   );
+  const uniplaySyncEnabled = useMemo(() => {
+    if (!user || !folder || folder.type !== "Cliente") return false;
+    return loadAutomationsConfig(user.id).syncFolderId === folder.id;
+  }, [user, folder]);
+
+  const syncUniplay = async () => {
+    if (!user || !folder) return;
+    if (folder.type !== "Cliente") {
+      toast.error("Sincronização só funciona em pastas de Cliente");
+      return;
+    }
+    setSyncingUniplay(true);
+    try {
+      const cfg = loadAutomationsConfig(user.id);
+      const plat = await loadIptvPlatformConfig();
+      if (!cfg.iptvUsername.trim() || !cfg.iptvPassword) {
+        toast.error(
+          "Conecte a conta UniPlay em Automações antes de sincronizar",
+        );
+        return;
+      }
+      const ensured = await ensureIptvToken({
+        apiBaseUrl: plat.apiBaseUrl,
+        bearerToken: cfg.iptvBearerToken,
+        username: cfg.iptvUsername,
+        password: cfg.iptvPassword,
+        defaultPackage: plat.packageId || "1",
+        regPassword: plat.regPassword || undefined,
+      });
+      if (ensured.renewed || ensured.token !== cfg.iptvBearerToken) {
+        saveAutomationsConfig(user.id, {
+          ...cfg,
+          iptvBearerToken: ensured.token,
+        });
+      }
+      const users = await listIptvUsers(
+        {
+          apiBaseUrl: plat.apiBaseUrl,
+          bearerToken: ensured.token,
+          username: cfg.iptvUsername,
+          password: cfg.iptvPassword,
+          defaultPackage: plat.packageId || "1",
+          regPassword: plat.regPassword || undefined,
+        },
+        { activeOnly: true },
+      );
+      const issued = getLastIssuedIptvToken();
+      if (issued) {
+        saveAutomationsConfig(user.id, {
+          ...loadAutomationsConfig(user.id),
+          iptvBearerToken: issued,
+        });
+      }
+      const excluded = excludedUsernamesForFolder(user.id, folder.id);
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      setData((prev) => {
+        const result = syncIptvUsersToFolder(prev, folder.id, users, {
+          excludedUsernames: excluded,
+        });
+        created = result.created;
+        updated = result.updated;
+        skipped = result.skipped;
+        return result.data;
+      });
+      toast.success(
+        `UniPlay: ${updated} vencimento(s) · ${created} novo(s)` +
+          (skipped ? ` · ${skipped} sem mudança` : ""),
+      );
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Falha ao sincronizar UniPlay",
+      );
+    } finally {
+      setSyncingUniplay(false);
+    }
+  };
   const settings = data.folderSettings.find((s) => s.folderId === folderId);
   const nearDueDays = settings?.nearDueDays ?? 3;
   const farDueDays = settings?.farDueDays ?? nearDueDays;
@@ -405,11 +502,14 @@ export default function FolderItems() {
         : new Date().toISOString(),
       isActive: true,
     };
+    if (user && payload.itemId) {
+      includeInSync(user.id, folder.id, payload.itemId);
+    }
     if (editing) {
-      setData(updateItem(data, { ...editing, ...payload }));
+      setData((prev) => updateItem(prev, { ...editing, ...payload }));
       toast.success("Item atualizado");
     } else {
-      setData(createItem(data, payload));
+      setData((prev) => createItem(prev, payload));
       toast.success("Item adicionado");
     }
     setFormOpen(false);
@@ -434,26 +534,32 @@ export default function FolderItems() {
       toast.error("CSV vazio ou inválido");
       return;
     }
-    let next = data;
     let imported = 0;
-    for (const line of lines.slice(1)) {
-      const cols = line.split(/[;,]/).map((c) => c.trim().replace(/^"|"$/g, ""));
-      if (cols.length < 2) continue;
-      const [itemId, name, dueDate, phone, price, notes] = cols;
-      next = createItem(next, {
-        folderId: folder.id,
-        itemId: itemId || name,
-        name: name || itemId,
-        dueDate: dueDate || null,
-        phone: phone || "",
-        price: Number(String(price || "0").replace(",", ".")) || 0,
-        notes: notes || "",
-        createdAt: new Date().toISOString(),
-        isActive: true,
-      });
-      imported += 1;
-    }
-    setData(next);
+    setData((prev) => {
+      let next = prev;
+      for (const line of lines.slice(1)) {
+        const cols = line
+          .split(/[;,]/)
+          .map((c) => c.trim().replace(/^"|"$/g, ""));
+        if (cols.length < 2) continue;
+        const [itemId, name, dueDate, phone, price, notes] = cols;
+        const uid = itemId || name;
+        if (user && uid) includeInSync(user.id, folder.id, uid);
+        next = createItem(next, {
+          folderId: folder.id,
+          itemId: uid,
+          name: name || itemId,
+          dueDate: dueDate || null,
+          phone: phone || "",
+          price: Number(String(price || "0").replace(",", ".")) || 0,
+          notes: notes || "",
+          createdAt: new Date().toISOString(),
+          isActive: true,
+        });
+        imported += 1;
+      }
+      return next;
+    });
     toast.success(
       imported === 1
         ? "1 item importado"
@@ -506,6 +612,20 @@ export default function FolderItems() {
               )}
               {showTools ? "Ocultar Conteúdo" : "Mostrar Conteúdo"}
             </Button>
+            {uniplaySyncEnabled ? (
+              <Button
+                variant="secondary"
+                disabled={syncingUniplay}
+                onClick={() => void syncUniplay()}
+              >
+                {syncingUniplay ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Sincronizar UniPlay
+              </Button>
+            ) : null}
             <Button onClick={() => setShowStatusSlide(true)}>
               <ChartColumn className="h-4 w-4" />
               Mostrar Gráfico
@@ -578,7 +698,16 @@ export default function FolderItems() {
                       "Tem certeza que deseja excluir todos os itens desta pasta?",
                     )
                   ) {
-                    setData(deleteAllItemsInFolder(data, folder.id));
+                    if (user) {
+                      for (const it of data.items) {
+                        if (it.folderId === folder.id && it.itemId) {
+                          excludeFromSync(user.id, folder.id, it.itemId);
+                        }
+                      }
+                    }
+                    setData((prev) =>
+                      deleteAllItemsInFolder(prev, folder.id),
+                    );
                     toast.success("Todos os itens foram excluídos");
                   }
                 }}
@@ -606,6 +735,21 @@ export default function FolderItems() {
                 <MessageSquareText className="h-4 w-4" />
                 Editar Mensagem do WhatsApp
               </Button>
+              {uniplaySyncEnabled ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={syncingUniplay}
+                  onClick={() => void syncUniplay()}
+                >
+                  {syncingUniplay ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Sincronizar UniPlay
+                </Button>
+              ) : null}
             </div>
           </motion.div>
         )}
@@ -905,7 +1049,14 @@ export default function FolderItems() {
                           className="gap-2 text-destructive focus:text-destructive"
                           onClick={() => {
                             if (confirm(`Excluir "${item.name}"?`)) {
-                              setData(deleteItem(data, item.id));
+                              if (user && item.itemId) {
+                                excludeFromSync(
+                                  user.id,
+                                  folder.id,
+                                  item.itemId,
+                                );
+                              }
+                              setData((prev) => deleteItem(prev, item.id));
                               toast.success("Item excluído");
                             }
                           }}
@@ -1147,7 +1298,14 @@ export default function FolderItems() {
                     className="flex w-full items-center rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors hover:border-primary/30 hover:bg-primary/5"
                     onClick={() => {
                       if (!moveItemId) return;
-                      setData(moveItem(data, moveItemId, f.id));
+                      const moving = data.items.find(
+                        (i) => i.id === moveItemId,
+                      );
+                      if (user && moving?.itemId) {
+                        excludeFromSync(user.id, folder.id, moving.itemId);
+                        includeInSync(user.id, f.id, moving.itemId);
+                      }
+                      setData((prev) => moveItem(prev, moveItemId, f.id));
                       setMoveOpen(false);
                       setMoveItemId(null);
                       toast.success(`Item movido para ${f.name}`);

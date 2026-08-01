@@ -111,3 +111,124 @@ export function instanceNameForUser(
 export function isEvolutionConfigured(config: EvolutionPlatformConfig) {
   return Boolean(config.apiBaseUrl?.trim() && config.apiKey?.trim());
 }
+
+/** Config global UniPlay / painel IPTV (só admin). */
+export interface IptvPlatformConfig {
+  apiBaseUrl: string;
+  packageId: string;
+  regPassword: string;
+  panelUrl: string;
+}
+
+const IPTV_LOCAL_KEY = "auxplus-platform-iptv";
+const IPTV_DB_KEY = "iptv_panel";
+
+export function defaultIptvPlatformConfig(): IptvPlatformConfig {
+  return {
+    apiBaseUrl: "https://gesapioffice.com/api",
+    packageId: "1",
+    regPassword: "",
+    panelUrl: "",
+  };
+}
+
+function readIptvLocal(): IptvPlatformConfig {
+  const base = defaultIptvPlatformConfig();
+  try {
+    const raw = localStorage.getItem(IPTV_LOCAL_KEY);
+    if (!raw) return base;
+    const parsed = JSON.parse(raw) as Partial<IptvPlatformConfig>;
+    return {
+      ...base,
+      ...parsed,
+      apiBaseUrl: parsed.apiBaseUrl?.trim() || base.apiBaseUrl,
+      packageId: parsed.packageId?.trim() || base.packageId,
+      regPassword: parsed.regPassword ?? "",
+      panelUrl: parsed.panelUrl?.trim() || "",
+    };
+  } catch {
+    return base;
+  }
+}
+
+function writeIptvLocal(config: IptvPlatformConfig) {
+  localStorage.setItem(IPTV_LOCAL_KEY, JSON.stringify(config));
+}
+
+export async function loadIptvPlatformConfig(): Promise<IptvPlatformConfig> {
+  const fallback = readIptvLocal();
+  if (!supabase) return fallback;
+  try {
+    const { data, error } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", IPTV_DB_KEY)
+      .maybeSingle();
+    if (error || !data?.value) return fallback;
+    const value =
+      typeof data.value === "string"
+        ? (JSON.parse(data.value) as Partial<IptvPlatformConfig>)
+        : (data.value as Partial<IptvPlatformConfig>);
+    const merged: IptvPlatformConfig = {
+      ...fallback,
+      ...value,
+      apiBaseUrl: value.apiBaseUrl?.trim() || fallback.apiBaseUrl,
+      packageId: value.packageId?.trim() || fallback.packageId,
+      regPassword: value.regPassword ?? fallback.regPassword,
+      panelUrl: value.panelUrl?.trim() || fallback.panelUrl,
+    };
+    writeIptvLocal(merged);
+    return merged;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function saveIptvPlatformConfig(
+  config: IptvPlatformConfig,
+): Promise<{ ok: boolean; warning?: string }> {
+  const clean: IptvPlatformConfig = {
+    apiBaseUrl: config.apiBaseUrl.trim().replace(/\/$/, "") ||
+      defaultIptvPlatformConfig().apiBaseUrl,
+    packageId: config.packageId.trim() || "1",
+    regPassword: config.regPassword.trim(),
+    panelUrl: config.panelUrl.trim(),
+  };
+  writeIptvLocal(clean);
+  if (!supabase) {
+    return {
+      ok: true,
+      warning:
+        "Salvo só neste navegador. Rode a migration platform_settings para sincronizar.",
+    };
+  }
+  try {
+    const { error } = await supabase.from("platform_settings").upsert(
+      {
+        key: IPTV_DB_KEY,
+        value: clean,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+    if (error) {
+      return {
+        ok: true,
+        warning: `Salvo localmente. Supabase: ${error.message}`,
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: true,
+      warning:
+        e instanceof Error
+          ? e.message
+          : "Salvo localmente; falha ao gravar no Supabase.",
+    };
+  }
+}
+
+export function isIptvPlatformConfigured(config: IptvPlatformConfig) {
+  return Boolean(config.apiBaseUrl?.trim());
+}

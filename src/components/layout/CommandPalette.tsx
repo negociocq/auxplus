@@ -8,10 +8,11 @@ import {
   LogOut,
   MessageCircle,
   Moon,
-  Settings2,
+  Settings,
   Shield,
   Sun,
   Users,
+  Workflow,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -77,12 +78,16 @@ export function CommandPalette() {
             <MessageCircle className="mr-2 h-4 w-4" />
             WhatsApp
           </CommandItem>
+          <CommandItem onSelect={() => go("/automations")}>
+            <Workflow className="mr-2 h-4 w-4" />
+            Automações
+          </CommandItem>
           <CommandItem onSelect={() => go("/tickets")}>
             <LifeBuoy className="mr-2 h-4 w-4" />
             Tickets
           </CommandItem>
           <CommandItem onSelect={() => go("/settings")}>
-            <Settings2 className="mr-2 h-4 w-4" />
+            <Settings className="mr-2 h-4 w-4" />
             Configuração
           </CommandItem>
         </CommandGroup>
@@ -105,6 +110,10 @@ export function CommandPalette() {
               <CommandItem onSelect={() => go("/admin/api")}>
                 <KeyRound className="mr-2 h-4 w-4" />
                 API
+              </CommandItem>
+              <CommandItem onSelect={() => go("/admin/automations")}>
+                <Workflow className="mr-2 h-4 w-4" />
+                Automações
               </CommandItem>
               <CommandItem onSelect={() => go("/dashboard")}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
