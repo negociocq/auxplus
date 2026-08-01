@@ -10,6 +10,7 @@ import {
   type IptvRemoteUser,
 } from "@/lib/iptvPanelApi";
 import { ymdOnly, parseLocalYmd } from "@/lib/whatsappAutomation";
+import { supabase } from "@/integrations/supabase/client";
 
 export type IptvJobKind = "renew" | "test";
 export type IptvJobStatus = "pending" | "doing" | "done" | "failed";
@@ -41,9 +42,37 @@ export interface IptvJob {
 }
 
 const JOBS_KEY = "auxplus-iptv-jobs";
+const jobsDbKey = (userId: string) => `iptv_jobs_user_${userId}`;
 
 function uid() {
   return `iptv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function trimJobs(jobs: IptvJob[]): IptvJob[] {
+  return [...jobs]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 200);
+}
+
+function isJob(v: unknown): v is IptvJob {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.id === "string" &&
+    (o.kind === "renew" || o.kind === "test") &&
+    typeof o.status === "string"
+  );
+}
+
+/** Une listas por id, ficando com o registro mais recente (updatedAt). */
+export function mergeIptvJobs(a: IptvJob[], b: IptvJob[]): IptvJob[] {
+  const map = new Map<string, IptvJob>();
+  for (const job of [...a, ...b]) {
+    if (!isJob(job)) continue;
+    const prev = map.get(job.id);
+    if (!prev || job.updatedAt > prev.updatedAt) map.set(job.id, job);
+  }
+  return trimJobs([...map.values()]);
 }
 
 export function loadIptvJobs(userId: string): IptvJob[] {
@@ -51,18 +80,104 @@ export function loadIptvJobs(userId: string): IptvJob[] {
     const raw = localStorage.getItem(`${JOBS_KEY}:${userId}`);
     if (!raw) return [];
     const list = JSON.parse(raw) as IptvJob[];
-    return Array.isArray(list) ? list : [];
+    return Array.isArray(list) ? list.filter(isJob) : [];
   } catch {
     return [];
   }
 }
 
+function writeLocalJobs(userId: string, jobs: IptvJob[]) {
+  localStorage.setItem(
+    `${JOBS_KEY}:${userId}`,
+    JSON.stringify(trimJobs(jobs)),
+  );
+}
+
+async function persistJobsRemote(
+  userId: string,
+  jobs: IptvJob[],
+): Promise<{ ok: boolean; warning?: string }> {
+  if (!supabase || !userId) {
+    return {
+      ok: true,
+      warning: "Fila salva só neste navegador (Supabase indisponível).",
+    };
+  }
+  try {
+    const { error } = await supabase.from("platform_settings").upsert(
+      {
+        key: jobsDbKey(userId),
+        value: { jobs: trimJobs(jobs) },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+    if (error) {
+      return {
+        ok: true,
+        warning: `Salvo localmente. Nuvem: ${error.message}`,
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: true,
+      warning:
+        e instanceof Error
+          ? e.message
+          : "Salvo localmente; falha ao gravar na nuvem.",
+    };
+  }
+}
+
+/**
+ * Carrega fila/log: nuvem (conta) + local, mesclados.
+ * Assim localhost e domínio veem as mesmas renovações.
+ */
+export async function loadIptvJobsRemote(userId: string): Promise<IptvJob[]> {
+  const local = loadIptvJobs(userId);
+  if (!supabase || !userId) return local;
+  try {
+    const { data, error } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", jobsDbKey(userId))
+      .maybeSingle();
+    if (error || !data?.value) {
+      if (local.length) void persistJobsRemote(userId, local);
+      return local;
+    }
+    const raw =
+      typeof data.value === "string"
+        ? (JSON.parse(data.value) as { jobs?: unknown })
+        : (data.value as { jobs?: unknown });
+    const remote = Array.isArray(raw?.jobs)
+      ? (raw.jobs as unknown[]).filter(isJob)
+      : [];
+    const merged = mergeIptvJobs(local, remote);
+    writeLocalJobs(userId, merged);
+    // Se o local tinha algo a mais, sobe o merge
+    if (local.length && merged.length !== remote.length) {
+      void persistJobsRemote(userId, merged);
+    } else if (
+      local.some((j) => {
+        const r = remote.find((x) => x.id === j.id);
+        return !r || j.updatedAt > r.updatedAt;
+      })
+    ) {
+      void persistJobsRemote(userId, merged);
+    }
+    return merged;
+  } catch {
+    return local;
+  }
+}
+
+/** Salva local + nuvem (vinculado à conta AuxPlus). */
 export function saveIptvJobs(userId: string, jobs: IptvJob[]) {
-  // Mantém os 200 mais recentes
-  const trimmed = [...jobs]
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 200);
-  localStorage.setItem(`${JOBS_KEY}:${userId}`, JSON.stringify(trimmed));
+  const trimmed = trimJobs(jobs);
+  writeLocalJobs(userId, trimmed);
+  void persistJobsRemote(userId, trimmed);
 }
 
 export function createIptvJob(

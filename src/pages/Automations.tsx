@@ -64,6 +64,7 @@ import {
   copyText,
   createIptvJob,
   loadIptvJobs,
+  loadIptvJobsRemote,
   mergePanelTestsIntoJobs,
   nextDueAfterRenew,
   patchIptvJob,
@@ -184,6 +185,7 @@ export default function Automations() {
   useEffect(() => {
     if (!user) return;
     setJobs(loadIptvJobs(user.id));
+    void loadIptvJobsRemote(user.id).then(setJobs);
     void loadIptvPlatformConfig().then(setPlatform);
     // Conta UniPlay vem da nuvem (todos os PCs) + cache local
     void loadAutomationsConfigRemote(user.id).then((next) => {
@@ -379,7 +381,11 @@ export default function Automations() {
     [jobs],
   );
   const renewLogCount = useMemo(
-    () => jobs.filter((j) => j.kind === "renew").length,
+    () =>
+      jobs.filter(
+        (j) =>
+          j.kind === "renew" && (j.status === "done" || j.status === "failed"),
+      ).length,
     [jobs],
   );
 
@@ -1922,16 +1928,14 @@ export default function Automations() {
 
             <TabsContent value="renovacoes" className="mt-0 space-y-4">
               <section className="ax-surface space-y-3 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold tracking-tight">
-                      Log de renovações
-                    </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Histórico das renovações feitas pelo AuxPlus
-                      {renewLogCount > 0 ? ` · ${renewLogCount} registro(s)` : ""}
-                    </p>
-                  </div>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold tracking-tight">
+                    Log de renovações
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Vinculado à sua conta · sincroniza em todos os dispositivos
+                    {renewLogCount > 0 ? ` · ${renewLogCount} registro(s)` : ""}
+                  </p>
                 </div>
 
                 <div className="relative">
@@ -1961,8 +1965,8 @@ export default function Automations() {
                                 {job.clientName}
                               </p>
                               <p className="text-[11px] text-muted-foreground">
-                                {maskUser(job.panelUsername)}
-                                {` · +${job.months}m`}
+                                {maskUser(job.panelUsername)} · +{job.months}{" "}
+                                {job.months === 1 ? "mês" : "meses"}
                               </p>
                             </div>
                             <Badge
@@ -1973,7 +1977,7 @@ export default function Automations() {
                                   "border-primary/40 bg-primary/10 text-primary",
                               )}
                             >
-                              Renovação · {statusLabel(job.status)}
+                              {statusLabel(job.status)}
                             </Badge>
                           </div>
                           <div className="flex flex-wrap gap-1">
@@ -2019,46 +2023,76 @@ export default function Automations() {
                 ) : null}
 
                 {renewLog.length > 0 ? (
-                  <ul className="divide-y rounded-md border">
+                  <ul className="space-y-2">
                     {renewLog.map((job) => (
                       <li
                         key={job.id}
-                        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm"
+                        className="rounded-md border px-3 py-2.5 text-sm"
                       >
-                        <div className="min-w-0">
-                          <p className="truncate font-medium leading-tight">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="min-w-0 truncate font-medium leading-tight">
                             {job.clientName}
                           </p>
-                          <p className="truncate text-[11px] text-muted-foreground">
-                            {maskUser(job.panelUsername)}
-                            {` · +${job.months}m`}
-                            {job.dueDate
-                              ? ` · vence ${formatBrDate(job.dueDate)}`
-                              : ""}
-                            {" · "}
-                            {format(
-                              new Date(job.updatedAt),
-                              "dd/MM/yyyy HH:mm",
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "shrink-0 text-[10px]",
+                              job.status === "done" &&
+                                "border-success/40 bg-success/10 text-success",
+                              job.status === "failed" &&
+                                "border-destructive/40 bg-destructive/10 text-destructive",
                             )}
-                          </p>
-                          {job.note ? (
-                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground/80">
-                              {job.note}
-                            </p>
-                          ) : null}
+                          >
+                            {job.status === "done"
+                              ? "Concluído"
+                              : statusLabel(job.status)}
+                          </Badge>
                         </div>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "shrink-0 text-[10px]",
-                            job.status === "done" &&
-                              "border-success/40 bg-success/10 text-success",
-                            job.status === "failed" &&
-                              "border-destructive/40 bg-destructive/10 text-destructive",
-                          )}
-                        >
-                          {statusLabel(job.status)}
-                        </Badge>
+                        <dl className="mt-2 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
+                          <div>
+                            <dt className="inline text-muted-foreground/80">
+                              Usuário:{" "}
+                            </dt>
+                            <dd className="inline font-mono text-foreground/80">
+                              {maskUser(job.panelUsername)}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="inline text-muted-foreground/80">
+                              Plano:{" "}
+                            </dt>
+                            <dd className="inline text-foreground/80">
+                              +{job.months}{" "}
+                              {job.months === 1 ? "mês" : "meses"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="inline text-muted-foreground/80">
+                              Novo vencimento:{" "}
+                            </dt>
+                            <dd className="inline text-foreground/80">
+                              {job.dueDate
+                                ? formatBrDate(job.dueDate)
+                                : "—"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="inline text-muted-foreground/80">
+                              Renovado em:{" "}
+                            </dt>
+                            <dd className="inline text-foreground/80">
+                              {format(
+                                new Date(job.updatedAt),
+                                "dd/MM/yyyy HH:mm",
+                              )}
+                            </dd>
+                          </div>
+                        </dl>
+                        {job.status === "failed" && job.note ? (
+                          <p className="mt-1.5 text-[11px] text-destructive">
+                            {job.note}
+                          </p>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
