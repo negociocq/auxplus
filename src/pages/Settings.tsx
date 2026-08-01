@@ -1,16 +1,17 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { KeyRound, Loader2, Mail, Save, Settings2, Shield } from "lucide-react";
+import { KeyRound, Loader2, Mail, Save, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
+import {
+  isValidEmail,
+  sendLinkEmailConfirmation,
+} from "@/lib/emailAuth";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { emailTakenByOther } from "@/lib/storage";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
 
 export default function Settings() {
   const { user, data, setData } = useApp();
@@ -24,38 +25,60 @@ export default function Settings() {
   const [savingPwd, setSavingPwd] = useState(false);
 
   useEffect(() => {
-    setEmail(user?.email ?? "");
-  }, [user?.email]);
+    setEmail(user?.email?.trim() || user?.pendingEmail?.trim() || "");
+  }, [user?.email, user?.pendingEmail]);
 
   if (!user) return null;
 
-  const onSaveEmail = (e: FormEvent) => {
+  const confirmedEmail = user.email?.trim() || "";
+  const pendingEmail = user.pendingEmail?.trim() || "";
+  const missingEmail = !confirmedEmail;
+
+  const onSaveEmail = async (e: FormEvent) => {
     e.preventDefault();
     const value = email.trim().toLowerCase();
-    if (value && !isValidEmail(value)) {
+    if (!value || !isValidEmail(value)) {
       toast.error("Informe um e-mail válido");
       return;
     }
-    const taken = data.users.some(
-      (u) =>
-        u.id !== user.id &&
-        u.email &&
-        u.email.toLowerCase() === value,
-    );
-    if (value && taken) {
+    if (emailTakenByOther(data, value, user.id)) {
       toast.error("Este e-mail já está em uso por outra conta");
       return;
     }
 
+    if (confirmedEmail && value === confirmedEmail.toLowerCase()) {
+      toast.message("Este e-mail já está confirmado na sua conta");
+      return;
+    }
+
     setSavingEmail(true);
-    setData({
-      ...data,
-      users: data.users.map((u) =>
-        u.id === user.id ? { ...u, email: value || null } : u,
-      ),
-    });
-    setSavingEmail(false);
-    toast.success(value ? "E-mail salvo" : "E-mail removido");
+    try {
+      // Só guarda como pendente — `email` só muda após o clique no link
+      setData({
+        ...data,
+        users: data.users.map((u) =>
+          u.id === user.id
+            ? { ...u, pendingEmail: value, email: u.email ?? null }
+            : u,
+        ),
+      });
+
+      const confirmResult = await sendLinkEmailConfirmation(value, {
+        username: user.username,
+        appUserId: user.id,
+      });
+      if (confirmResult.error) {
+        toast.warning(
+          "Não foi possível enviar o e-mail de confirmação. Tente novamente.",
+        );
+      } else {
+        toast.success(
+          "Enviamos um link de confirmação. O e-mail só será vinculado depois que você clicar nele.",
+        );
+      }
+    } finally {
+      setSavingEmail(false);
+    }
   };
 
   const onSavePassword = async (e: FormEvent) => {
@@ -109,6 +132,17 @@ export default function Settings() {
           Conta
         </div>
 
+        {missingEmail ? (
+          <div
+            role="status"
+            className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100"
+          >
+            {pendingEmail
+              ? `Enviamos um link para ${pendingEmail}. O e-mail só será vinculado depois que você clicar na confirmação.`
+              : "Sua conta ainda não tem e-mail vinculado. Informe um e-mail e confirme pelo link que enviaremos."}
+          </div>
+        ) : null}
+
         <div className="space-y-2">
           <Label htmlFor="cfg-user">Usuário</Label>
           <Input id="cfg-user" value={user.username} disabled />
@@ -129,16 +163,31 @@ export default function Settings() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="seu@email.com"
               autoComplete="email"
+              required
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Use no login no lugar do usuário. Deixe em branco para remover.
+            O e-mail só fica salvo na conta depois que você clicar no link de
+            confirmação. Até lá, o login por e-mail não funciona.
           </p>
+          {confirmedEmail ? (
+            <p className="text-xs text-muted-foreground">
+              Confirmado: <span className="font-medium">{confirmedEmail}</span>
+            </p>
+          ) : null}
         </div>
 
         <Button type="submit" disabled={savingEmail}>
-          <Save className="h-4 w-4" />
-          {savingEmail ? "Salvando…" : "Salvar e-mail"}
+          {savingEmail ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {savingEmail
+            ? "Enviando…"
+            : pendingEmail && !confirmedEmail
+              ? "Reenviar confirmação"
+              : "Enviar confirmação"}
         </Button>
       </form>
 
@@ -199,16 +248,11 @@ export default function Settings() {
 
         <Button type="submit" disabled={savingPwd}>
           {savingPwd ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Salvando…
-            </>
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <>
-              <Shield className="h-4 w-4" />
-              Salvar senha
-            </>
+            <Save className="h-4 w-4" />
           )}
+          {savingPwd ? "Salvando…" : "Alterar senha"}
         </Button>
       </form>
     </div>

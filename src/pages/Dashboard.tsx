@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Clock3,
+  Coins,
   FolderKanban,
   Pencil,
   Plus,
@@ -60,6 +61,17 @@ import type { Folder, FolderType, ItemStatus } from "@/types";
 import { isExpenseFolderType, isRevenueFolderType } from "@/types";
 import { formatBrDate } from "@/lib/format";
 import { useHideBalance } from "@/hooks/useHideBalance";
+import {
+  loadAutomationsConfig,
+  loadAutomationsConfigRemote,
+} from "@/lib/automationsConfig";
+import {
+  ensureIptvToken,
+  fetchIptvPanelCredits,
+  formatIptvCredits,
+  tokenExpiresInSec,
+} from "@/lib/iptvPanelApi";
+import { loadIptvPlatformConfig } from "@/lib/platformApi";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -103,6 +115,77 @@ export default function Dashboard() {
   const [chartFolderId, setChartFolderId] = useState<string>("all");
   const [workspace, setWorkspace] = useState<FolderType>("Cliente");
   const isDebtWorkspace = workspace === "Dívida";
+  const [uniplayCredits, setUniplayCredits] = useState<number | null>(null);
+  const [uniplayConnected, setUniplayConnected] = useState(false);
+  const [loadingCredits, setLoadingCredits] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      setUniplayCredits(null);
+      setUniplayConnected(false);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const cfg = await loadAutomationsConfigRemote(user.id).catch(() =>
+          loadAutomationsConfig(user.id),
+        );
+        const bearer = cfg.iptvBearerToken?.trim() || "";
+        const left = bearer ? tokenExpiresInSec(bearer) : null;
+        const sessionOk = Boolean(bearer) && (left == null || left > 0);
+        const canLogin = Boolean(
+          cfg.iptvUsername?.trim() && cfg.iptvPassword,
+        );
+        // Sem sessão e sem login salvo → não mostra o bloco na Dashboard
+        if (!sessionOk && !canLogin) {
+          if (!cancelled) {
+            setUniplayCredits(null);
+            setUniplayConnected(false);
+            setLoadingCredits(false);
+          }
+          return;
+        }
+        if (!cancelled) setLoadingCredits(true);
+        const plat = await loadIptvPlatformConfig();
+        const ensured = await ensureIptvToken({
+          apiBaseUrl: plat.apiBaseUrl || cfg.iptvApiBaseUrl,
+          bearerToken: bearer,
+          username: cfg.iptvUsername || undefined,
+          password: cfg.iptvPassword || undefined,
+          defaultPackage: plat.packageId || "1",
+          regPassword: plat.regPassword || undefined,
+          apiProxyUrl: plat.apiProxyUrl || undefined,
+        });
+        const bal = await fetchIptvPanelCredits({
+          apiBaseUrl: plat.apiBaseUrl || cfg.iptvApiBaseUrl,
+          bearerToken: ensured.token,
+          username: cfg.iptvUsername || undefined,
+          password: cfg.iptvPassword || undefined,
+          defaultPackage: plat.packageId || "1",
+          regPassword: plat.regPassword || undefined,
+          apiProxyUrl: plat.apiProxyUrl || undefined,
+        });
+        if (!cancelled) {
+          setUniplayCredits(bal.credits);
+          setUniplayConnected(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setUniplayCredits(null);
+          setUniplayConnected(false);
+        }
+      } finally {
+        if (!cancelled) setLoadingCredits(false);
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), 120_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user]);
 
   const folders = useMemo(
     () =>
@@ -643,6 +726,31 @@ export default function Dashboard() {
           ))}
         </Tabs>
       </section>
+
+      {uniplayConnected || loadingCredits ? (
+        <div
+          className={
+            uniplayCredits != null && uniplayCredits > 0
+              ? "mb-4 ax-surface flex flex-wrap items-center justify-between gap-3 border-success/30 bg-success/5 p-3"
+              : "mb-4 ax-surface flex flex-wrap items-center justify-between gap-3 p-3"
+          }
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <Coins className="h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Créditos UniPlay
+              </p>
+              <p className="text-lg font-semibold tabular-nums tracking-tight">
+                {loadingCredits && uniplayCredits == null
+                  ? "…"
+                  : num(formatIptvCredits(uniplayCredits ?? 0))}
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Saldo do painel</p>
+        </div>
+      ) : null}
 
       {isDebtWorkspace ? (
         <>

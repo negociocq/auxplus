@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -10,6 +10,7 @@ import {
   LifeBuoy,
   Download,
   LogOut,
+  Mail,
   Menu,
   MessageCircle,
   PanelLeftClose,
@@ -170,6 +171,22 @@ export function AppLayout() {
   const initials = user.username.slice(0, 2).toUpperCase();
   const sidebarWidth = collapsed ? "w-[4.5rem]" : "w-72";
   const mainPad = collapsed ? "lg:pl-[4.5rem]" : "lg:pl-72";
+  const footerActionClass = cn(
+    "flex w-full items-center rounded-lg text-sm font-medium transition-colors",
+    collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5",
+    "text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
+  );
+  const wrapFooterTooltip = (label: string, button: ReactNode) => {
+    if (!collapsed) return button;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="w-full">{button}</div>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    );
+  };
   const profileAvatar = (
     <Avatar className="h-9 w-9 cursor-pointer ring-offset-sidebar transition hover:ring-2 hover:ring-sidebar-primary">
       {user.avatarUrl ? (
@@ -227,39 +244,25 @@ export function AppLayout() {
           </Button>
         </div>
 
-        <div
-          className={cn(
-            "hidden px-2 pb-2 lg:block",
-            collapsed ? "px-2" : "px-3",
+        <div className={cn("hidden pb-2 lg:block", collapsed ? "px-2" : "px-3")}>
+          {wrapFooterTooltip(
+            collapsed ? "Expandir menu" : "Minimizar menu",
+            <button
+              type="button"
+              className={footerActionClass}
+              onClick={() => setCollapsed((v) => !v)}
+              aria-label={collapsed ? "Expandir menu" : "Minimizar menu"}
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="h-4 w-4 shrink-0 opacity-90" />
+              ) : (
+                <>
+                  <PanelLeftClose className="h-4 w-4 shrink-0 opacity-90" />
+                  Minimizar
+                </>
+              )}
+            </button>,
           )}
-        >
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size={collapsed ? "icon" : "sm"}
-                className={cn(
-                  "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                  !collapsed && "w-full justify-start gap-2",
-                )}
-                onClick={() => setCollapsed((v) => !v)}
-                aria-label={collapsed ? "Expandir menu" : "Minimizar menu"}
-              >
-                {collapsed ? (
-                  <PanelLeftOpen className="h-4 w-4" />
-                ) : (
-                  <>
-                    <PanelLeftClose className="h-4 w-4" />
-                    Minimizar
-                  </>
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              {collapsed ? "Expandir menu" : "Minimizar menu"}
-            </TooltipContent>
-          </Tooltip>
         </div>
 
         <Separator className="bg-sidebar-border" />
@@ -352,17 +355,12 @@ export function AppLayout() {
               </button>
             </div>
           )}
-          {user.isAdmin ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
+          {user.isAdmin
+            ? wrapFooterTooltip(
+                isAdminArea ? "Voltar ao painel" : "Painel admin",
+                <button
                   type="button"
-                  variant="ghost"
-                  size={collapsed ? "icon" : "default"}
-                  className={cn(
-                    "mb-1 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                    collapsed ? "mx-auto" : "w-full justify-start gap-2",
-                  )}
+                  className={cn(footerActionClass, "mb-1")}
                   onClick={() =>
                     navigate(isAdminArea ? "/dashboard" : "/admin")
                   }
@@ -371,65 +369,41 @@ export function AppLayout() {
                   }
                 >
                   {isAdminArea ? (
-                    <ArrowLeft className="h-4 w-4" />
+                    <ArrowLeft className="h-4 w-4 shrink-0 opacity-90" />
                   ) : (
-                    <Shield className="h-4 w-4" />
+                    <Shield className="h-4 w-4 shrink-0 opacity-90" />
                   )}
                   {!collapsed &&
                     (isAdminArea ? "Voltar ao painel" : "Painel admin")}
-                </Button>
-              </TooltipTrigger>
-              {collapsed ? (
-                <TooltipContent side="right">
-                  {isAdminArea ? "Voltar ao painel" : "Painel admin"}
-                </TooltipContent>
-              ) : null}
-            </Tooltip>
-          ) : null}
-          {canOfferInstall ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
+                </button>,
+              )
+            : null}
+          {canOfferInstall
+            ? wrapFooterTooltip(
+                "Instalar app",
+                <button
                   type="button"
-                  variant="ghost"
-                  size={collapsed ? "icon" : "default"}
-                  className={cn(
-                    "mb-1 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                    collapsed ? "mx-auto" : "w-full justify-start gap-2",
-                  )}
+                  className={cn(footerActionClass, "mb-1")}
                   onClick={() => void handleInstallApp()}
                   aria-label="Instalar app"
                 >
-                  <Download className="h-4 w-4" />
+                  <Download className="h-4 w-4 shrink-0 opacity-90" />
                   {!collapsed && "Instalar app"}
-                </Button>
-              </TooltipTrigger>
-              {collapsed ? (
-                <TooltipContent side="right">Instalar app</TooltipContent>
-              ) : null}
-            </Tooltip>
-          ) : null}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size={collapsed ? "icon" : "default"}
-                className={cn(
-                  "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                  collapsed ? "mx-auto" : "w-full justify-start gap-2",
-                )}
-                onClick={handleLogout}
-                aria-label="Sair"
-              >
-                <LogOut className="h-4 w-4" />
-                {!collapsed && "Sair"}
-              </Button>
-            </TooltipTrigger>
-            {collapsed ? (
-              <TooltipContent side="right">Sair</TooltipContent>
-            ) : null}
-          </Tooltip>
+                </button>,
+              )
+            : null}
+          {wrapFooterTooltip(
+            "Sair",
+            <button
+              type="button"
+              className={footerActionClass}
+              onClick={handleLogout}
+              aria-label="Sair"
+            >
+              <LogOut className="h-4 w-4 shrink-0 opacity-90" />
+              {!collapsed && "Sair"}
+            </button>,
+          )}
         </div>
       </aside>
 
@@ -490,6 +464,40 @@ export function AppLayout() {
         </header>
 
         <main className="ax-page animate-slide-up">
+          {!user.email?.trim() ? (
+            <div
+              role="status"
+              className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <Mail className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-amber-950 dark:text-amber-50">
+                    {user.pendingEmail?.trim()
+                      ? "Confirme seu e-mail"
+                      : "Adicione um e-mail à sua conta"}
+                  </p>
+                  <p className="mt-0.5 text-sm text-amber-950/80 dark:text-amber-100/80">
+                    {user.pendingEmail?.trim()
+                      ? `Enviamos um link para ${user.pendingEmail.trim()}. O e-mail só será vinculado à conta depois que você clicar na confirmação.`
+                      : "Contas novas já exigem e-mail com confirmação. Vincule o seu para manter o acesso e poder entrar também pelo e-mail."}
+                  </p>
+                </div>
+              </div>
+              {location.pathname !== "/settings" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => navigate("/settings")}
+                >
+                  {user.pendingEmail?.trim()
+                    ? "Reenviar / alterar"
+                    : "Adicionar e-mail"}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           <Outlet />
         </main>
       </div>

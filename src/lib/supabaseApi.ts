@@ -27,6 +27,7 @@ function mapUser(row: Record<string, unknown>): User {
     id: String(row.id),
     username: String(row.username),
     email: row.email ? String(row.email) : null,
+    pendingEmail: row.pending_email ? String(row.pending_email) : null,
     password: String(row.password ?? ""),
     isAdmin: Boolean(row.is_admin),
     isActive: row.is_active !== false,
@@ -242,11 +243,17 @@ export async function persistAppDataToSupabase(data: AppData): Promise<void> {
     "id",
   );
 
-  // Campos opcionais (migrations: avatar / email)
+  // Campos opcionais (migrations: avatar / email / pending_email)
+  // E-mail confirmado só é gravado via finalizeEmailConfirmation (após o link).
   for (const u of data.users) {
     const patch: Record<string, unknown> = {};
     if (u.avatarUrl !== undefined) patch.avatar_url = u.avatarUrl ?? null;
-    if (u.email !== undefined) patch.email = u.email?.trim() || null;
+    if (u.email?.trim()) {
+      patch.email = u.email.trim().toLowerCase();
+      patch.pending_email = null;
+    } else if (u.pendingEmail !== undefined) {
+      patch.pending_email = u.pendingEmail?.trim().toLowerCase() || null;
+    }
     if (!Object.keys(patch).length) continue;
     const { error } = await supabase
       .from("users")
@@ -254,7 +261,7 @@ export async function persistAppDataToSupabase(data: AppData): Promise<void> {
       .eq("id", Number(u.id));
     if (
       error &&
-      !/avatar_url|email|schema cache/i.test(error.message)
+      !/avatar_url|email|pending_email|schema cache/i.test(error.message)
     ) {
       console.warn("[AuxPlus] user extras sync:", error.message);
     }

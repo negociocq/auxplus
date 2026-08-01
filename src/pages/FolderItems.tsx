@@ -112,9 +112,13 @@ import { loadIptvPlatformConfig } from "@/lib/platformApi";
 import {
   ensureIptvToken,
   getLastIssuedIptvToken,
+  listIptvResellers,
   listIptvUsers,
 } from "@/lib/iptvPanelApi";
-import { syncIptvUsersToFolder } from "@/lib/iptvAutomation";
+import {
+  syncIptvResellersToFolder,
+  syncIptvUsersToFolder,
+} from "@/lib/iptvAutomation";
 import {
   excludeFromSync,
   excludedUsernamesForFolder,
@@ -265,6 +269,8 @@ export default function FolderItems() {
   const [whatsMsg, setWhatsMsg] = useState("");
   const [syncingUniplay, setSyncingUniplay] = useState(false);
   const [syncFolderIdCloud, setSyncFolderIdCloud] = useState("");
+  const [syncResellersFolderIdCloud, setSyncResellersFolderIdCloud] =
+    useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folder = data.folders.find(
@@ -275,16 +281,23 @@ export default function FolderItems() {
     if (!user) return;
     void loadAutomationsConfigRemote(user.id).then((cfg) => {
       setSyncFolderIdCloud(cfg.syncFolderId);
+      setSyncResellersFolderIdCloud(cfg.syncResellersFolderId);
     });
     void loadSyncExclusionsRemote(user.id);
   }, [user]);
 
-  const uniplaySyncEnabled = useMemo(() => {
-    if (!user || !folder || folder.type !== "Cliente") return false;
-    const id =
-      syncFolderIdCloud || loadAutomationsConfig(user.id).syncFolderId;
-    return id === folder.id;
-  }, [user, folder, syncFolderIdCloud]);
+  const uniplaySyncMode = useMemo(() => {
+    if (!user || !folder || folder.type !== "Cliente") return null as null | "clients" | "resellers";
+    const local = loadAutomationsConfig(user.id);
+    const clientsId = syncFolderIdCloud || local.syncFolderId;
+    const resellersId =
+      syncResellersFolderIdCloud || local.syncResellersFolderId;
+    if (resellersId && resellersId === folder.id) return "resellers";
+    if (clientsId && clientsId === folder.id) return "clients";
+    return null;
+  }, [user, folder, syncFolderIdCloud, syncResellersFolderIdCloud]);
+
+  const uniplaySyncEnabled = uniplaySyncMode != null;
 
   const syncUniplay = async () => {
     if (!user || !folder) return;
@@ -292,6 +305,8 @@ export default function FolderItems() {
       toast.error("Sincronização só funciona em pastas de Cliente");
       return;
     }
+    const mode = uniplaySyncMode;
+    if (!mode) return;
     setSyncingUniplay(true);
     try {
       const cfg = await loadAutomationsConfigRemote(user.id);
@@ -317,42 +332,65 @@ export default function FolderItems() {
           iptvBearerToken: ensured.token,
         });
       }
-      const users = await listIptvUsers(
-        {
-          apiBaseUrl: plat.apiBaseUrl,
-          bearerToken: ensured.token,
-          username: cfg.iptvUsername,
-          password: cfg.iptvPassword,
-          defaultPackage: plat.packageId || "1",
-          regPassword: plat.regPassword || undefined,
-          apiProxyUrl: plat.apiProxyUrl || undefined,
-        },
-        { activeOnly: true },
-      );
-      const issued = getLastIssuedIptvToken();
-      if (issued) {
-        saveAutomationsConfig(user.id, {
-          ...loadAutomationsConfig(user.id),
-          iptvBearerToken: issued,
-        });
-      }
+      const creds = {
+        apiBaseUrl: plat.apiBaseUrl,
+        bearerToken: ensured.token,
+        username: cfg.iptvUsername,
+        password: cfg.iptvPassword,
+        defaultPackage: plat.packageId || "1",
+        regPassword: plat.regPassword || undefined,
+        apiProxyUrl: plat.apiProxyUrl || undefined,
+      };
       const excluded = excludedUsernamesForFolder(user.id, folder.id);
       let created = 0;
       let updated = 0;
       let skipped = 0;
-      setData((prev) => {
-        const result = syncIptvUsersToFolder(prev, folder.id, users, {
-          excludedUsernames: excluded,
+
+      if (mode === "resellers") {
+        const rows = await listIptvResellers(creds);
+        const issued = getLastIssuedIptvToken();
+        if (issued) {
+          saveAutomationsConfig(user.id, {
+            ...loadAutomationsConfig(user.id),
+            iptvBearerToken: issued,
+          });
+        }
+        setData((prev) => {
+          const result = syncIptvResellersToFolder(prev, folder.id, rows, {
+            excludedUsernames: excluded,
+          });
+          created = result.created;
+          updated = result.updated;
+          skipped = result.skipped;
+          return result.data;
         });
-        created = result.created;
-        updated = result.updated;
-        skipped = result.skipped;
-        return result.data;
-      });
-      toast.success(
-        `UniPlay: ${updated} vencimento(s) · ${created} novo(s)` +
-          (skipped ? ` · ${skipped} sem mudança` : ""),
-      );
+        toast.success(
+          `Revendedores: ${updated} atualizado(s) · ${created} novo(s)` +
+            (skipped ? ` · ${skipped} sem mudança` : ""),
+        );
+      } else {
+        const users = await listIptvUsers(creds, { activeOnly: true });
+        const issued = getLastIssuedIptvToken();
+        if (issued) {
+          saveAutomationsConfig(user.id, {
+            ...loadAutomationsConfig(user.id),
+            iptvBearerToken: issued,
+          });
+        }
+        setData((prev) => {
+          const result = syncIptvUsersToFolder(prev, folder.id, users, {
+            excludedUsernames: excluded,
+          });
+          created = result.created;
+          updated = result.updated;
+          skipped = result.skipped;
+          return result.data;
+        });
+        toast.success(
+          `UniPlay: ${updated} vencimento(s) · ${created} novo(s)` +
+            (skipped ? ` · ${skipped} sem mudança` : ""),
+        );
+      }
     } catch (e) {
       toast.error(
         e instanceof Error ? e.message : "Falha ao sincronizar UniPlay",
@@ -651,7 +689,9 @@ export default function FolderItems() {
                 ) : (
                   <RefreshCw className="h-4 w-4" />
                 )}
-                Sincronizar UniPlay
+                {uniplaySyncMode === "resellers"
+                  ? "Sincronizar revendedores"
+                  : "Sincronizar UniPlay"}
               </Button>
             ) : null}
             <Button onClick={() => setShowStatusSlide(true)}>
@@ -775,7 +815,9 @@ export default function FolderItems() {
                   ) : (
                     <RefreshCw className="h-4 w-4" />
                   )}
-                  Sincronizar UniPlay
+                  {uniplaySyncMode === "resellers"
+                    ? "Sincronizar revendedores"
+                    : "Sincronizar UniPlay"}
                 </Button>
               ) : null}
             </div>
@@ -942,7 +984,7 @@ export default function FolderItems() {
           }
         />
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-2 sm:space-y-3">
           <AnimatePresence mode="popLayout">
             {items.map((item, index) => (
               <motion.li
@@ -962,28 +1004,131 @@ export default function FolderItems() {
               >
                 <span
                   className={cn(
-                    "w-1.5 shrink-0 self-stretch",
+                    "w-1 shrink-0 self-stretch sm:w-1.5",
                     STATUS_BAR[item.status],
                   )}
                   aria-hidden
                 />
-                <div className="flex min-w-0 flex-1 flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge status={item.status} />
-                      <span className="text-xs font-medium text-muted-foreground">
-                        Usuário:{" "}
-                        <span className="text-foreground">
-                          {maskUser(item.itemId)}
-                        </span>
-                      </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 px-2.5 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:p-4">
+                  <div className="min-w-0 space-y-0.5 sm:space-y-2">
+                    <div className="flex items-start justify-between gap-2 sm:block">
+                      <div className="min-w-0 space-y-0.5 sm:space-y-2">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                          <StatusBadge status={item.status} />
+                          <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">
+                            <span className="sm:hidden">
+                              {maskUser(item.itemId)}
+                            </span>
+                            <span className="hidden sm:inline">
+                              Usuário:{" "}
+                              <span className="text-foreground">
+                                {maskUser(item.itemId)}
+                              </span>
+                            </span>
+                          </span>
+                        </div>
+                        <h3 className="truncate text-sm font-semibold tracking-tight sm:text-base">
+                          {item.name}
+                        </h3>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-0.5 sm:hidden">
+                        <p className="pr-0.5 text-sm font-bold tabular-nums tracking-tight whitespace-nowrap">
+                          {money(item.price || 0)}
+                        </p>
+                        {stripPaymentMarker(item.notes) ? (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-primary"
+                                aria-label="Ver notas"
+                                title="Ver notas"
+                              >
+                                <StickyNote className="h-3.5 w-3.5" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              align="end"
+                              className="w-80 max-w-[min(20rem,calc(100vw-2rem))]"
+                            >
+                              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                                <StickyNote className="h-4 w-4 text-primary" />
+                                Notas
+                              </div>
+                              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                                {stripPaymentMarker(item.notes)}
+                              </p>
+                            </PopoverContent>
+                          </Popover>
+                        ) : null}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              aria-label="Ações"
+                            >
+                              <MoreVertical className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => openEdit(item)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() =>
+                                sendReminder(item, reminderTemplate())
+                              }
+                            >
+                              <Bell className="h-4 w-4" />
+                              Lembrar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => {
+                                setMoveItemId(item.id);
+                                setMoveOpen(true);
+                              }}
+                            >
+                              <ArrowLeftRight className="h-4 w-4" />
+                              Mover
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="gap-2 text-destructive focus:text-destructive"
+                              onClick={() => {
+                                if (confirm(`Excluir "${item.name}"?`)) {
+                                  if (user && item.itemId) {
+                                    excludeFromSync(
+                                      user.id,
+                                      folder.id,
+                                      item.itemId,
+                                    );
+                                  }
+                                  setData((prev) => deleteItem(prev, item.id));
+                                  toast.success("Item excluído");
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                    <h3 className="truncate text-base font-semibold tracking-tight">
-                      {item.name}
-                    </h3>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                    <div className="flex flex-wrap gap-x-2.5 gap-y-0 text-[11px] leading-snug text-muted-foreground sm:gap-x-4 sm:gap-y-1 sm:text-sm sm:leading-normal">
                       <span>
-                        Criado em:{" "}
+                        <span className="sm:hidden">Criado </span>
+                        <span className="hidden sm:inline">Criado em: </span>
                         <span className="font-medium text-foreground">
                           {formatBrDate(
                             String(item.createdAt || "").slice(0, 10),
@@ -991,7 +1136,8 @@ export default function FolderItems() {
                         </span>
                       </span>
                       <span>
-                        Vencimento:{" "}
+                        <span className="sm:hidden">Vence </span>
+                        <span className="hidden sm:inline">Vencimento: </span>
                         <span className="font-medium text-foreground">
                           {item.status === "Sem Vencimento" || !item.dueDate
                             ? "Indefinido"
@@ -999,14 +1145,15 @@ export default function FolderItems() {
                         </span>
                       </span>
                       <span>
-                        Telefone:{" "}
+                        <span className="sm:hidden">Tel </span>
+                        <span className="hidden sm:inline">Telefone: </span>
                         <span className="font-medium text-foreground">
                           {maskPhone(item.phone)}
                         </span>
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">
+                  <div className="hidden items-center justify-between gap-3 sm:flex sm:flex-col sm:items-end">
                     <p className="text-lg font-bold tabular-nums tracking-tight whitespace-nowrap">
                       {money(item.price || 0)}
                     </p>
@@ -1039,66 +1186,66 @@ export default function FolderItems() {
                           </PopoverContent>
                         </Popover>
                       ) : null}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          aria-label="Ações"
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuItem
-                          className="gap-2"
-                          onClick={() => openEdit(item)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="gap-2"
-                          onClick={() =>
-                            sendReminder(item, reminderTemplate())
-                          }
-                        >
-                          <Bell className="h-4 w-4" />
-                          Lembrar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="gap-2"
-                          onClick={() => {
-                            setMoveItemId(item.id);
-                            setMoveOpen(true);
-                          }}
-                        >
-                          <ArrowLeftRight className="h-4 w-4" />
-                          Mover
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="gap-2 text-destructive focus:text-destructive"
-                          onClick={() => {
-                            if (confirm(`Excluir "${item.name}"?`)) {
-                              if (user && item.itemId) {
-                                excludeFromSync(
-                                  user.id,
-                                  folder.id,
-                                  item.itemId,
-                                );
-                              }
-                              setData((prev) => deleteItem(prev, item.id));
-                              toast.success("Item excluído");
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Ações"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuItem
+                            className="gap-2"
+                            onClick={() => openEdit(item)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="gap-2"
+                            onClick={() =>
+                              sendReminder(item, reminderTemplate())
                             }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          >
+                            <Bell className="h-4 w-4" />
+                            Lembrar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="gap-2"
+                            onClick={() => {
+                              setMoveItemId(item.id);
+                              setMoveOpen(true);
+                            }}
+                          >
+                            <ArrowLeftRight className="h-4 w-4" />
+                            Mover
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="gap-2 text-destructive focus:text-destructive"
+                            onClick={() => {
+                              if (confirm(`Excluir "${item.name}"?`)) {
+                                if (user && item.itemId) {
+                                  excludeFromSync(
+                                    user.id,
+                                    folder.id,
+                                    item.itemId,
+                                  );
+                                }
+                                setData((prev) => deleteItem(prev, item.id));
+                                toast.success("Item excluído");
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </div>

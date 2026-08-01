@@ -8,6 +8,7 @@ import {
   parseIptvExpToDateTime,
   resolveTestAccessLinks,
   type IptvRemoteUser,
+  type IptvReseller,
 } from "@/lib/iptvPanelApi";
 import { ymdOnly, parseLocalYmd } from "@/lib/whatsappAutomation";
 import { supabase } from "@/integrations/supabase/client";
@@ -329,6 +330,90 @@ export function syncIptvUsersToFolder(
         dueDate,
         phone: "",
         price: 0,
+        isActive: true,
+      });
+      created += 1;
+    }
+  }
+
+  return { data: next, created, updated, skipped };
+}
+
+/**
+ * Sincroniza revendedores do UniPlay numa pasta.
+ * - itemId = login do revendedor
+ * - name = nota/nome
+ * - phone = WhatsApp do painel
+ * - price = créditos (saldo no painel)
+ * - dueDate = vencimento, se houver
+ */
+export function syncIptvResellersToFolder(
+  data: AppData,
+  folderId: string,
+  resellers: IptvReseller[],
+  opts?: { excludedUsernames?: Set<string> },
+): SyncIptvResult {
+  let next = data;
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  const excluded = opts?.excludedUsernames;
+
+  const folderItems = () =>
+    next.items.filter((i) => i.folderId === folderId && i.isActive !== false);
+
+  for (const remote of resellers) {
+    const username = String(remote.username || "").trim();
+    if (!username) {
+      skipped += 1;
+      continue;
+    }
+    const dueDate = parseIptvExpToDateTime(
+      remote.exp_date ?? (remote as { expDate?: string }).expDate,
+    );
+    const name =
+      (remote.name && String(remote.name).trim()) ||
+      (remote.nota && String(remote.nota).trim()) ||
+      username;
+    const phone = remote.phone?.trim() || "";
+    const credits =
+      typeof remote.credits === "number" && Number.isFinite(remote.credits)
+        ? remote.credits
+        : null;
+
+    const existing = folderItems().find(
+      (i) => i.itemId.trim().toLowerCase() === username.toLowerCase(),
+    );
+
+    if (!existing && excluded?.has(username.toLowerCase())) {
+      skipped += 1;
+      continue;
+    }
+
+    if (existing) {
+      const patch: Partial<typeof existing> = {};
+      const existingDue = existing.dueDate
+        ? parseIptvExpToDateTime(existing.dueDate) ||
+          `${ymdOnly(existing.dueDate)} 00:00:00`
+        : "";
+      if (dueDate && existingDue !== dueDate) patch.dueDate = dueDate;
+      if (name && name !== (existing.name || "").trim()) patch.name = name;
+      if (phone && phone !== (existing.phone || "").trim()) patch.phone = phone;
+      if (credits != null && credits !== existing.price) patch.price = credits;
+      if (Object.keys(patch).length === 0) {
+        skipped += 1;
+        continue;
+      }
+      next = updateItem(next, { ...existing, ...patch });
+      updated += 1;
+    } else {
+      next = createItem(next, {
+        folderId,
+        itemId: username,
+        name,
+        dueDate,
+        phone,
+        price: credits ?? 0,
         isActive: true,
       });
       created += 1;

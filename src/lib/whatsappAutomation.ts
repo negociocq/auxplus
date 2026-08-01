@@ -360,11 +360,16 @@ export function normalizeBrPhone(phone: string): string | null {
   return null;
 }
 
-function greeting() {
+/** Saudação dinâmica — mesma de `{getGreeting}` nos templates. */
+export function getWhatsappGreeting() {
   const h = new Date().getHours();
   if (h < 12) return "Bom dia,";
   if (h < 18) return "Boa tarde,";
   return "Boa noite,";
+}
+
+function greeting() {
+  return getWhatsappGreeting();
 }
 
 /** yyyy-MM-dd em calendário local (evita bug do parseISO UTC no Brasil). */

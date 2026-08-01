@@ -157,23 +157,50 @@ export function refreshItemStatuses(data: AppData): AppData {
   };
 }
 
+function emailTakenByOther(
+  data: AppData,
+  normalizedEmail: string,
+  exceptUserId?: string,
+) {
+  return data.users.some((u) => {
+    if (exceptUserId && u.id === exceptUserId) return false;
+    const confirmed = u.email?.trim().toLowerCase();
+    const pending = u.pendingEmail?.trim().toLowerCase();
+    return confirmed === normalizedEmail || pending === normalizedEmail;
+  });
+}
+
 export function createUser(
   data: AppData,
   username: string,
   password: string,
+  email: string,
 ): { data: AppData; error?: string; user?: User } {
-  if (data.users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) {
+    return { data, error: "Informe um e-mail." };
+  }
+  if (
+    data.users.some((u) => u.username.toLowerCase() === username.toLowerCase())
+  ) {
     return { data, error: "Nome de usuário já existe." };
+  }
+  if (emailTakenByOther(data, normalizedEmail)) {
+    return { data, error: "Este e-mail já está em uso." };
   }
   const user: User = {
     id: nextId(data.users.map((u) => u.id)),
     username,
+    email: null,
+    pendingEmail: normalizedEmail,
     password,
     isAdmin: false,
     isActive: true,
   };
   return { data: { ...data, users: [...data.users, user] }, user };
 }
+
+export { emailTakenByOther };
 
 export function createFolder(
   data: AppData,

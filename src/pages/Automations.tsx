@@ -4,6 +4,7 @@ import {
   Cable,
   CheckCircle2,
   ClipboardCopy,
+  Coins,
   ExternalLink,
   Eye,
   EyeOff,
@@ -11,11 +12,13 @@ import {
   History,
   Loader2,
   MonitorPlay,
+  QrCode,
   RefreshCw,
   Save,
   Search,
   Smartphone,
   Trash2,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBrDate } from "@/lib/format";
@@ -69,6 +72,7 @@ import {
   nextDueAfterRenew,
   patchIptvJob,
   saveIptvJobs,
+  syncIptvResellersToFolder,
   type IptvJob,
 } from "@/lib/iptvAutomation";
 import {
@@ -77,13 +81,18 @@ import {
   createIptvTest,
   deleteSmartApp,
   ensureIptvToken,
+  fetchIptvPanelCredits,
   fetchIptvUserPassword,
   findIptvUserByUsername,
+  formatIptvCredits,
   formatMacInput,
+  macCaretAfterHex,
+  macHexDigits,
   getLastIssuedIptvToken,
   enrichCreateTestResult,
   IPTV_RENEW_OPTIONS,
   IPTV_TEST_HOURS,
+  listIptvResellers,
   listIptvUsers,
   parseIptvExpToDateTime,
   resolveTestAccessLinks,
@@ -96,6 +105,7 @@ import {
   tokenExpiresInSec,
   type IptvPanelCreds,
   type IptvRenewOption,
+  type IptvReseller,
   type PartnerAppId,
   type SmartAppEntry,
 } from "@/lib/iptvPanelApi";
@@ -103,6 +113,10 @@ import {
   fetchEvolutionStatus,
   sendEvolutionText,
 } from "@/lib/whatsappAutomation";
+import {
+  assertMpAccessToken,
+  pingMercadoPago,
+} from "@/lib/mercadoPagoApi";
 import { openPanelWindow } from "@/lib/panelKeepAlive";
 import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
@@ -122,7 +136,11 @@ function statusLabel(s: IptvJob["status"]) {
 
 export default function Automations() {
   const { user, data, setData } = useApp();
-  const { hidden: hideSensitive, user: maskUser } = useHideBalance();
+  const {
+    hidden: hideSensitive,
+    user: maskUser,
+    num: maskNum,
+  } = useHideBalance();
   const [config, setConfig] = useState<AutomationsConfig>(() =>
     loadAutomationsConfig(user?.id || "0"),
   );
@@ -141,6 +159,13 @@ export default function Automations() {
   const [renewMonths, setRenewMonths] = useState(config.renewMonths);
   const [testHours, setTestHours] = useState(config.testHours);
   const [syncFolderId, setSyncFolderId] = useState(config.syncFolderId);
+  const [syncResellersFolderId, setSyncResellersFolderId] = useState(
+    config.syncResellersFolderId,
+  );
+  const [resellers, setResellers] = useState<IptvReseller[]>([]);
+  const [loadingResellers, setLoadingResellers] = useState(false);
+  const [syncingResellers, setSyncingResellers] = useState(false);
+  const [resellersQ, setResellersQ] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [renewTargetId, setRenewTargetId] = useState<string | null>(null);
   const [renewOption, setRenewOption] = useState<IptvRenewOption>(
@@ -181,6 +206,13 @@ export default function Automations() {
   const [deletingAppId, setDeletingAppId] = useState<string | number | null>(
     null,
   );
+  const [mpAccessToken, setMpAccessToken] = useState(config.mpAccessToken);
+  const [mpPayerEmail, setMpPayerEmail] = useState(config.mpPayerEmail);
+  const [showMpToken, setShowMpToken] = useState(false);
+  const [savingMp, setSavingMp] = useState(false);
+  const [testingMp, setTestingMp] = useState(false);
+  const [panelCredits, setPanelCredits] = useState<number | null>(null);
+  const [loadingCredits, setLoadingCredits] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -196,6 +228,9 @@ export default function Automations() {
       setRenewMonths(next.renewMonths);
       setTestHours(next.testHours);
       setSyncFolderId(next.syncFolderId);
+      setSyncResellersFolderId(next.syncResellersFolderId);
+      setMpAccessToken(next.mpAccessToken);
+      setMpPayerEmail(next.mpPayerEmail);
     });
   }, [user]);
 
@@ -223,11 +258,54 @@ export default function Automations() {
   useEffect(() => {
     if (!uniplayConnected) {
       setUniplaySubTab("conexao");
+      setResellers([]);
       return;
     }
     // Ao conectar, abre Ativos (Conexão fica como 3ª aba)
     setUniplaySubTab((tab) => (tab === "conexao" ? "ativos" : tab));
   }, [uniplayConnected]);
+
+  useEffect(() => {
+    if (!uniplayConnected || uniplaySubTab !== "revendedores") return;
+    if (resellers.length > 0 || loadingResellers) return;
+    void (async () => {
+      setLoadingResellers(true);
+      try {
+        const creds: IptvPanelCreds = {
+          apiBaseUrl: platform.apiBaseUrl || config.iptvApiBaseUrl,
+          bearerToken: bearer.trim(),
+          regPassword: platform.regPassword.trim() || undefined,
+          defaultPackage: platform.packageId.trim() || "1",
+          username: panelUser.trim() || undefined,
+          password: panelPass || undefined,
+          apiProxyUrl: platform.apiProxyUrl?.trim() || undefined,
+        };
+        const ensured = await ensureIptvToken(creds);
+        const rows = await listIptvResellers({
+          ...creds,
+          bearerToken: ensured.token,
+        });
+        setResellers(rows);
+      } catch {
+        /* silencioso na abertura da aba */
+      } finally {
+        setLoadingResellers(false);
+      }
+    })();
+  }, [
+    uniplayConnected,
+    uniplaySubTab,
+    resellers.length,
+    loadingResellers,
+    bearer,
+    platform.apiBaseUrl,
+    platform.apiProxyUrl,
+    platform.regPassword,
+    platform.packageId,
+    config.iptvApiBaseUrl,
+    panelUser,
+    panelPass,
+  ]);
 
   // Renova o Bearer sozinho a cada 15 min (se usuário/senha salvos)
   useEffect(() => {
@@ -394,6 +472,64 @@ export default function Automations() {
     [detailJobId, jobs],
   );
 
+  useEffect(() => {
+    if (!uniplayConnected || !user) {
+      setPanelCredits(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      setLoadingCredits(true);
+      try {
+        const creds: IptvPanelCreds = {
+          apiBaseUrl: platform.apiBaseUrl || config.iptvApiBaseUrl,
+          bearerToken: bearer.trim(),
+          regPassword: platform.regPassword.trim() || undefined,
+          defaultPackage: platform.packageId.trim() || "1",
+          username: panelUser.trim() || undefined,
+          password: panelPass || undefined,
+          apiProxyUrl: platform.apiProxyUrl?.trim() || undefined,
+        };
+        const ensured = await ensureIptvToken(creds);
+        if (ensured.renewed && user) {
+          setBearer(ensured.token);
+          const cur = loadAutomationsConfig(user.id);
+          saveAutomationsConfig(user.id, {
+            ...cur,
+            iptvBearerToken: ensured.token,
+          });
+          setConfig((c) => ({ ...c, iptvBearerToken: ensured.token }));
+        }
+        const bal = await fetchIptvPanelCredits({
+          ...creds,
+          bearerToken: ensured.token,
+        });
+        if (!cancelled) setPanelCredits(bal.credits);
+      } catch {
+        /* silencioso — badge some se falhar */
+      } finally {
+        if (!cancelled) setLoadingCredits(false);
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [
+    uniplayConnected,
+    user,
+    bearer,
+    platform.apiBaseUrl,
+    platform.apiProxyUrl,
+    platform.regPassword,
+    platform.packageId,
+    config.iptvApiBaseUrl,
+    panelUser,
+    panelPass,
+  ]);
+
   if (!user) return null;
 
   const persistJobs = (next: IptvJob[]) => {
@@ -424,6 +560,104 @@ export default function Automations() {
     setConfig((c) => ({ ...c, iptvBearerToken: token }));
   };
 
+  const refreshPanelCredits = async (silent = true) => {
+    if (!uniplayConnected) {
+      setPanelCredits(null);
+      return;
+    }
+    setLoadingCredits(true);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const bal = await fetchIptvPanelCredits({
+        ...panelCreds(),
+        bearerToken: ensured.token,
+      });
+      setPanelCredits(bal.credits);
+    } catch (e) {
+      if (!silent) {
+        toast.error(
+          e instanceof Error ? e.message : "Não foi possível ler os créditos",
+        );
+      }
+    } finally {
+      setLoadingCredits(false);
+    }
+  };
+
+  const refreshResellers = async (silent = false) => {
+    if (!uniplayConnected) {
+      setResellers([]);
+      return;
+    }
+    setLoadingResellers(true);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const rows = await listIptvResellers({
+        ...panelCreds(),
+        bearerToken: ensured.token,
+      });
+      setResellers(rows);
+      if (!silent) {
+        toast.success(
+          rows.length
+            ? `${rows.length} revendedor(es) no painel`
+            : "Nenhum revendedor encontrado",
+        );
+      }
+    } catch (e) {
+      if (!silent) {
+        toast.error(
+          e instanceof Error ? e.message : "Falha ao listar revendedores",
+        );
+      }
+    } finally {
+      setLoadingResellers(false);
+    }
+  };
+
+  const syncResellersNow = async () => {
+    if (!syncResellersFolderId) {
+      toast.error("Escolha a pasta de revendedores em Conexão");
+      return;
+    }
+    setSyncingResellers(true);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const rows = await listIptvResellers({
+        ...panelCreds(),
+        bearerToken: ensured.token,
+      });
+      setResellers(rows);
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      setData((prev) => {
+        const result = syncIptvResellersToFolder(
+          prev,
+          syncResellersFolderId,
+          rows,
+        );
+        created = result.created;
+        updated = result.updated;
+        skipped = result.skipped;
+        return result.data;
+      });
+      toast.success(
+        `Revendedores: ${updated} atualizado(s) · ${created} novo(s)` +
+          (skipped ? ` · ${skipped} sem mudança` : ""),
+      );
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Falha ao sincronizar revendedores",
+      );
+    } finally {
+      setSyncingResellers(false);
+    }
+  };
+
   const refreshTokenNow = async () => {
     if (!panelUser.trim() || !panelPass) {
       toast.error("Salve usuário e senha da sua conta UniPlay");
@@ -448,6 +682,7 @@ export default function Automations() {
       persistToken(token);
       setUniplaySubTab("ativos");
       toast.success(renewed ? "UniPlay conectado" : "Sessão atualizada");
+      void refreshPanelCredits(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao conectar");
     } finally {
@@ -470,7 +705,10 @@ export default function Automations() {
       renewMonths,
       testHours,
       syncFolderId,
+      syncResellersFolderId,
       iptvAutoRefreshToken: true,
+      mpAccessToken: mpAccessToken.trim(),
+      mpPayerEmail: mpPayerEmail.trim(),
     };
     setConfig(next);
     const saved = await saveAutomationsConfigRemote(user.id, next);
@@ -550,6 +788,62 @@ export default function Automations() {
           ? `Renovado, mas falhou o WhatsApp: ${e.message}`
           : "Renovado, mas falhou o envio do comprovante",
       );
+    }
+  };
+
+  const saveMercadoPagoConfig = async () => {
+    if (!user) return;
+    let token: string;
+    try {
+      token = assertMpAccessToken(mpAccessToken);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Access Token inválido");
+      return;
+    }
+    if (!mpPayerEmail.trim() || !mpPayerEmail.includes("@")) {
+      toast.error("Informe um e-mail válido (pagador do PIX na API)");
+      return;
+    }
+    setSavingMp(true);
+    setMpAccessToken(token);
+    const next: AutomationsConfig = {
+      ...config,
+      mpAccessToken: token,
+      mpPayerEmail: mpPayerEmail.trim(),
+    };
+    setConfig(next);
+    const saved = await saveAutomationsConfigRemote(user.id, next);
+    setSavingMp(false);
+    setShowMpToken(false);
+    if (saved.warning) {
+      toast.message("Mercado Pago salvo neste PC", {
+        description: saved.warning,
+      });
+    } else {
+      toast.success("Mercado Pago salvo em todos os dispositivos");
+    }
+  };
+
+  const testMercadoPagoConnection = async () => {
+    let token: string;
+    try {
+      token = assertMpAccessToken(mpAccessToken);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Access Token inválido");
+      return;
+    }
+    setTestingMp(true);
+    try {
+      const me = await pingMercadoPago(token);
+      toast.success(
+        me.nickname || me.email
+          ? `Token OK · conta ${me.nickname || me.email}`
+          : "Token OK no Mercado Pago",
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao testar token");
+    } finally {
+      setTestingMp(false);
     }
   };
 
@@ -1212,14 +1506,18 @@ export default function Automations() {
     <div className="space-y-6">
       <PageHeader
         title="Automações"
-        description="Painéis e integrações: UniPlay (IPTV) e Winbox (internet)."
+        description="Integrações: UniPlay, conexão Mercado Pago e Winbox. PIX em WhatsApp."
       />
 
       <Tabs defaultValue="painel" className="space-y-4">
-        <TabsList className="bg-background/80">
+        <TabsList className="h-auto flex-wrap bg-background/80">
           <TabsTrigger value="painel" className="gap-1.5">
             <MonitorPlay className="h-3.5 w-3.5" />
             UniPlay
+          </TabsTrigger>
+          <TabsTrigger value="mercado-pago" className="gap-1.5">
+            <QrCode className="h-3.5 w-3.5" />
+            Mercado Pago
           </TabsTrigger>
           <TabsTrigger value="winbox" className="gap-1.5">
             <Cable className="h-3.5 w-3.5" />
@@ -1228,6 +1526,41 @@ export default function Automations() {
         </TabsList>
 
         <TabsContent value="painel" className="mt-0 space-y-4">
+          {uniplayConnected ? (
+            <div className="ax-surface flex flex-wrap items-center justify-between gap-3 p-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <Coins className="h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Créditos UniPlay
+                  </p>
+                  <p className="text-lg font-semibold tabular-nums tracking-tight">
+                    {loadingCredits && panelCredits == null
+                      ? "…"
+                      : panelCredits == null
+                        ? "—"
+                        : maskNum(formatIptvCredits(panelCredits))}
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                disabled={loadingCredits}
+                onClick={() => void refreshPanelCredits(false)}
+              >
+                {loadingCredits ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                Atualizar
+              </Button>
+            </div>
+          ) : null}
+
           <Tabs
             value={uniplayConnected ? uniplaySubTab : "conexao"}
             onValueChange={setUniplaySubTab}
@@ -1238,6 +1571,18 @@ export default function Automations() {
                 <>
                   <TabsTrigger value="ativos" className="gap-1.5">
                     Ativos
+                  </TabsTrigger>
+                  <TabsTrigger value="revendedores" className="gap-1.5">
+                    <Users className="h-3.5 w-3.5" />
+                    Revendedores
+                    {resellers.length > 0 ? (
+                      <Badge
+                        variant="secondary"
+                        className="ml-0.5 h-5 px-1.5 text-[10px]"
+                      >
+                        {resellers.length}
+                      </Badge>
+                    ) : null}
                   </TabsTrigger>
                   <TabsTrigger value="testes" className="gap-1.5">
                     <FlaskConical className="h-3.5 w-3.5" />
@@ -1362,7 +1707,7 @@ export default function Automations() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs">Pasta para sincronizar</Label>
+                <Label className="text-xs">Pasta de clientes (sync)</Label>
                 <Select
                   value={syncFolderId || "__none__"}
                   onValueChange={(v) => {
@@ -1377,7 +1722,7 @@ export default function Automations() {
                     toast.message(
                       nextId
                         ? "Botão Sincronizar UniPlay liberado nessa pasta"
-                        : "Botão de sincronizar removido",
+                        : "Botão de sincronizar clientes removido",
                     );
                   }}
                 >
@@ -1394,8 +1739,45 @@ export default function Automations() {
                   </SelectContent>
                 </Select>
                 <p className="text-[11px] text-muted-foreground">
-                  Só escolhe onde o botão aparece. A sincronização só roda quando
-                  você apertar o botão na pasta.
+                  Botão “Sincronizar UniPlay” na pasta de clientes IPTV.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Pasta de revendedores (sync)</Label>
+                <Select
+                  value={syncResellersFolderId || "__none__"}
+                  onValueChange={(v) => {
+                    const nextId = v === "__none__" ? "" : v;
+                    setSyncResellersFolderId(nextId);
+                    if (!user) return;
+                    const cur = loadAutomationsConfig(user.id);
+                    const next = { ...cur, syncResellersFolderId: nextId };
+                    saveAutomationsConfig(user.id, next);
+                    void saveAutomationsConfigRemote(user.id, next);
+                    setConfig(next);
+                    toast.message(
+                      nextId
+                        ? "Pasta de revendedores vinculada"
+                        : "Pasta de revendedores desvinculada",
+                    );
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Escolha a pasta de revendedores" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhuma</SelectItem>
+                    {clientFolders.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Crie uma pasta Cliente (ex.: Revendedores) e vincule aqui.
+                  Sync pela aba Revendedores ou pelo botão na pasta.
                 </p>
               </div>
             </form>
@@ -1566,11 +1948,29 @@ export default function Automations() {
                   id="app-device"
                   value={appDevice}
                   onChange={(e) => {
-                    const raw = e.target.value;
+                    const el = e.target;
+                    const raw = el.value;
                     const isMac =
                       PARTNER_APPS.find((a) => a.id === appId)?.deviceField ===
                       "mac";
-                    setAppDevice(isMac ? formatMacInput(raw) : raw);
+                    if (!isMac) {
+                      setAppDevice(raw);
+                      return;
+                    }
+                    const caret = el.selectionStart ?? raw.length;
+                    const hexBefore = macHexDigits(raw.slice(0, caret)).length;
+                    const next = formatMacInput(raw);
+                    const nextCaret = macCaretAfterHex(next, hexBefore);
+                    if (next !== appDevice) {
+                      setAppDevice(next);
+                      requestAnimationFrame(() => {
+                        el.setSelectionRange(nextCaret, nextCaret);
+                      });
+                    } else if (raw !== next) {
+                      // `:` digitado: estado igual, mas o DOM ficou sujo — sincroniza
+                      el.value = next;
+                      el.setSelectionRange(nextCaret, nextCaret);
+                    }
                   }}
                   placeholder={
                     PARTNER_APPS.find((a) => a.id === appId)?.deviceField ===
@@ -1580,6 +1980,8 @@ export default function Automations() {
                   }
                   className="h-9 font-mono text-xs"
                   autoComplete="off"
+                  spellCheck={false}
+                  inputMode="text"
                   maxLength={
                     PARTNER_APPS.find((a) => a.id === appId)?.deviceField ===
                     "mac"
@@ -1723,6 +2125,118 @@ export default function Automations() {
               )
             ) : null}
           </section>
+            </TabsContent>
+
+            <TabsContent value="revendedores" className="mt-0 space-y-4">
+              <section className="ax-surface space-y-3 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-sm font-semibold tracking-tight">
+                      Revendedores
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      {syncResellersFolderId
+                        ? `Pasta vinculada: ${
+                            clientFolders.find(
+                              (f) => f.id === syncResellersFolderId,
+                            )?.name || syncResellersFolderId
+                          }`
+                        : "Vincule uma pasta em Conexão para sincronizar"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={loadingResellers}
+                      onClick={() => void refreshResellers(false)}
+                    >
+                      {loadingResellers ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      )}
+                      Atualizar lista
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={
+                        syncingResellers ||
+                        loadingResellers ||
+                        !syncResellersFolderId
+                      }
+                      onClick={() => void syncResellersNow()}
+                    >
+                      {syncingResellers ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Users className="h-3.5 w-3.5" />
+                      )}
+                      Sincronizar pasta
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="h-9 pl-9"
+                    value={resellersQ}
+                    onChange={(e) => setResellersQ(e.target.value)}
+                    placeholder="Filtrar por usuário, nome ou telefone…"
+                    autoComplete="off"
+                  />
+                </div>
+
+                {loadingResellers && resellers.length === 0 ? (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando revendedores…
+                  </p>
+                ) : resellers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum revendedor na lista. Toque em Atualizar lista.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {resellers
+                      .filter((r) => {
+                        const q = resellersQ.trim().toLowerCase();
+                        if (!q) return true;
+                        return (
+                          r.username.toLowerCase().includes(q) ||
+                          (r.name || "").toLowerCase().includes(q) ||
+                          (r.phone || "").toLowerCase().includes(q) ||
+                          (r.email || "").toLowerCase().includes(q)
+                        );
+                      })
+                      .map((r) => (
+                        <li
+                          key={`${r.id}-${r.username}`}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium">
+                              {r.name || r.username}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {maskUser(r.username)}
+                              {r.phone ? ` · ${r.phone}` : ""}
+                              {r.email ? ` · ${r.email}` : ""}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="tabular-nums">
+                            {r.credits != null
+                              ? `${maskNum(formatIptvCredits(r.credits))} créd.`
+                              : "—"}
+                          </Badge>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </section>
             </TabsContent>
 
             <TabsContent value="testes" className="mt-0 space-y-4">
@@ -2110,6 +2624,108 @@ export default function Automations() {
               </>
             ) : null}
           </Tabs>
+        </TabsContent>
+
+        <TabsContent value="mercado-pago" className="mt-0 space-y-4">
+          <section className="ax-surface space-y-3 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold tracking-tight">
+                Conexão Mercado Pago
+              </h2>
+              <span className="truncate text-[11px] text-muted-foreground">
+                {mpAccessToken.trim() ? "Configurado" : "Não configurado"}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Só a conexão da API. Para gerar e enviar PIX ao cliente, use a
+              página WhatsApp.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs" htmlFor="mp-token">
+                  Access Token (não use a Public Key)
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="mp-token"
+                    type={showMpToken ? "text" : "password"}
+                    value={mpAccessToken}
+                    onChange={(e) => setMpAccessToken(e.target.value)}
+                    onPaste={(e) => {
+                      const text = e.clipboardData.getData("text");
+                      if (!text) return;
+                      e.preventDefault();
+                      setMpAccessToken(text.trim());
+                    }}
+                    placeholder="APP_USR-… (token longo de Produção)"
+                    className="h-9 pr-9"
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted"
+                    onClick={() => setShowMpToken((v) => !v)}
+                    aria-label={
+                      showMpToken ? "Ocultar token" : "Mostrar token"
+                    }
+                  >
+                    {showMpToken ? (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs" htmlFor="mp-email">
+                  E-mail do pagador (API)
+                </Label>
+                <Input
+                  id="mp-email"
+                  type="email"
+                  value={mpPayerEmail}
+                  onChange={(e) => setMpPayerEmail(e.target.value)}
+                  placeholder="seu@email.com"
+                  className="h-9"
+                  autoComplete="off"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Exigido pela API do Mercado Pago na criação do PIX (pode ser o
+                  seu e-mail da conta MP).
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                className="h-9"
+                disabled={savingMp}
+                onClick={() => void saveMercadoPagoConfig()}
+              >
+                <Save className="h-3.5 w-3.5" />
+                {savingMp ? "…" : "Salvar Mercado Pago"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-9"
+                disabled={testingMp || !mpAccessToken.trim()}
+                onClick={() => void testMercadoPagoConnection()}
+              >
+                {testingMp ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+                Testar token
+              </Button>
+            </div>
+          </section>
         </TabsContent>
 
         <TabsContent value="winbox" className="mt-0 space-y-4">

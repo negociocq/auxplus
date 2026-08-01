@@ -3,6 +3,7 @@ import { differenceInCalendarDays, format } from "date-fns";
 import {
   Link2,
   Loader2,
+  ListOrdered,
   MessageSquareText,
   ChevronDown,
   Power,
@@ -13,6 +14,7 @@ import {
   Unplug,
   Clock3,
   CheckCircle2,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBrDate } from "@/lib/format";
@@ -26,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Collapsible,
   CollapsibleContent,
@@ -70,6 +73,7 @@ import {
   loadEvolutionPlatformConfig,
   type EvolutionPlatformConfig,
 } from "@/lib/platformApi";
+import { PixRenewPanel } from "@/components/whatsapp/PixRenewPanel";
 import { cn } from "@/lib/utils";
 
 function statusLabel(status: WaConnectionStatus) {
@@ -445,177 +449,232 @@ export default function WhatsAppPage() {
     <div className="space-y-6">
       <PageHeader
         title="WhatsApp"
-        description="Vincule seu número, configure lembretes de vencimento e envie com intervalos seguros."
+        description="Vincule o número, lembretes de vencimento, PIX de renovação e envio com intervalos seguros."
       />
 
-      <section
-        className={cn(
-          "ax-surface flex flex-wrap items-center justify-between gap-4 p-5",
-          settings.enabled
-            ? "border-success/40 bg-success/5"
-            : "border-border",
-        )}
-      >
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2 font-semibold tracking-tight">
-            <Power
-              className={cn(
-                "h-4 w-4",
-                settings.enabled ? "text-success" : "text-muted-foreground",
-              )}
-            />
-            Autoenvio
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {settings.enabled
-              ? `Ligado — envia sozinho a partir de ${settings.sendTime} (aba aberta + WhatsApp conectado).`
-              : "Desligado — só envia se você clicar em Enviar. Nada sai sozinho."}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            variant="outline"
-            className={cn(
-              settings.enabled
-                ? "border-success/40 bg-success/15 text-success"
-                : "text-muted-foreground",
-            )}
-          >
-            {settings.enabled ? "LIGADO" : "DESLIGADO"}
-          </Badge>
-          <Button
-            type="button"
-            variant={settings.enabled ? "destructive" : "default"}
-            onClick={() => setAutoSend(!settings.enabled)}
-          >
-            <Power className="h-4 w-4" />
-            {settings.enabled ? "Desligar autoenvio" : "Ligar autoenvio"}
-          </Button>
-        </div>
-      </section>
-
-      <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-foreground">
-        <div className="flex gap-2">
-          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <div className="space-y-1">
-            <p className="font-medium">Proteção anti-ban</p>
-            <p className="text-muted-foreground">
-              O envio respeita intervalo entre mensagens, limite por hora/dia e
-              atraso aleatório. Use um número dedicado, evite spam e não envie
-              em massa fora do horário configurado.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        {/* Conexão */}
-        <section className="ax-surface space-y-4 p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 font-semibold tracking-tight">
-                <QrCode className="h-4 w-4 text-primary" />
-                Vincular WhatsApp
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Escaneie o QR no WhatsApp do celular (Aparelhos conectados).
-              </p>
-            </div>
+      <Tabs defaultValue="fila" className="space-y-4">
+        <TabsList className="h-auto flex-wrap bg-background/80">
+          {status !== "open" ? (
+            <TabsTrigger value="conexao" className="gap-1.5">
+              <QrCode className="h-3.5 w-3.5" />
+              Conexão
+              <Badge
+                variant="outline"
+                className="ml-0.5 h-5 px-1.5 text-[10px]"
+              >
+                …
+              </Badge>
+            </TabsTrigger>
+          ) : null}
+          <TabsTrigger value="fila" className="gap-1.5">
+            <ListOrdered className="h-3.5 w-3.5" />
+            Fila
+            {queue.length > 0 ? (
+              <Badge variant="secondary" className="ml-0.5 h-5 px-1.5 text-[10px]">
+                {queue.length}
+              </Badge>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="pix" className="gap-1.5">
+            <Wallet className="h-3.5 w-3.5" />
+            PIX
+          </TabsTrigger>
+          <TabsTrigger value="lembretes" className="gap-1.5">
+            <MessageSquareText className="h-3.5 w-3.5" />
+            Lembretes
             <Badge
-              variant={status === "open" ? "default" : "secondary"}
+              variant="outline"
               className={cn(
-                status === "open" && "bg-success/15 text-success hover:bg-success/15",
+                "ml-0.5 h-5 px-1.5 text-[10px]",
+                settings.enabled &&
+                  "border-success/40 bg-success/15 text-success",
               )}
             >
-              {statusLabel(status)}
+              {settings.enabled ? "Auto" : "Off"}
             </Badge>
-          </div>
-
-          {!runtime ? (
-            <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              Aguardando o administrador configurar a API do WhatsApp em{" "}
-              <strong className="text-foreground">Admin → API</strong>. Depois
-              é só gerar o QR e escanear.
-            </div>
-          ) : null}
-
+          </TabsTrigger>
           {status === "open" ? (
-            <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3">
-              <CheckCircle2 className="h-8 w-8 shrink-0 text-success" />
-              <div className="min-w-0">
-                <p className="font-medium">WhatsApp conectado</p>
-                <p className="text-sm text-muted-foreground">
-                  Pronto para enviar lembretes com intervalo seguro.
+            <TabsTrigger value="conexao" className="gap-1.5">
+              <QrCode className="h-3.5 w-3.5" />
+              Conexão
+              <Badge
+                variant="outline"
+                className="ml-0.5 h-5 px-1.5 text-[10px] border-success/40 bg-success/15 text-success"
+              >
+                OK
+              </Badge>
+            </TabsTrigger>
+          ) : null}
+        </TabsList>
+
+        <TabsContent value="conexao" className="mt-0 space-y-4">
+          <section className="ax-surface mx-auto max-w-xl space-y-4 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 font-semibold tracking-tight">
+                  <QrCode className="h-4 w-4 text-primary" />
+                  Vincular WhatsApp
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Escaneie o QR no WhatsApp do celular (Aparelhos conectados).
+                </p>
+              </div>
+              <Badge
+                variant={status === "open" ? "default" : "secondary"}
+                className={cn(
+                  status === "open" &&
+                    "bg-success/15 text-success hover:bg-success/15",
+                )}
+              >
+                {statusLabel(status)}
+              </Badge>
+            </div>
+
+            {!runtime ? (
+              <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                Aguardando o administrador configurar a API do WhatsApp em{" "}
+                <strong className="text-foreground">Admin → API</strong>. Depois
+                é só gerar o QR e escanear.
+              </div>
+            ) : null}
+
+            {status === "open" ? (
+              <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3">
+                <CheckCircle2 className="h-8 w-8 shrink-0 text-success" />
+                <div className="min-w-0">
+                  <p className="font-medium">WhatsApp conectado</p>
+                  <p className="text-sm text-muted-foreground">
+                    Pronto para enviar lembretes e PIX com intervalo seguro.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-[200px] items-center justify-center rounded-xl border bg-muted/30 p-4">
+                {qrBase64 ? (
+                  <img
+                    src={qrBase64}
+                    alt="QR Code WhatsApp"
+                    className="max-h-56 rounded-lg bg-white p-2"
+                  />
+                ) : (
+                  <div className="max-w-sm text-center text-sm text-muted-foreground">
+                    <Link2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
+                    Gere o QR Code e escaneie no WhatsApp do celular (Aparelhos
+                    conectados).
+                  </div>
+                )}
+              </div>
+            )}
+
+            {pairingCode ? (
+              <p className="text-center text-sm text-muted-foreground">
+                Código de pareamento:{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {pairingCode}
+                </span>
+              </p>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => void refreshQr()}
+                disabled={busy || !runtime}
+              >
+                {busy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Gerar / atualizar QR
+              </Button>
+              {status === "open" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void onDisconnect()}
+                  disabled={busy}
+                >
+                  <Unplug className="h-4 w-4" />
+                  Desconectar
+                </Button>
+              ) : null}
+            </div>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="lembretes" className="mt-0 space-y-4">
+          <section
+            className={cn(
+              "ax-surface flex flex-wrap items-center justify-between gap-4 p-5",
+              settings.enabled
+                ? "border-success/40 bg-success/5"
+                : "border-border",
+            )}
+          >
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 font-semibold tracking-tight">
+                <Power
+                  className={cn(
+                    "h-4 w-4",
+                    settings.enabled ? "text-success" : "text-muted-foreground",
+                  )}
+                />
+                Autoenvio
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {settings.enabled
+                  ? `Ligado — envia sozinho a partir de ${settings.sendTime} (aba aberta + WhatsApp conectado).`
+                  : "Desligado — só envia se você clicar em Enviar. Nada sai sozinho."}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  settings.enabled
+                    ? "border-success/40 bg-success/15 text-success"
+                    : "text-muted-foreground",
+                )}
+              >
+                {settings.enabled ? "LIGADO" : "DESLIGADO"}
+              </Badge>
+              <Button
+                type="button"
+                variant={settings.enabled ? "destructive" : "default"}
+                onClick={() => setAutoSend(!settings.enabled)}
+              >
+                <Power className="h-4 w-4" />
+                {settings.enabled ? "Desligar autoenvio" : "Ligar autoenvio"}
+              </Button>
+            </div>
+          </section>
+
+          <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-foreground">
+            <div className="flex gap-2">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              <div className="space-y-1">
+                <p className="font-medium">Proteção anti-ban</p>
+                <p className="text-muted-foreground">
+                  O envio respeita intervalo entre mensagens, limite por hora/dia
+                  e atraso aleatório. Use um número dedicado, evite spam e não
+                  envie em massa fora do horário configurado.
                 </p>
               </div>
             </div>
-          ) : (
-            <div className="flex min-h-[200px] items-center justify-center rounded-xl border bg-muted/30 p-4">
-              {qrBase64 ? (
-                <img
-                  src={qrBase64}
-                  alt="QR Code WhatsApp"
-                  className="max-h-56 rounded-lg bg-white p-2"
-                />
-              ) : (
-                <div className="max-w-sm text-center text-sm text-muted-foreground">
-                  <Link2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
-                  Gere o QR Code e escaneie no WhatsApp do celular (Aparelhos
-                  conectados).
-                </div>
-              )}
+          </div>
+
+          <section className="ax-surface space-y-4 p-5">
+            <div>
+              <h2 className="flex items-center gap-2 font-semibold tracking-tight">
+                <Clock3 className="h-4 w-4 text-primary" />
+                Quando enviar
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Horário e regras da fila. O autoenvio só roda se estiver{" "}
+                <strong className="text-foreground">Ligado</strong> acima.
+              </p>
             </div>
-          )}
-
-          {pairingCode ? (
-            <p className="text-center text-sm text-muted-foreground">
-              Código de pareamento:{" "}
-              <span className="font-mono font-semibold text-foreground">
-                {pairingCode}
-              </span>
-            </p>
-          ) : null}
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              onClick={() => void refreshQr()}
-              disabled={busy || !runtime}
-            >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              Gerar / atualizar QR
-            </Button>
-            {status === "open" ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void onDisconnect()}
-                disabled={busy}
-              >
-                <Unplug className="h-4 w-4" />
-                Desconectar
-              </Button>
-            ) : null}
-          </div>
-        </section>
-
-        {/* Agenda */}
-        <section className="ax-surface space-y-4 p-5">
-          <div>
-            <h2 className="flex items-center gap-2 font-semibold tracking-tight">
-              <Clock3 className="h-4 w-4 text-primary" />
-              Quando enviar
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Horário e regras da fila. O autoenvio só roda se estiver{" "}
-              <strong className="text-foreground">Ligado</strong> no botão
-              acima.
-            </p>
-          </div>
 
           <div className="space-y-3 rounded-lg border p-3">
             <div className="flex items-center justify-between gap-3">
@@ -807,65 +866,171 @@ export default function WhatsAppPage() {
               </div>
             </CollapsibleContent>
           </Collapsible>
-        </section>
-      </div>
+          </section>
 
-      {/* Mensagens */}
-      <section className="ax-surface space-y-4 p-5">
-        <div>
-          <h2 className="flex items-center gap-2 font-semibold tracking-tight">
-            <MessageSquareText className="h-4 w-4 text-primary" />
-            Mensagens
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Variáveis:{" "}
-            <code className="rounded bg-muted px-1">{"{getGreeting}"}</code>{" "}
-            <code className="rounded bg-muted px-1">{"{name}"}</code>{" "}
-            <code className="rounded bg-muted px-1">{"{item_id}"}</code>{" "}
-            <code className="rounded bg-muted px-1">{"{due_date}"}</code>
-          </p>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="msg-before">
-              Mensagem — {settings.daysBefore} dia(s) antes
-            </Label>
-            <Textarea
-              id="msg-before"
-              rows={12}
-              value={settings.messageBefore}
-              onChange={(e) => patch("messageBefore", e.target.value)}
-              disabled={!settings.sendBefore}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setRestoreTarget("messageBefore")}
-            >
-              Restaurar padrão
-            </Button>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="msg-day">Mensagem — no dia do vencimento</Label>
-            <Textarea
-              id="msg-day"
-              rows={12}
-              value={settings.messageOnDay}
-              onChange={(e) => patch("messageOnDay", e.target.value)}
-              disabled={!settings.sendOnDay}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setRestoreTarget("messageOnDay")}
-            >
-              Restaurar padrão
-            </Button>
-          </div>
-        </div>
-      </section>
+          <section className="ax-surface space-y-4 p-5">
+            <div>
+              <h2 className="flex items-center gap-2 font-semibold tracking-tight">
+                <MessageSquareText className="h-4 w-4 text-primary" />
+                Mensagens
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Variáveis:{" "}
+                <code className="rounded bg-muted px-1">{"{getGreeting}"}</code>{" "}
+                <code className="rounded bg-muted px-1">{"{name}"}</code>{" "}
+                <code className="rounded bg-muted px-1">{"{item_id}"}</code>{" "}
+                <code className="rounded bg-muted px-1">{"{due_date}"}</code>
+              </p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="msg-before">
+                  Mensagem — {settings.daysBefore} dia(s) antes
+                </Label>
+                <Textarea
+                  id="msg-before"
+                  rows={12}
+                  value={settings.messageBefore}
+                  onChange={(e) => patch("messageBefore", e.target.value)}
+                  disabled={!settings.sendBefore}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRestoreTarget("messageBefore")}
+                >
+                  Restaurar padrão
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="msg-day">Mensagem — no dia do vencimento</Label>
+                <Textarea
+                  id="msg-day"
+                  rows={12}
+                  value={settings.messageOnDay}
+                  onChange={(e) => patch("messageOnDay", e.target.value)}
+                  disabled={!settings.sendOnDay}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRestoreTarget("messageOnDay")}
+                >
+                  Restaurar padrão
+                </Button>
+              </div>
+            </div>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="fila" className="mt-0 space-y-4">
+          <section className="ax-surface space-y-4 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-semibold tracking-tight">Fila de hoje</h2>
+                <p className="text-sm text-muted-foreground">
+                  {queue.length} pendente(s) · {sentTodayCount} já enviado(s) ·
+                  horário {settings.sendTime}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {sentTodayCount > 0 ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={clearTodaySent}
+                  >
+                    Recolocar enviados na fila
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  onClick={() => void runQueue()}
+                  disabled={
+                    sending ||
+                    Boolean(sendingId) ||
+                    status !== "open" ||
+                    queue.length === 0
+                  }
+                >
+                  {sending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Enviar fila com intervalo
+                </Button>
+              </div>
+            </div>
+
+            {queue.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {sentTodayCount > 0
+                  ? "Ninguém pendente agora — os de hoje já foram enviados (ou estão fora da regra). Use “Recolocar enviados na fila” para testar de novo."
+                  : "Ninguém para avisar hoje: precisa telefone + vencer hoje ou nos próximos X dias (regra “antes do vencimento”) em pasta Cliente/Produto."}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {queue.map((q) => {
+                  const rowBusy = sending || sendingId === q.id;
+                  return (
+                    <li
+                      key={q.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{q.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {q.kind === "before"
+                            ? `${Math.max(
+                                1,
+                                differenceInCalendarDays(
+                                  parseLocalYmd(q.dueDate),
+                                  parseLocalYmd(
+                                    format(new Date(), "yyyy-MM-dd"),
+                                  ),
+                                ),
+                              )} dia(s) antes`
+                            : "No dia"}{" "}
+                          · vence {formatBrDate(q.dueDate)} ·{" "}
+                          {maskPhone(q.phone)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant="outline">
+                          {q.kind === "before" ? "Antecipado" : "Hoje"}
+                        </Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={rowBusy || status !== "open" || !runtime}
+                          onClick={() => void runOne(q)}
+                          title="Enviar só este lembrete"
+                        >
+                          {sendingId === q.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Send className="h-3.5 w-3.5" />
+                          )}
+                          Enviar
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </TabsContent>
+
+        <TabsContent value="pix" className="mt-0 space-y-4">
+          <PixRenewPanel />
+        </TabsContent>
+      </Tabs>
 
       <AlertDialog
         open={restoreTarget != null}
@@ -890,104 +1055,6 @@ export default function WhatsAppPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Fila */}
-      <section className="ax-surface space-y-4 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold tracking-tight">Fila de hoje</h2>
-            <p className="text-sm text-muted-foreground">
-              {queue.length} pendente(s) · {sentTodayCount} já enviado(s) ·
-              horário {settings.sendTime}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {sentTodayCount > 0 ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={clearTodaySent}
-              >
-                Recolocar enviados na fila
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              onClick={() => void runQueue()}
-              disabled={
-                sending ||
-                Boolean(sendingId) ||
-                status !== "open" ||
-                queue.length === 0
-              }
-            >
-              {sending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              Enviar fila com intervalo
-            </Button>
-          </div>
-        </div>
-
-        {queue.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {sentTodayCount > 0
-              ? "Ninguém pendente agora — os de hoje já foram enviados (ou estão fora da regra). Use “Recolocar enviados na fila” para testar de novo."
-              : "Ninguém para avisar hoje: precisa telefone + vencer hoje ou nos próximos X dias (regra “antes do vencimento”) em pasta Cliente/Produto."}
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {queue.map((q) => {
-              const rowBusy = sending || sendingId === q.id;
-              return (
-                <li
-                  key={q.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{q.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {q.kind === "before"
-                        ? `${Math.max(
-                            1,
-                            differenceInCalendarDays(
-                              parseLocalYmd(q.dueDate),
-                              parseLocalYmd(format(new Date(), "yyyy-MM-dd")),
-                            ),
-                          )} dia(s) antes`
-                        : "No dia"}{" "}
-                      · vence {formatBrDate(q.dueDate)} · {maskPhone(q.phone)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Badge variant="outline">
-                      {q.kind === "before" ? "Antecipado" : "Hoje"}
-                    </Badge>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={rowBusy || status !== "open" || !runtime}
-                      onClick={() => void runOne(q)}
-                      title="Enviar só este lembrete"
-                    >
-                      {sendingId === q.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Send className="h-3.5 w-3.5" />
-                      )}
-                      Enviar
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }

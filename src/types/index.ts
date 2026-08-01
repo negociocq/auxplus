@@ -18,8 +18,10 @@ export type ItemStatus =
 export interface User {
   id: string;
   username: string;
-  /** E-mail (opcional) — também serve para login */
+  /** E-mail confirmado — só preenchido após clicar no link */
   email?: string | null;
+  /** E-mail aguardando confirmação (ainda não vale para login) */
+  pendingEmail?: string | null;
   password: string;
   isAdmin: boolean;
   isActive: boolean;

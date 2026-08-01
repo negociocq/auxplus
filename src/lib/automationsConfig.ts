@@ -27,6 +27,15 @@ export interface AutomationsConfig {
    * “Sincronizar UniPlay” (lembretes).
    */
   syncFolderId: string;
+  /**
+   * Pasta (Cliente) onde aparece o botão
+   * “Sincronizar revendedores” e a aba Revendedores usa.
+   */
+  syncResellersFolderId: string;
+  /** Access Token da API Mercado Pago (PIX) — por conta */
+  mpAccessToken: string;
+  /** E-mail do pagador usado na criação do PIX (exigido pela API MP) */
+  mpPayerEmail: string;
 }
 
 const KEY = "auxplus-automations";
@@ -46,6 +55,9 @@ export function defaultAutomationsConfig(): AutomationsConfig {
     keepAliveMinutes: 15,
     iptvAutoRefreshToken: true,
     syncFolderId: "",
+    syncResellersFolderId: "",
+    mpAccessToken: "",
+    mpPayerEmail: "",
   };
 }
 
@@ -75,6 +87,12 @@ function normalizeConfig(
     ),
     iptvAutoRefreshToken: parsed.iptvAutoRefreshToken !== false,
     syncFolderId: parsed.syncFolderId?.trim() || "",
+    syncResellersFolderId: parsed.syncResellersFolderId?.trim() || "",
+    mpAccessToken:
+      parsed.mpAccessToken != null && String(parsed.mpAccessToken).length > 0
+        ? String(parsed.mpAccessToken).trim()
+        : (base.mpAccessToken ?? ""),
+    mpPayerEmail: parsed.mpPayerEmail?.trim() || base.mpPayerEmail || "",
   };
 }
 
@@ -164,10 +182,15 @@ export async function loadAutomationsConfigRemote(
       iptvUsername: merged.iptvUsername || local.iptvUsername,
       iptvPassword: merged.iptvPassword || local.iptvPassword,
       iptvBearerToken: merged.iptvBearerToken || local.iptvBearerToken,
+      mpAccessToken: merged.mpAccessToken || local.mpAccessToken,
+      mpPayerEmail: merged.mpPayerEmail || local.mpPayerEmail,
     };
     writeLocal(userId, withSecrets);
-    // Local tem senha e a nuvem não → sobe agora (outros PCs passam a ver)
-    if (local.iptvPassword && !String(value.iptvPassword || "").trim()) {
+    // Local tem senha/token e a nuvem não → sobe agora (outros PCs passam a ver)
+    if (
+      (local.iptvPassword && !String(value.iptvPassword || "").trim()) ||
+      (local.mpAccessToken && !String(value.mpAccessToken || "").trim())
+    ) {
       void persistRemote(userId, withSecrets);
     }
     return withSecrets;

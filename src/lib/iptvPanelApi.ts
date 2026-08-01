@@ -1026,6 +1026,123 @@ export async function listIptvUsers(
   return users;
 }
 
+/** Revendedor cadastrado sob a sua conta no painel UniPlay. */
+export type IptvReseller = {
+  id: string | number;
+  username: string;
+  name?: string;
+  nota?: string;
+  credits?: number;
+  phone?: string;
+  email?: string;
+  exp_date?: string;
+  [k: string]: unknown;
+};
+
+function pickCreditLoose(u: Record<string, unknown>): number | undefined {
+  for (const k of [
+    "credits",
+    "credit",
+    "creditos",
+    "credits_remaining",
+    "credits_re",
+    "saldo",
+  ]) {
+    const raw = u[k];
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+    if (typeof raw === "string" && raw.trim()) {
+      const n = Number(raw.replace(",", "."));
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return undefined;
+}
+
+function pickResellerFields(u: Record<string, unknown>): IptvReseller {
+  const notaRaw =
+    typeof u.nota === "string"
+      ? u.nota
+      : typeof u.note === "string"
+        ? u.note
+        : typeof u.obs === "string"
+          ? u.obs
+          : typeof u.reseller_name === "string"
+            ? u.reseller_name
+            : "";
+  const nota = fixUtf8Mojibake(notaRaw).trim();
+  const nameRaw =
+    typeof u.name === "string" && u.name.trim()
+      ? fixUtf8Mojibake(u.name).trim()
+      : "";
+  const username = String(
+    u.username ?? u.user ?? u.reseller ?? u.login ?? "",
+  ).trim();
+  const phoneRaw =
+    u.whatsapp ?? u.phone ?? u.telefone ?? u.celular ?? u.whatsApp;
+  const emailRaw = u.email ?? u.email_contact;
+  return {
+    ...u,
+    id: (u.id ?? u.reseller_id ?? u.user_id ?? u.uid ?? username) as
+      | string
+      | number,
+    username,
+    name: nota || nameRaw || undefined,
+    nota,
+    credits: pickCreditLoose(u),
+    phone:
+      phoneRaw != null && String(phoneRaw).trim()
+        ? String(phoneRaw).trim()
+        : undefined,
+    email:
+      emailRaw != null && String(emailRaw).trim()
+        ? String(emailRaw).trim()
+        : undefined,
+    exp_date: u.exp_date
+      ? String(u.exp_date)
+      : u.expDate
+        ? String(u.expDate)
+        : u.expira
+          ? String(u.expira)
+          : undefined,
+  };
+}
+
+/**
+ * Lista revendedores (sub-contas) do painel.
+ * Front UniPlay: GET /api/reg-users?page&per_page&search&searchID
+ */
+export async function listIptvResellers(
+  creds: IptvPanelCreds,
+  opts?: { search?: string; perPage?: number },
+): Promise<IptvReseller[]> {
+  const params = new URLSearchParams({
+    page: "1",
+    per_page: String(Math.max(1, Math.min(200, opts?.perPage ?? 100))),
+    search: opts?.search?.trim() || "",
+    searchID: "",
+  });
+  const paths = [
+    `/reg-users?${params.toString()}`,
+    `/reseller?${params.toString()}`,
+    `/resellers?${params.toString()}`,
+  ];
+  let lastErr: unknown;
+  for (const path of paths) {
+    try {
+      const data = await panelFetch(creds, path);
+      const rows = asArray(data)
+        .map((row) => pickResellerFields((row || {}) as Record<string, unknown>))
+        .filter((r) => r.username || r.id != null);
+      if (rows.length || path.startsWith("/reg-users")) return rows;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("Não foi possível listar revendedores no UniPlay.");
+}
+
 export async function findIptvUserByUsername(
   creds: IptvPanelCreds,
   username: string,
@@ -1510,6 +1627,92 @@ export async function fetchIptvPackages(
   });
 }
 
+export type IptvPanelCredits = {
+  /** Créditos do revendedor (saldo principal no painel). */
+  credits: number;
+  /** Créditos de portal / recarga, se a API enviar. */
+  creditsPortal?: number;
+};
+
+function pickCreditNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value.replace(",", "."));
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/** Extrai saldo de créditos da resposta (ou objetos aninhados). */
+export function extractIptvCredits(data: unknown): IptvPanelCredits | null {
+  if (data == null) return null;
+  if (typeof data === "number" && Number.isFinite(data)) {
+    return { credits: data };
+  }
+  if (typeof data !== "object") return null;
+
+  const root = data as Record<string, unknown>;
+  const nest =
+    root.data && typeof root.data === "object"
+      ? (root.data as Record<string, unknown>)
+      : root.dash && typeof root.dash === "object"
+        ? (root.dash as Record<string, unknown>)
+        : root;
+
+  const credits =
+    pickCreditNumber(nest.credits) ??
+    pickCreditNumber(nest.credit) ??
+    pickCreditNumber(nest.creditos) ??
+    pickCreditNumber(nest.saldo) ??
+    pickCreditNumber(root.credits);
+
+  if (credits == null) return null;
+
+  const creditsPortal =
+    pickCreditNumber(nest.creditos_portal) ??
+    pickCreditNumber(nest.creditPortal) ??
+    pickCreditNumber(nest.credit_portal) ??
+    undefined;
+
+  return {
+    credits,
+    ...(creditsPortal != null ? { creditsPortal } : {}),
+  };
+}
+
+/** Formata créditos para exibição (pt-BR). */
+export function formatIptvCredits(value: number): string {
+  if (Number.isInteger(value)) return String(value);
+  return value.toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Saldo de créditos do revendedor na UniPlay.
+ * Front do painel: GET {api}/recargas/credits (e fallback /dash-reseller).
+ */
+export async function fetchIptvPanelCredits(
+  creds: IptvPanelCreds,
+): Promise<IptvPanelCredits> {
+  const paths = ["/recargas/credits", "/dash-reseller"];
+  let lastErr: unknown;
+  for (const path of paths) {
+    try {
+      const data = await panelFetch(creds, path);
+      const parsed = extractIptvCredits(data);
+      if (parsed) return parsed;
+      lastErr = new Error(`Resposta sem créditos em ${path}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("A UniPlay não retornou o saldo de créditos.");
+}
+
 /** Apps parceiros do painel (ativação por MAC / Device ID). */
 export type PartnerAppId = "prime" | "fun" | "pixel" | "lazer";
 
@@ -1554,19 +1757,40 @@ const ACTIVATE_PATH: Record<PartnerAppId, string> = {
   lazer: "/activate-lazer",
 };
 
-/** Normaliza MAC: aceita com/sem separadores → aa:bb:cc:dd:ee:ff */
+/** Só hex do MAC (máx. 12), ignora `:` e outros separadores. Mantém maiúsculas/minúsculas. */
+export function macHexDigits(raw: string): string {
+  return raw.replace(/[^a-fA-F0-9]/g, "").slice(0, 12);
+}
+
+/** Normaliza MAC: aceita com/sem separadores → aa:bb:cc:dd:ee:ff (preserva caixa). */
 export function normalizeMac(raw: string): string {
-  const hex = raw.replace(/[^a-fA-F0-9]/g, "").toLowerCase();
+  const hex = macHexDigits(raw);
   if (hex.length === 12) {
     return hex.match(/.{2}/g)!.join(":");
   }
-  return raw.trim().toLowerCase();
+  return raw.trim();
 }
 
-/** Formata enquanto digita: xx:xx:xx:xx:xx:xx (máx. 12 hex, minúsculas). */
+/** Formata enquanto digita: xx:xx:xx:xx:xx:xx (máx. 12 hex, preserva A–F). */
 export function formatMacInput(raw: string): string {
-  const hex = raw.replace(/[^a-fA-F0-9]/g, "").toLowerCase().slice(0, 12);
+  const hex = macHexDigits(raw);
   return hex.match(/.{1,2}/g)?.join(":") ?? "";
+}
+
+/** Posição do cursor no MAC formatado após N dígitos hex. */
+export function macCaretAfterHex(formatted: string, hexCount: number): number {
+  if (hexCount <= 0) return 0;
+  let seen = 0;
+  for (let i = 0; i < formatted.length; i++) {
+    if (formatted[i] === ":") continue;
+    seen++;
+    if (seen >= hexCount) {
+      // após par completo, cursor fica depois do `:` automático
+      if (formatted[i + 1] === ":") return i + 2;
+      return i + 1;
+    }
+  }
+  return formatted.length;
 }
 
 /** Registro de MAC/app (Smart App no painel e/ou ativação parceira local). */

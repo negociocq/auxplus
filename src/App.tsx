@@ -11,6 +11,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import AuthConfirm from "./pages/AuthConfirm";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
@@ -44,6 +45,7 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/auth/confirm" element={<AuthConfirm />} />
 
                 <Route element={<RequireAuth />}>
                   <Route element={<AppLayout />}>
