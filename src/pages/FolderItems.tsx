@@ -295,6 +295,7 @@ export default function FolderItems() {
         password: cfg.iptvPassword,
         defaultPackage: plat.packageId || "1",
         regPassword: plat.regPassword || undefined,
+        apiProxyUrl: plat.apiProxyUrl || undefined,
       });
       if (ensured.renewed || ensured.token !== cfg.iptvBearerToken) {
         saveAutomationsConfig(user.id, {
@@ -310,6 +311,7 @@ export default function FolderItems() {
           password: cfg.iptvPassword,
           defaultPackage: plat.packageId || "1",
           regPassword: plat.regPassword || undefined,
+          apiProxyUrl: plat.apiProxyUrl || undefined,
         },
         { activeOnly: true },
       );

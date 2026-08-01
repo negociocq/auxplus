@@ -118,6 +118,12 @@ export interface IptvPlatformConfig {
   packageId: string;
   regPassword: string;
   panelUrl: string;
+  /**
+   * Proxy HTTP que injeta Origin do painel (obrigatório em produção).
+   * Ex.: https://xxxx.ngrok-free.app  (rodando scripts/ges-proxy-server.mjs)
+   * Vazio = /api/gesapi na Vercel ou /ges-api no Vite.
+   */
+  apiProxyUrl: string;
 }
 
 const IPTV_LOCAL_KEY = "auxplus-platform-iptv";
@@ -132,6 +138,7 @@ export function defaultIptvPlatformConfig(): IptvPlatformConfig {
     packageId: "1",
     regPassword: "",
     panelUrl: DEFAULT_IPTV_PANEL_URL,
+    apiProxyUrl: "",
   };
 }
 
@@ -162,6 +169,12 @@ function readIptvLocal(): IptvPlatformConfig {
       packageId: parsed.packageId?.trim() || base.packageId,
       regPassword: parsed.regPassword ?? "",
       panelUrl: pickPanelUrl(parsed) || base.panelUrl,
+      apiProxyUrl:
+        (typeof parsed.apiProxyUrl === "string" && parsed.apiProxyUrl.trim()) ||
+        (typeof (parsed as { api_proxy_url?: string }).api_proxy_url ===
+          "string" &&
+          String((parsed as { api_proxy_url?: string }).api_proxy_url).trim()) ||
+        "",
     };
   } catch {
     return base;
@@ -195,6 +208,13 @@ export async function loadIptvPlatformConfig(): Promise<IptvPlatformConfig> {
       regPassword: value.regPassword ?? fallback.regPassword,
       panelUrl:
         pickPanelUrl(value) || fallback.panelUrl || DEFAULT_IPTV_PANEL_URL,
+      apiProxyUrl:
+        (typeof value.apiProxyUrl === "string" && value.apiProxyUrl.trim()) ||
+        (typeof (value as { api_proxy_url?: unknown }).api_proxy_url ===
+          "string" &&
+          String((value as { api_proxy_url?: string }).api_proxy_url).trim()) ||
+        fallback.apiProxyUrl ||
+        "",
     };
     writeIptvLocal(merged);
     return merged;
@@ -212,6 +232,7 @@ export async function saveIptvPlatformConfig(
     packageId: config.packageId.trim() || "1",
     regPassword: config.regPassword.trim(),
     panelUrl: config.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL,
+    apiProxyUrl: config.apiProxyUrl.trim().replace(/\/$/, ""),
   };
   writeIptvLocal(clean);
   if (!supabase) {

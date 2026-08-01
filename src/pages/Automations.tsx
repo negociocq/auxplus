@@ -173,6 +173,7 @@ export default function Automations() {
           password: panelPass,
           defaultPackage: plat.packageId || "1",
           regPassword: plat.regPassword || undefined,
+          apiProxyUrl: plat.apiProxyUrl || undefined,
         });
         if (renewed || (token && token !== cur.iptvBearerToken)) {
           setBearer(token);
@@ -278,6 +279,7 @@ export default function Automations() {
     defaultPackage: platform.packageId.trim() || "1",
     username: panelUser.trim() || undefined,
     password: panelPass || undefined,
+    apiProxyUrl: platform.apiProxyUrl?.trim() || undefined,
   });
 
   const persistToken = (token: string) => {
@@ -305,6 +307,7 @@ export default function Automations() {
           password: panelPass,
           defaultPackage: plat.packageId || "1",
           regPassword: plat.regPassword || undefined,
+          apiProxyUrl: plat.apiProxyUrl || undefined,
         },
         10 ** 9,
       );

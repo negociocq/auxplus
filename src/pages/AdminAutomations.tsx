@@ -123,8 +123,29 @@ export default function AdminAutomations() {
             autoComplete="off"
           />
           <p className="text-xs text-muted-foreground">
-            Só para o botão “Abrir painel”. A API (acima) é o que renova/teste/
-            sincroniza — pode funcionar mesmo se esta URL estiver vazia.
+            Só para o botão “Abrir painel”.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="iptv-proxy">Proxy API (produção)</Label>
+          <Input
+            id="iptv-proxy"
+            value={form.apiProxyUrl || ""}
+            disabled={loading}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, apiProxyUrl: e.target.value }))
+            }
+            placeholder="https://xxxx.ngrok-free.app"
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">
+            A UniPlay bloqueia login pela nuvem (erro Upstream 404). No PC onde
+            o localhost já conecta, rode{" "}
+            <code className="rounded bg-muted px-1">
+              node scripts/ges-proxy-server.mjs
+            </code>{" "}
+            e exponha com ngrok; cole a URL aqui. Deixe vazio só em localhost.
           </p>
         </div>
 
