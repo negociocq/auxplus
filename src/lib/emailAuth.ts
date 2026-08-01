@@ -4,6 +4,18 @@ export function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+/** Traduz erros comuns do Auth (rate limit, etc.) para mensagem amigável. */
+export function friendlyEmailAuthError(message?: string | null): string {
+  const m = String(message || "");
+  if (/rate limit|429|over_email_send_rate_limit|security purposes/i.test(m)) {
+    return "Limite de e-mails do Supabase atingido. Aguarde cerca de 1 hora e tente de novo (só um envio).";
+  }
+  if (/already|registered|exists/i.test(m)) {
+    return "Este e-mail já está cadastrado no Auth. Use “Reenviar confirmação” ou outro e-mail.";
+  }
+  return m.trim() || "Não foi possível enviar o e-mail de confirmação. Tente novamente.";
+}
+
 function redirectTo(path: string) {
   return `${window.location.origin}${path}`;
 }
@@ -37,11 +49,11 @@ export async function sendSignupConfirmationEmail(
       email: normalized,
       options: { emailRedirectTo: redirectTo(CONFIRM_PATH) },
     });
-    if (resendErr) return { error: resendErr.message };
+    if (resendErr) return { error: friendlyEmailAuthError(resendErr.message) };
     return {};
   }
 
-  return { error: error.message };
+  return { error: friendlyEmailAuthError(error.message) };
 }
 
 /** Conta antiga sem e-mail: envia magic link; o e-mail só grava após o clique. */
@@ -61,7 +73,7 @@ export async function sendLinkEmailConfirmation(
       emailRedirectTo: redirectTo(CONFIRM_PATH),
     },
   });
-  if (error) return { error: error.message };
+  if (error) return { error: friendlyEmailAuthError(error.message) };
   return {};
 }
 

@@ -95,9 +95,7 @@ export default function Settings() {
         appUserId: user.id,
       });
       if (confirmResult.error) {
-        toast.warning(
-          "Não foi possível enviar o e-mail de confirmação. Tente novamente.",
-        );
+        toast.warning(confirmResult.error);
       } else {
         toast.success(
           "Enviamos um link de confirmação. O e-mail só será vinculado depois que você clicar nele.",
