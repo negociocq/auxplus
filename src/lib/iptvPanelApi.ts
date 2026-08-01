@@ -64,18 +64,23 @@ function shouldUseGesProxy(apiBaseUrl: string) {
 
 /**
  * Proxy com path em header x-iptv-path (produção):
- * - /api/ges-api (Vercel)
- * - Edge Function Supabase (fallback)
+ * - /api/gesapi (Vercel)
+ * - /functions/v1/gesapi (Supabase)
  * Dev Vite (/ges-api) usa path na URL: /ges-api/login
  */
 function isPathHeaderProxy(base: string) {
   return (
-    base === "/api/ges-api" || base.includes("/functions/v1/ges-api")
+    base === "/api/gesapi" ||
+    base.includes("/functions/v1/gesapi") ||
+    base.includes("/functions/v1/ges-api")
   );
 }
 
 function isSupabaseGesProxy(base: string) {
-  return base.includes("/functions/v1/ges-api");
+  return (
+    base.includes("/functions/v1/gesapi") ||
+    base.includes("/functions/v1/ges-api")
+  );
 }
 
 function resolveBase(apiBaseUrl: string) {
@@ -89,9 +94,9 @@ function resolveBase(apiBaseUrl: string) {
   if (typeof window !== "undefined" && import.meta.env.DEV) {
     return "/ges-api";
   }
-  // Produção no Vercel: mesmo domínio (mais confiável)
+  // Produção: tenta Vercel /api primeiro; loginIptvPanel faz fallback Supabase
   if (typeof window !== "undefined") {
-    return "/api/ges-api";
+    return "/api/gesapi";
   }
   return GES_API_PROXY_URL;
 }
@@ -179,10 +184,40 @@ function parseApiError(data: unknown, text: string, statusText: string) {
   return statusText || "Falha no login";
 }
 
+async function postLogin(
+  base: string,
+  username: string,
+  password: string,
+  code: string,
+): Promise<{ ok: boolean; status: number; data: unknown; text: string }> {
+  const loginPath = "/login";
+  const loginUrl = isPathHeaderProxy(base) ? base : `${base}${loginPath}`;
+  const res = await fetch(loginUrl, {
+    method: "POST",
+    headers: {
+      accept: "application/json, text/plain, */*",
+      "content-type": "application/json",
+      ...(isPathHeaderProxy(base) ? proxyHeaders(base, loginPath) : {}),
+    },
+    body: JSON.stringify({ username, password, code }),
+  });
+  const text = await res.text();
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+  return { ok: res.ok, status: res.status, data, text };
+}
+
 /**
  * Login na API do painel → novo Bearer.
  * Body igual ao front do painel: { username, password, code }.
- * Usa proxy (dev Vite ou Edge Function) com Origin do painel.
+ * Usa proxy (dev Vite, Vercel /api/gesapi ou Edge Function) com Origin do painel.
+ *
+ * Obs.: login no site searchdefense.top NÃO autentica o AuxPlus —
+ * aqui precisa usuário/senha da conta UniPlay no formulário.
  */
 export async function loginIptvPanel(
   apiBaseUrl: string,
@@ -196,60 +231,75 @@ export async function loginIptvPanel(
     throw new Error("Informe usuário e senha do painel");
   }
 
-  const base = resolveBase(apiBaseUrl);
-  const loginPath = "/login";
-  // Proxies de path-header usam URL fixa + x-iptv-path
-  const loginUrl = isPathHeaderProxy(base) ? base : `${base}${loginPath}`;
+  const bases = Array.from(
+    new Set(
+      [
+        resolveBase(apiBaseUrl),
+        // Fallbacks se o primeiro proxy falhar (404)
+        typeof window !== "undefined" && !import.meta.env.DEV
+          ? "/api/gesapi"
+          : "",
+        GES_API_PROXY_URL,
+      ].filter(Boolean),
+    ),
+  );
 
-  try {
-    const res = await fetch(loginUrl, {
-      method: "POST",
-      headers: {
-        accept: "application/json, text/plain, */*",
-        "content-type": "application/json",
-        ...(isPathHeaderProxy(base) ? proxyHeaders(base, loginPath) : {}),
-      },
-      body: JSON.stringify({ username: user, password: pass, code }),
-    });
-    const text = await res.text();
-    let data: unknown = null;
+  let lastErr = "Falha no login";
+  for (const base of bases) {
     try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = text;
-    }
-    if (!res.ok) {
-      const err = parseApiError(data, text, res.statusText);
-      if (/credencias?\s+n[aã]o\s+encontradas/i.test(err)) {
-        throw new Error(
-          "API bloqueou o login (Origin). Confira o proxy UniPlay ou usuário/senha do painel.",
-        );
+      const res = await postLogin(base, user, pass, code);
+      if (!res.ok) {
+        const err = parseApiError(res.data, res.text, "");
+        lastErr = err || `HTTP ${res.status}`;
+        // Proxy inexistente → tenta próximo
+        if (
+          res.status === 404 &&
+          (/NOT_FOUND|function|proxy|not found/i.test(
+            `${lastErr} ${res.text}`,
+          ) ||
+            !res.text.trim())
+        ) {
+          continue;
+        }
+        if (/credencias?\s+n[aã]o\s+encontradas/i.test(lastErr)) {
+          throw new Error(
+            "API bloqueou o login (Origin). Confira o proxy UniPlay ou usuário/senha do painel.",
+          );
+        }
+        if (/inv[aá]lid/i.test(lastErr)) {
+          throw new Error(
+            "Usuário ou senha do painel incorretos. Use o mesmo login de https://searchdefense.top (não o do AuxPlus).",
+          );
+        }
+        throw new Error(lastErr);
       }
-      if (/inv[aá]lid/i.test(err)) {
-        throw new Error(
-          "Usuário ou senha do painel incorretos. Use o mesmo login de https://searchdefense.top (não o do AuxPlus).",
-        );
+      const token = extractToken(res.data);
+      if (token) {
+        lastIssuedToken = token.replace(/^Bearer\s+/i, "");
+        return lastIssuedToken;
       }
+      lastErr = "Login ok, mas a resposta não trouxe access_token";
+    } catch (e) {
       if (
-        res.status === 404 &&
-        /function|proxy|not found|não encontrado/i.test(`${err} ${text}`)
+        e instanceof Error &&
+        !/Failed to fetch|NetworkError|fetch/i.test(e.message)
       ) {
-        throw new Error(
-          "Proxy UniPlay não encontrado. Faça deploy na Vercel (pasta api/ges-api) ou publique a Edge Function ges-api.",
-        );
+        // Erro de negócio (senha errada etc.) — não tenta outro proxy
+        if (
+          /incorretos|bloqueou|access_token|Origin/i.test(e.message)
+        ) {
+          throw e;
+        }
       }
-      throw new Error(err);
+      lastErr = e instanceof Error ? e.message : "Erro de rede no login";
     }
-    const token = extractToken(data);
-    if (token) {
-      lastIssuedToken = token.replace(/^Bearer\s+/i, "");
-      return lastIssuedToken;
-    }
-    throw new Error("Login ok, mas a resposta não trouxe access_token");
-  } catch (e) {
-    if (e instanceof Error) throw e;
-    throw new Error("Erro de rede no login");
   }
+
+  throw new Error(
+    lastErr === "Falha no login"
+      ? "Falha no login UniPlay. Confira usuário/senha da conta do painel e faça deploy do proxy (gesapi)."
+      : lastErr,
+  );
 }
 
 /**
