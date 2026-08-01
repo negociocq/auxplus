@@ -6,6 +6,28 @@ export type DebtLifecycle = "atrasada" | "em_dia" | "quitada";
 export type DebtMode = "fixed" | "unlimited";
 export type DebtAmountMode = "equal" | "variable";
 
+/** Intervalos comuns entre parcelas (em meses). */
+export const DEBT_INTERVALS = [
+  { months: 1, label: "Todo mês" },
+  { months: 2, label: "A cada 2 meses" },
+  { months: 3, label: "A cada 3 meses" },
+  { months: 6, label: "A cada 6 meses" },
+  { months: 12, label: "Uma vez ao ano" },
+] as const;
+
+export function clampIntervalMonths(value?: number | null): number {
+  const n = Math.floor(Number(value) || 1);
+  if (n <= 1) return 1;
+  if (n >= 12) return 12;
+  return n;
+}
+
+export function intervalLabel(months?: number | null): string {
+  const m = clampIntervalMonths(months);
+  const found = DEBT_INTERVALS.find((i) => i.months === m);
+  return found?.label ?? `A cada ${m} meses`;
+}
+
 const MARKER_RE = /\n?<!--AXDEBT:([\s\S]*?)-->/;
 
 export function stripDebtMarker(notes?: string | null): string {
@@ -88,12 +110,14 @@ export function normalizePlan(plan: DebtPlan): DebtPlan {
 
   const amountMode: DebtAmountMode =
     plan.amountMode === "variable" ? "variable" : "equal";
+  const intervalMonths = clampIntervalMonths(plan.intervalMonths);
 
   return {
     spentAt,
     total: Math.round(total * 100) / 100,
     mode: finalMode,
     amountMode,
+    intervalMonths,
     monthlyAmount: Math.round(monthlyAmount * 100) / 100,
     installmentCount:
       finalMode === "unlimited"
@@ -115,18 +139,18 @@ export function ensureRecurringInstallments(plan: DebtPlan): DebtPlan {
   }
 
   const defaultAmount = normalized.monthlyAmount || normalized.total || 0;
+  const interval = clampIntervalMonths(normalized.intervalMonths);
   const list = [...normalized.installments];
-  const todayMonthStart = `${format(new Date(), "yyyy-MM")}-01`;
+  const today = format(new Date(), "yyyy-MM-dd");
+  // Variável: ciclo novo começa sem valor — a pessoa preenche
   const nextAmount = () =>
-    normalized.amountMode === "variable"
-      ? list[list.length - 1]?.amount || defaultAmount
-      : defaultAmount;
+    normalized.amountMode === "variable" ? 0 : defaultAmount;
 
   if (!list.length) {
     list.push({
       n: 1,
-      amount: defaultAmount,
-      dueDate: todayMonthStart,
+      amount: nextAmount() || defaultAmount,
+      dueDate: today,
       paidAt: null,
     });
   }
@@ -134,12 +158,12 @@ export function ensureRecurringInstallments(plan: DebtPlan): DebtPlan {
   let guard = 0;
   while (guard++ < 240) {
     const last = list[list.length - 1];
-    // Em dia com o calendário: última parcela cobre o mês atual
-    if (last.dueDate >= todayMonthStart) break;
+    // Em dia com o calendário: última cobrança ainda cobre até hoje
+    if (last.dueDate >= today) break;
     list.push({
       n: last.n + 1,
       amount: nextAmount(),
-      dueDate: ymdAddMonths(last.dueDate, 1),
+      dueDate: ymdAddMonths(last.dueDate, interval),
       paidAt: null,
     });
   }
@@ -150,7 +174,7 @@ export function ensureRecurringInstallments(plan: DebtPlan): DebtPlan {
     list.push({
       n: last.n + 1,
       amount: nextAmount(),
-      dueDate: ymdAddMonths(last.dueDate, 1),
+      dueDate: ymdAddMonths(last.dueDate, interval),
       paidAt: null,
     });
   }
@@ -162,10 +186,15 @@ export function ensureRecurringInstallments(plan: DebtPlan): DebtPlan {
  * Gera plano fixo (N parcelas) ou ilimitado (recorrente).
  * `currentParcel` = parcela/mensalidade em que você está agora (já pagas ficam 1..atual-1).
  * `firstDue` = vencimento dessa parcela atual.
+ * Em modo equal + parcelada: `amount` = valor de CADA parcela (ex.: 36× de R$ 589,38).
  */
 export function buildDebtPlan(input: {
   spentAt: string;
-  /** Total (equal/fixed) ou valor mensal sugerido (ilimitado / variável) */
+  /**
+   * Equal + parcelada: valor de cada parcela.
+   * Equal + ilimitada: valor mensal.
+   * Variável: fallback só para parcelas já pagas sem valor no form.
+   */
   amount: number;
   mode: DebtMode;
   amountMode?: DebtAmountMode;
@@ -175,6 +204,8 @@ export function buildDebtPlan(input: {
   /** Parcela atual (1 = começando do zero) */
   currentParcel?: number;
   firstDue: string;
+  /** Espaçamento entre parcelas (1 = mensal, 6 = semestral…) */
+  intervalMonths?: number;
 }): DebtPlan {
   const spentAt = toYmd(input.spentAt, format(new Date(), "yyyy-MM-dd"));
   const currentDue = toYmd(input.firstDue, spentAt);
@@ -182,18 +213,24 @@ export function buildDebtPlan(input: {
   const current = Math.max(1, Math.floor(input.currentParcel || 1));
   const amountMode: DebtAmountMode =
     input.amountMode === "variable" ? "variable" : "equal";
+  const interval = clampIntervalMonths(input.intervalMonths);
 
   if (input.mode === "unlimited") {
     const installments: DebtInstallment[] = [];
     for (let n = 1; n <= current; n++) {
-      const dueDate = ymdAddMonths(currentDue, n - current);
+      const dueDate = ymdAddMonths(currentDue, (n - current) * interval);
       const custom = input.amounts?.[n - 1];
+      const hasCustom = custom != null && Number.isFinite(Number(custom));
+      const value = hasCustom
+        ? Math.round(Number(custom) * 100) / 100
+        : amountMode === "variable"
+          ? n < current
+            ? amount
+            : 0
+          : amount;
       installments.push({
         n,
-        amount:
-          custom != null && !Number.isNaN(custom)
-            ? Math.round(Number(custom) * 100) / 100
-            : amount,
+        amount: value,
         dueDate,
         paidAt: n < current ? dueDate : null,
       });
@@ -203,6 +240,7 @@ export function buildDebtPlan(input: {
       total: amount,
       mode: "unlimited",
       amountMode,
+      intervalMonths: interval,
       monthlyAmount: amount,
       installmentCount: null,
       closedAt: null,
@@ -214,24 +252,28 @@ export function buildDebtPlan(input: {
   const startAt = Math.min(current, count);
 
   let parts: number[];
-  if (amountMode === "variable" && input.amounts?.length) {
+  if (amountMode === "variable") {
+    // Só usa valor informado; futuras ficam 0 (a definir) — sem rateio fantasma
     parts = Array.from({ length: count }, (_, idx) => {
-      const v = Number(input.amounts?.[idx]);
-      return Math.round((Number.isFinite(v) ? v : amount) * 100) / 100;
+      const n = idx + 1;
+      const raw = input.amounts?.[idx];
+      const has = raw != null && Number.isFinite(Number(raw));
+      const v = has ? Math.round(Number(raw) * 100) / 100 : null;
+      if (v != null && v > 0) return v;
+      // Parcelas já pagas sem valor no form: fallback do campo total
+      if (n < startAt) return amount > 0 ? amount : 0;
+      return 0;
     });
   } else {
-    const base = Math.floor((amount / count) * 100) / 100;
-    parts = Array.from({ length: count }, () => base);
-    const sumBase = Math.round(parts.reduce((s, v) => s + v, 0) * 100) / 100;
-    const diff = Math.round((amount - sumBase) * 100) / 100;
-    parts[parts.length - 1] =
-      Math.round((parts[parts.length - 1] + diff) * 100) / 100;
+    // Valor fixo = mesma parcela a cada ciclo (não divide o total)
+    const installment = amount;
+    parts = Array.from({ length: count }, () => installment);
   }
 
   const total = Math.round(parts.reduce((s, v) => s + v, 0) * 100) / 100;
   const installments: DebtInstallment[] = parts.map((value, idx) => {
     const n = idx + 1;
-    const dueDate = ymdAddMonths(currentDue, n - startAt);
+    const dueDate = ymdAddMonths(currentDue, (n - startAt) * interval);
     return {
       n,
       amount: value,
@@ -245,11 +287,52 @@ export function buildDebtPlan(input: {
     total,
     mode: "fixed",
     amountMode,
-    monthlyAmount: parts[startAt - 1] || parts[0] || 0,
+    intervalMonths: interval,
+    monthlyAmount:
+      amountMode === "equal"
+        ? amount
+        : parts[startAt - 1] || parts.find((p) => p > 0) || 0,
     installmentCount: count,
     closedAt: null,
     installments,
   };
+}
+
+/** Valor ainda não informado (renda variável). */
+export function isAmountPending(amount: number | null | undefined): boolean {
+  return !(Number(amount) > 0);
+}
+
+/**
+ * Corrige planos variáveis antigos em que o rateio deixou o mesmo
+ * valor residual em todas as parcelas em aberto (ex.: R$ 10,84).
+ */
+export function scrubVariableGhostAmounts(plan: DebtPlan): DebtPlan {
+  const normalized = normalizePlan(plan);
+  if (normalized.amountMode !== "variable") return normalized;
+
+  const paid = normalized.installments.filter(
+    (i) => i.paidAt && i.amount > 0,
+  );
+  const open = normalized.installments.filter((i) => !i.paidAt);
+  if (paid.length < 1 || open.length < 2) return normalized;
+
+  const avgPaid =
+    paid.reduce((s, i) => s + i.amount, 0) / paid.length;
+  const ghost = open[0].amount;
+  const allSame = open.every((i) => i.amount === ghost);
+  // Residual típico do rateio: igual em todas e bem menor que o que já pagou
+  if (!allSame || !(ghost > 0) || ghost >= avgPaid * 0.35) {
+    return normalized;
+  }
+
+  const installments = normalized.installments.map((i) =>
+    i.paidAt ? i : { ...i, amount: 0 },
+  );
+  const total =
+    Math.round(installments.reduce((s, i) => s + i.amount, 0) * 100) / 100;
+
+  return { ...normalized, installments, total };
 }
 
 /** Altera o valor de uma parcela (e recalcula total no modo fixo). */
@@ -304,7 +387,9 @@ export function updateInstallmentDueDate(
 export function getDebtPlan(item: Item): DebtPlan {
   const fromNotes = item.debt ?? extractDebtFromNotes(item.notes);
   if (fromNotes) {
-    return ensureRecurringInstallments(normalizePlan(fromNotes));
+    return scrubVariableGhostAmounts(
+      ensureRecurringInstallments(normalizePlan(fromNotes)),
+    );
   }
 
   const spentAt = toYmd(
@@ -328,7 +413,7 @@ export function debtSummary(
   plan: DebtPlan,
   today = format(new Date(), "yyyy-MM-dd"),
 ) {
-  const live = ensureRecurringInstallments(plan);
+  const live = scrubVariableGhostAmounts(ensureRecurringInstallments(plan));
   const paid = live.installments.filter((i) => i.paidAt);
   const open = live.installments.filter((i) => !i.paidAt);
   const overdue = open.filter((i) => i.dueDate < today);
@@ -337,6 +422,7 @@ export function debtSummary(
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   const paidAmount = paid.reduce((s, i) => s + i.amount, 0);
   const openAmount = open.reduce((s, i) => s + i.amount, 0);
+  const pendingCount = open.filter((i) => isAmountPending(i.amount)).length;
 
   let lifecycle: DebtLifecycle;
   if (live.closedAt || (live.mode === "fixed" && open.length === 0)) {
@@ -348,18 +434,21 @@ export function debtSummary(
   }
 
   const unlimited = live.mode === "unlimited";
+  const variable = live.amountMode === "variable";
 
   return {
     lifecycle,
     unlimited,
+    variable,
     closed: Boolean(live.closedAt),
     paidCount: paid.length,
     totalCount: unlimited ? null : live.installments.length,
     overdueCount: overdue.length,
+    pendingCount,
     paidAmount: Math.round(paidAmount * 100) / 100,
     openAmount: Math.round(openAmount * 100) / 100,
     monthlyAmount: live.monthlyAmount || live.total,
-    nextDue: upcoming[0] ?? null,
+    nextDue: upcoming[0] ?? open[0] ?? null,
     progress: unlimited
       ? null
       : live.installments.length === 0
@@ -428,7 +517,7 @@ export function nextOpenDue(plan: DebtPlan): string | null {
 }
 
 export function withDebtOnItem(item: Item, plan: DebtPlan): Item {
-  const live = ensureRecurringInstallments(plan);
+  const live = scrubVariableGhostAmounts(ensureRecurringInstallments(plan));
   const nextDue = nextOpenDue(live);
   const cleanNotes = stripDebtMarker(item.notes);
   return {

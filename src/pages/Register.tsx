@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { BrandLogo } from "@/components/shared/BrandLogo";
 
 export default function Register() {
   const { user, data, setData, login, loading } = useApp();
@@ -60,11 +61,15 @@ export default function Register() {
         <ThemeToggle />
       </div>
       <div className="w-full max-w-md animate-slide-up">
-        <div className="mb-6 text-center">
-          <p className="text-3xl font-bold tracking-tight">
-            Aux<span className="text-primary">Plus</span>
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <div className="relative">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -inset-4 rounded-full bg-primary/20 blur-xl"
+            />
+            <BrandLogo size="lg" className="relative" />
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">
             Crie sua conta e organize vencimentos
           </p>
         </div>

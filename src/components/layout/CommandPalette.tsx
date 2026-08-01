@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  ArrowLeft,
   FolderKanban,
   KeyRound,
   LifeBuoy,
   LogOut,
+  MessageCircle,
   Moon,
+  Settings2,
+  Shield,
   Sun,
   Users,
 } from "lucide-react";
@@ -65,8 +69,31 @@ export function CommandPalette() {
       <CommandList>
         <CommandEmpty>Nenhum resultado.</CommandEmpty>
         <CommandGroup heading="Navegação">
-          {user.isAdmin ? (
-            <>
+          <CommandItem onSelect={() => go("/dashboard")}>
+            <FolderKanban className="mr-2 h-4 w-4" />
+            Pastas
+          </CommandItem>
+          <CommandItem onSelect={() => go("/whatsapp")}>
+            <MessageCircle className="mr-2 h-4 w-4" />
+            WhatsApp
+          </CommandItem>
+          <CommandItem onSelect={() => go("/tickets")}>
+            <LifeBuoy className="mr-2 h-4 w-4" />
+            Tickets
+          </CommandItem>
+          <CommandItem onSelect={() => go("/settings")}>
+            <Settings2 className="mr-2 h-4 w-4" />
+            Configuração
+          </CommandItem>
+        </CommandGroup>
+        {user.isAdmin ? (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Administração">
+              <CommandItem onSelect={() => go("/admin")}>
+                <Shield className="mr-2 h-4 w-4" />
+                Painel admin
+              </CommandItem>
               <CommandItem onSelect={() => go("/admin")}>
                 <Users className="mr-2 h-4 w-4" />
                 Usuários
@@ -75,24 +102,17 @@ export function CommandPalette() {
                 <LifeBuoy className="mr-2 h-4 w-4" />
                 Tickets admin
               </CommandItem>
-            </>
-          ) : (
-            <>
-              <CommandItem onSelect={() => go("/dashboard")}>
-                <FolderKanban className="mr-2 h-4 w-4" />
-                Pastas
-              </CommandItem>
-              <CommandItem onSelect={() => go("/tickets")}>
-                <LifeBuoy className="mr-2 h-4 w-4" />
-                Tickets
-              </CommandItem>
-              <CommandItem onSelect={() => go("/change-password")}>
+              <CommandItem onSelect={() => go("/admin/api")}>
                 <KeyRound className="mr-2 h-4 w-4" />
-                Trocar senha
+                API
               </CommandItem>
-            </>
-          )}
-        </CommandGroup>
+              <CommandItem onSelect={() => go("/dashboard")}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Voltar ao painel
+              </CommandItem>
+            </CommandGroup>
+          </>
+        ) : null}
         {folders.length > 0 && (
           <>
             <CommandSeparator />

@@ -7,7 +7,7 @@ export function RequireAuth({ adminOnly = false }: { adminOnly?: boolean }) {
 
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
+  // Admin também usa o painel do cliente; só bloqueia rotas adminOnly
   if (adminOnly && !user.isAdmin) return <Navigate to="/dashboard" replace />;
-  if (!adminOnly && user.isAdmin) return <Navigate to="/admin" replace />;
   return <Outlet />;
 }

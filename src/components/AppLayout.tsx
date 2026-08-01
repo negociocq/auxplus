@@ -1,37 +1,63 @@
-import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  ArrowLeft,
+  Camera,
+  Eye,
+  EyeOff,
   FolderKanban,
   KeyRound,
   LifeBuoy,
   LogOut,
   Menu,
+  MessageCircle,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
+  Settings2,
+  Shield,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
+import { useHideBalance } from "@/hooks/useHideBalance";
+import { useWhatsappAutoSend } from "@/hooks/useWhatsappAutoSend";
+import { fileToAvatarDataUrl, saveLocalAvatar } from "@/lib/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { BrandLogo } from "@/components/shared/BrandLogo";
 import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 
 const COLLAPSED_KEY = "auxplus-sidebar-collapsed";
 
 export function AppLayout() {
-  const { user, logout, loading } = useApp();
+  const { user, data, setData, logout, loading } = useApp();
+  const { hidden: hideBalance, toggle: toggleHideBalance } = useHideBalance();
+  useWhatsappAutoSend(user, data);
   const navigate = useNavigate();
+  const location = useLocation();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -52,25 +78,64 @@ export function AppLayout() {
   if (loading) return <LoadingScreen />;
   if (!user) return null;
 
-  const links = user.isAdmin
-    ? [
-        { to: "/admin", label: "Usuários", icon: Users },
-        { to: "/admin/tickets", label: "Tickets", icon: LifeBuoy },
-      ]
-    : [
-        { to: "/dashboard", label: "Pastas", icon: FolderKanban },
-        { to: "/tickets", label: "Tickets", icon: LifeBuoy },
-        { to: "/change-password", label: "Senha", icon: KeyRound },
-      ];
+  const isAdminArea = location.pathname.startsWith("/admin");
+  const clientLinks = [
+    { to: "/dashboard", label: "Pastas", icon: FolderKanban },
+    { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
+    { to: "/tickets", label: "Tickets", icon: LifeBuoy },
+    { to: "/settings", label: "Configuração", icon: Settings2 },
+  ];
+  const adminLinks = [
+    { to: "/admin", label: "Usuários", icon: Users },
+    { to: "/admin/tickets", label: "Tickets", icon: LifeBuoy },
+    { to: "/admin/api", label: "API", icon: KeyRound },
+  ];
+  const links = isAdminArea ? adminLinks : clientLinks;
 
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
 
+  const setAvatar = (avatarUrl: string | null) => {
+    if (!user) return;
+    saveLocalAvatar(user.id, avatarUrl);
+    setData({
+      ...data,
+      users: data.users.map((u) =>
+        u.id === user.id ? { ...u, avatarUrl } : u,
+      ),
+    });
+  };
+
+  const onPickAvatar = async (file: File | undefined) => {
+    if (!file) return;
+    setAvatarBusy(true);
+    try {
+      const url = await fileToAvatarDataUrl(file);
+      setAvatar(url);
+      toast.success("Foto de perfil atualizada");
+      setProfileOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao carregar foto");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
   const initials = user.username.slice(0, 2).toUpperCase();
   const sidebarWidth = collapsed ? "w-[4.5rem]" : "w-72";
   const mainPad = collapsed ? "lg:pl-[4.5rem]" : "lg:pl-72";
+  const profileAvatar = (
+    <Avatar className="h-9 w-9 cursor-pointer ring-offset-sidebar transition hover:ring-2 hover:ring-sidebar-primary">
+      {user.avatarUrl ? (
+        <AvatarImage src={user.avatarUrl} alt={user.username} />
+      ) : null}
+      <AvatarFallback className="bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">
+        {initials}
+      </AvatarFallback>
+    </Avatar>
+  );
 
   return (
     <div className="min-h-screen ax-gradient-mesh">
@@ -99,28 +164,21 @@ export function AppLayout() {
       >
         <div
           className={cn(
-            "flex items-center py-4",
-            collapsed ? "justify-center px-2" : "gap-3 px-4",
+            "flex items-center py-3",
+            collapsed ? "justify-center px-2" : "gap-2 px-3",
           )}
         >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary font-bold text-sidebar-primary-foreground">
-            A+
-          </div>
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/60">
-                Operações
-              </p>
-              <p className="truncate text-lg font-bold tracking-tight">
-                AuxPlus
-              </p>
-            </div>
-          )}
+          <BrandLogo
+            size="sm"
+            markOnly={collapsed}
+            inline={!collapsed}
+            className={cn(!collapsed && "min-w-0 flex-1")}
+          />
           <Button
             type="button"
             size="icon"
             variant="ghost"
-            className="text-sidebar-foreground lg:hidden"
+            className="shrink-0 text-sidebar-foreground lg:hidden"
             onClick={() => setMobileOpen(false)}
             aria-label="Fechar"
           >
@@ -214,31 +272,79 @@ export function AppLayout() {
         </nav>
 
         <div className="border-t border-sidebar-border p-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              void onPickAvatar(f);
+              e.target.value = "";
+            }}
+          />
           {!collapsed ? (
-            <div className="mb-2 flex items-center gap-3 rounded-lg bg-sidebar-accent/50 px-3 py-2.5">
-              <Avatar className="h-9 w-9">
-                <AvatarFallback className="bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              className="mb-2 flex w-full items-center gap-3 rounded-lg bg-sidebar-accent/50 px-3 py-2.5 text-left transition hover:bg-sidebar-accent"
+            >
+              {profileAvatar}
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">
                   {user.username}
                 </p>
                 <p className="text-xs text-sidebar-foreground/60">
-                  {user.isAdmin ? "Administrador" : "Operador"}
+                  {user.isAdmin ? "Operador · Admin" : "Operador"}
+                  {" · editar foto"}
                 </p>
               </div>
-            </div>
+            </button>
           ) : (
             <div className="mb-2 flex justify-center">
-              <Avatar className="h-9 w-9">
-                <AvatarFallback className="bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
+              <button
+                type="button"
+                onClick={() => setProfileOpen(true)}
+                aria-label="Foto de perfil"
+              >
+                {profileAvatar}
+              </button>
             </div>
           )}
+          {user.isAdmin ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size={collapsed ? "icon" : "default"}
+                  className={cn(
+                    "mb-1 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                    collapsed ? "mx-auto" : "w-full justify-start gap-2",
+                  )}
+                  onClick={() =>
+                    navigate(isAdminArea ? "/dashboard" : "/admin")
+                  }
+                  aria-label={
+                    isAdminArea ? "Voltar ao painel" : "Painel admin"
+                  }
+                >
+                  {isAdminArea ? (
+                    <ArrowLeft className="h-4 w-4" />
+                  ) : (
+                    <Shield className="h-4 w-4" />
+                  )}
+                  {!collapsed &&
+                    (isAdminArea ? "Voltar ao painel" : "Painel admin")}
+                </Button>
+              </TooltipTrigger>
+              {collapsed ? (
+                <TooltipContent side="right">
+                  {isAdminArea ? "Voltar ao painel" : "Painel admin"}
+                </TooltipContent>
+              ) : null}
+            </Tooltip>
+          ) : null}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -289,6 +395,26 @@ export function AppLayout() {
           </button>
 
           <div className="ml-auto flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  aria-label={hideBalance ? "Mostrar saldo" : "Ocultar saldo"}
+                  onClick={toggleHideBalance}
+                >
+                  {hideBalance ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {hideBalance ? "Mostrar saldo" : "Ocultar saldo"}
+              </TooltipContent>
+            </Tooltip>
             <ThemeToggle />
           </div>
         </header>
@@ -297,6 +423,53 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Foto de perfil</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-2">
+            <Avatar className="h-24 w-24">
+              {user.avatarUrl ? (
+                <AvatarImage src={user.avatarUrl} alt={user.username} />
+              ) : null}
+              <AvatarFallback className="bg-primary text-2xl font-bold text-primary-foreground">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <p className="text-sm text-muted-foreground">
+              {user.username}
+            </p>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button
+              type="button"
+              disabled={avatarBusy}
+              onClick={() => fileRef.current?.click()}
+              className="w-full"
+            >
+              <Camera className="h-4 w-4" />
+              {avatarBusy ? "Processando…" : "Escolher foto"}
+            </Button>
+            {user.avatarUrl ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setAvatar(null);
+                  toast.message("Foto removida");
+                  setProfileOpen(false);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Remover foto
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

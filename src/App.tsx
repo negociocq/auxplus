@@ -17,13 +17,15 @@ import NotFound from "./pages/NotFound";
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const FolderItems = lazy(() => import("./pages/FolderItems"));
 const Tickets = lazy(() => import("./pages/Tickets"));
-const ChangePassword = lazy(() => import("./pages/ChangePassword"));
+const WhatsApp = lazy(() => import("./pages/WhatsApp"));
+const Settings = lazy(() => import("./pages/Settings"));
 const AdminUsers = lazy(() =>
   import("./pages/Admin").then((m) => ({ default: m.AdminUsers })),
 );
 const AdminTickets = lazy(() =>
   import("./pages/Admin").then((m) => ({ default: m.AdminTickets })),
 );
+const AdminApi = lazy(() => import("./pages/AdminApi"));
 
 const queryClient = new QueryClient();
 
@@ -49,9 +51,11 @@ const App = () => (
                       element={<FolderItems />}
                     />
                     <Route path="/tickets" element={<Tickets />} />
+                    <Route path="/whatsapp" element={<WhatsApp />} />
+                    <Route path="/settings" element={<Settings />} />
                     <Route
                       path="/change-password"
-                      element={<ChangePassword />}
+                      element={<Navigate to="/settings" replace />}
                     />
                   </Route>
                 </Route>
@@ -60,6 +64,7 @@ const App = () => (
                   <Route element={<AppLayout />}>
                     <Route path="/admin" element={<AdminUsers />} />
                     <Route path="/admin/tickets" element={<AdminTickets />} />
+                    <Route path="/admin/api" element={<AdminApi />} />
                   </Route>
                 </Route>
 

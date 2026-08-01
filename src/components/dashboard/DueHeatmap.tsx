@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 export function DueHeatmap({ dueDates }: { dueDates: (string | null)[] }) {
   const [hint, setHint] = useState<string | null>(null);
 
-  const { days, max } = useMemo(() => {
+  const { weeks, max } = useMemo(() => {
     const end = startOfDay(new Date());
     const start = subDays(end, 83);
     const days = eachDayOfInterval({ start, end });
@@ -21,13 +21,17 @@ export function DueHeatmap({ dueDates }: { dueDates: (string | null)[] }) {
       return { day, key, count: counts.get(key) || 0 };
     });
     const max = Math.max(1, ...mapped.map((d) => d.count));
-    return { days: mapped, max };
+    const weeks: (typeof mapped)[] = [];
+    for (let i = 0; i < mapped.length; i += 7) {
+      weeks.push(mapped.slice(i, i + 7));
+    }
+    return { weeks, max };
   }, [dueDates]);
 
   return (
-    <div className="overflow-x-auto">
+    <div className="w-full">
       <div
-        className="mb-3 min-h-[2rem] rounded-lg border bg-muted/40 px-3 py-2 text-sm"
+        className="mb-3 rounded-lg border bg-muted/40 px-3 py-2 text-sm"
         aria-live="polite"
       >
         {hint ?? (
@@ -37,34 +41,38 @@ export function DueHeatmap({ dueDates }: { dueDates: (string | null)[] }) {
         )}
       </div>
       <div
-        className="grid w-max grid-flow-col grid-rows-7 gap-1.5"
+        className="flex w-full gap-1 sm:gap-1.5"
         role="img"
         aria-label="Mapa de calor de vencimentos nos últimos 12 semanas"
         onMouseLeave={() => setHint(null)}
       >
-        {days.map(({ day, key, count }) => {
-          const intensity = count === 0 ? 0 : Math.ceil((count / max) * 4);
-          const label = `${format(day, "dd MMM yyyy", { locale: ptBR })}: ${count} vencimento${count === 1 ? "" : "s"}`;
-          return (
-            <button
-              key={key}
-              type="button"
-              title={label}
-              aria-label={label}
-              onMouseEnter={() => setHint(label)}
-              onFocus={() => setHint(label)}
-              onBlur={() => setHint(null)}
-              className={cn(
-                "h-4 w-4 rounded-[4px] outline-none ring-offset-background transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring sm:h-[18px] sm:w-[18px]",
-                intensity === 0 && "bg-muted-foreground/20",
-                intensity === 1 && "bg-primary/30",
-                intensity === 2 && "bg-primary/50",
-                intensity === 3 && "bg-primary/75",
-                intensity >= 4 && "bg-primary",
-              )}
-            />
-          );
-        })}
+        {weeks.map((week, wi) => (
+          <div key={wi} className="flex min-w-0 flex-1 flex-col gap-1 sm:gap-1.5">
+            {week.map(({ day, key, count }) => {
+              const intensity = count === 0 ? 0 : Math.ceil((count / max) * 4);
+              const label = `${format(day, "dd MMM yyyy", { locale: ptBR })}: ${count} vencimento${count === 1 ? "" : "s"}`;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  title={label}
+                  aria-label={label}
+                  onMouseEnter={() => setHint(label)}
+                  onFocus={() => setHint(label)}
+                  onBlur={() => setHint(null)}
+                  className={cn(
+                    "aspect-square w-full rounded-[3px] outline-none ring-offset-background transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring sm:rounded-md",
+                    intensity === 0 && "bg-muted-foreground/20",
+                    intensity === 1 && "bg-primary/30",
+                    intensity === 2 && "bg-primary/50",
+                    intensity === 3 && "bg-primary/75",
+                    intensity >= 4 && "bg-primary",
+                  )}
+                />
+              );
+            })}
+          </div>
+        ))}
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
         Densidade de vencimentos · últimos ~84 dias

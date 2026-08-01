@@ -58,7 +58,8 @@ import {
 } from "@/lib/debts";
 import type { Folder, FolderType, ItemStatus } from "@/types";
 import { isExpenseFolderType, isRevenueFolderType } from "@/types";
-import { formatBrDate, formatMoney } from "@/lib/format";
+import { formatBrDate } from "@/lib/format";
+import { useHideBalance } from "@/hooks/useHideBalance";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -90,6 +91,7 @@ import { toast } from "sonner";
 
 export default function Dashboard() {
   const { user, data, setData } = useApp();
+  const { money } = useHideBalance();
   const [name, setName] = useState("");
   const [type, setType] = useState<FolderType>("Cliente");
   const [editFolder, setEditFolder] = useState<Folder | null>(null);
@@ -498,22 +500,29 @@ export default function Dashboard() {
         }
       />
 
-      <section className="mb-8">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">
-            {isDebtWorkspace ? "Pastas de dívidas" : "Minhas pastas"}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {isDebtWorkspace
-              ? "Abra para lançar gastos e marcar parcelas"
-              : "Abra uma pasta para gerenciar itens"}
-          </p>
+      <section className="mb-8 overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] via-muted/40 to-background p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                <FolderKanban className="h-4 w-4" />
+              </span>
+              <h2 className="text-lg font-semibold tracking-tight">
+                {isDebtWorkspace ? "Pastas de dívidas" : "Minhas pastas"}
+              </h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {isDebtWorkspace
+                ? "Abra para lançar gastos e marcar parcelas"
+                : "Abra uma pasta para gerenciar itens"}
+            </p>
+          </div>
         </div>
         <Tabs
           value={workspace}
           onValueChange={(v) => setWorkspace(v as FolderType)}
         >
-          <TabsList>
+          <TabsList className="bg-background/80">
             <TabsTrigger value="Cliente">Clientes</TabsTrigger>
             <TabsTrigger value="Produto">Produtos</TabsTrigger>
             <TabsTrigger value="Dívida">Dívidas</TabsTrigger>
@@ -530,7 +539,7 @@ export default function Dashboard() {
                   }
                   description={
                     t === "Dívida"
-                      ? "Crie uma pasta para aluguel, planos, cartão e outros gastos."
+                      ? "Crie uma pasta para planos, cartão e outros gastos."
                       : "Organize sua carteira criando uma pasta."
                   }
                   action={
@@ -556,27 +565,44 @@ export default function Dashboard() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.03 }}
-                      className="ax-surface group flex items-center gap-3 p-4 transition hover:-translate-y-0.5"
+                      className="group flex items-center gap-3 rounded-xl border border-primary/10 bg-background/90 p-3.5 shadow-sm ring-1 ring-primary/5 transition hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-md"
                     >
                       <Link
                         to={`/folders/${folder.id}`}
-                        className="min-w-0 flex-1"
+                        className="flex min-w-0 flex-1 items-start gap-3"
                       >
-                        <div className="mb-1 flex items-center gap-2">
-                          <Badge variant="secondary">{folder.type}</Badge>
-                          {(stats[folder.id]?.overdue || 0) > 0 ? (
-                            <Badge variant="destructive">
-                              {stats[folder.id].overdue} atrasados
+                        <span
+                          className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+                          aria-hidden
+                        >
+                          {t === "Dívida" ? (
+                            <CircleDollarSign className="h-5 w-5" />
+                          ) : (
+                            <FolderKanban className="h-5 w-5" />
+                          )}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex flex-wrap items-center gap-2">
+                            <Badge
+                              variant="secondary"
+                              className="border-transparent bg-primary/10 text-primary"
+                            >
+                              {folder.type}
                             </Badge>
-                          ) : null}
+                            {(stats[folder.id]?.overdue || 0) > 0 ? (
+                              <Badge variant="destructive">
+                                {stats[folder.id].overdue} atrasados
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <p className="truncate font-semibold tracking-tight group-hover:text-primary">
+                            {folder.name}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {stats[folder.id]?.activeCount || 0} ativos ·{" "}
+                            {money(stats[folder.id]?.total || 0)}
+                          </p>
                         </div>
-                        <p className="truncate font-semibold group-hover:text-primary">
-                          {folder.name}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {stats[folder.id]?.activeCount || 0} ativos ·{" "}
-                          {formatMoney(stats[folder.id]?.total || 0)}
-                        </p>
                       </Link>
                       <div className="flex gap-1">
                         <Button
@@ -628,7 +654,7 @@ export default function Dashboard() {
             />
             <StatCard
               label="Em aberto"
-              value={formatMoney(debtKpis.aberto)}
+              value={money(debtKpis.aberto)}
               icon={CircleDollarSign}
               hint={`${debtKpis.ilimitadas} recorrentes / ilimitadas`}
               delay={0.06}
@@ -638,7 +664,7 @@ export default function Dashboard() {
               value={debtKpis.atrasadas}
               icon={AlertTriangle}
               tone={debtKpis.atrasadas ? "danger" : "success"}
-              hint={formatMoney(debtKpis.atrasadoValor)}
+              hint={money(debtKpis.atrasadoValor)}
               delay={0.1}
             />
             <StatCard
@@ -651,7 +677,7 @@ export default function Dashboard() {
             />
             <StatCard
               label={`Pago em ${chartYear}`}
-              value={formatMoney(debtAnnualPaid)}
+              value={money(debtAnnualPaid)}
               icon={TrendingDown}
               tone="default"
               hint="Soma das parcelas já pagas no ano"
@@ -703,7 +729,7 @@ export default function Dashboard() {
                     Parcelas marcadas como pagas no ano
                   </p>
                   <p className="mt-2 text-lg font-bold tracking-tight text-primary">
-                    Total pago {chartYear}: {formatMoney(debtAnnualPaid)}
+                    Total pago {chartYear}: {money(debtAnnualPaid)}
                   </p>
                 </div>
                 <Select
@@ -752,7 +778,7 @@ export default function Dashboard() {
                         color: "hsl(var(--popover-foreground))",
                       }}
                       formatter={(value: number) => [
-                        formatMoney(Number(value)),
+                        money(Number(value)),
                         "Pago",
                       ]}
                     />
@@ -794,13 +820,13 @@ export default function Dashboard() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Em aberto</span>
                   <span className="font-semibold">
-                    {formatMoney(debtKpis.aberto)}
+                    {money(debtKpis.aberto)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Atrasado</span>
                   <span className="font-semibold text-destructive">
-                    {formatMoney(debtKpis.atrasadoValor)}
+                    {money(debtKpis.atrasadoValor)}
                   </span>
                 </div>
               </div>
@@ -832,7 +858,7 @@ export default function Dashboard() {
                       <p className="font-medium">{row.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatBrDate(row.dueDate)} ·{" "}
-                        {formatMoney(row.amount)}
+                        {money(row.amount)}
                       </p>
                     </li>
                   ))}
@@ -879,7 +905,7 @@ export default function Dashboard() {
                           {row.folder.name}
                         </Link>
                         <span className="shrink-0 text-sm font-semibold">
-                          {formatMoney(row.total)}
+                          {money(row.total)}
                         </span>
                       </div>
                       <Progress
@@ -930,7 +956,7 @@ export default function Dashboard() {
             />
             <StatCard
               label="Carteira"
-              value={formatMoney(kpis.revenue)}
+              value={money(kpis.revenue)}
               icon={TrendingUp}
               tone="success"
               hint={`Saúde ${kpis.healthy}% em dia`}
@@ -938,7 +964,7 @@ export default function Dashboard() {
             />
             <StatCard
               label={`Saldo anual ${chartYear}`}
-              value={formatMoney(annualBalance)}
+              value={money(annualBalance)}
               icon={BarChart3}
               tone="default"
               hint="Lucro Cliente/Produto · sem dívidas nem vencidos"
@@ -978,7 +1004,7 @@ export default function Dashboard() {
                     Cliente/Produto até o vencimento · sem dívidas
                   </p>
                   <p className="mt-2 text-lg font-bold tracking-tight text-primary">
-                    Saldo anual {chartYear}: {formatMoney(annualBalance)}
+                    Saldo anual {chartYear}: {money(annualBalance)}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1049,7 +1075,7 @@ export default function Dashboard() {
                       labelStyle={{ color: "hsl(var(--foreground))" }}
                       formatter={(value: number, key: string) =>
                         key === "total"
-                          ? [formatMoney(Number(value)), "Total"]
+                          ? [money(Number(value)), "Total"]
                           : [value, "Itens"]
                       }
                     />
@@ -1133,7 +1159,7 @@ export default function Dashboard() {
                           .split("-")
                           .reverse()
                           .join("/")}{" "}
-                        · {formatMoney(item.price || 0)}
+                        · {money(item.price || 0)}
                       </p>
                     </li>
                   ))}
@@ -1180,7 +1206,7 @@ export default function Dashboard() {
                           {row.folder.name}
                         </Link>
                         <span className="shrink-0 text-sm font-semibold">
-                          {formatMoney(row.total)}
+                          {money(row.total)}
                         </span>
                       </div>
                       <Progress

@@ -26,9 +26,11 @@ function mapUser(row: Record<string, unknown>): User {
   return {
     id: String(row.id),
     username: String(row.username),
+    email: row.email ? String(row.email) : null,
     password: String(row.password ?? ""),
     isAdmin: Boolean(row.is_admin),
     isActive: row.is_active !== false,
+    avatarUrl: row.avatar_url ? String(row.avatar_url) : null,
   };
 }
 
@@ -221,6 +223,24 @@ export async function persistAppDataToSupabase(data: AppData): Promise<void> {
     "id",
   );
 
+  // Campos opcionais (migrations: avatar / email)
+  for (const u of data.users) {
+    const patch: Record<string, unknown> = {};
+    if (u.avatarUrl !== undefined) patch.avatar_url = u.avatarUrl ?? null;
+    if (u.email !== undefined) patch.email = u.email?.trim() || null;
+    if (!Object.keys(patch).length) continue;
+    const { error } = await supabase
+      .from("users")
+      .update(patch)
+      .eq("id", Number(u.id));
+    if (
+      error &&
+      !/avatar_url|email|schema cache/i.test(error.message)
+    ) {
+      console.warn("[AuxPlus] user extras sync:", error.message);
+    }
+  }
+
   await syncTable(
     "folders",
     data.folders.map((f) => ({
@@ -312,25 +332,46 @@ export async function persistAppDataToSupabase(data: AppData): Promise<void> {
 }
 
 export async function loginWithSupabase(
-  username: string,
+  login: string,
   password: string,
 ): Promise<{ user?: User; error?: string }> {
   if (!supabase) return { error: "Supabase não configurado" };
 
-  const { data, error } = await supabase
+  const id = login.trim();
+  if (!id) return { error: "Informe usuário ou e-mail." };
+
+  let row: Record<string, unknown> | null = null;
+
+  const byUser = await supabase
     .from("users")
     .select("*")
-    .ilike("username", username.trim())
+    .ilike("username", id)
     .limit(1)
     .maybeSingle();
+  if (byUser.error) return { error: byUser.error.message };
+  row = (byUser.data as Record<string, unknown> | null) ?? null;
 
-  if (error) return { error: error.message };
-  if (!data) return { error: "Nome de usuário ou senha inválidos." };
+  // Se não achou por usuário, tenta e-mail
+  if (!row) {
+    const byEmail = await supabase
+      .from("users")
+      .select("*")
+      .ilike("email", id)
+      .limit(1)
+      .maybeSingle();
+    // Coluna email pode ainda não existir
+    if (byEmail.error && !/email/i.test(byEmail.error.message)) {
+      return { error: byEmail.error.message };
+    }
+    row = (byEmail.data as Record<string, unknown> | null) ?? null;
+  }
 
-  const user = mapUser(data as Record<string, unknown>);
+  if (!row) return { error: "Usuário/e-mail ou senha inválidos." };
+
+  const user = mapUser(row);
   const ok = await verifyPassword(password, user.password);
   if (!ok) {
-    return { error: "Nome de usuário ou senha inválidos." };
+    return { error: "Usuário/e-mail ou senha inválidos." };
   }
   if (!user.isActive) {
     return { error: "Sua conta está desativada. Entre em contato com o suporte." };

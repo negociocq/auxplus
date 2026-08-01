@@ -1,0 +1,853 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { format } from "date-fns";
+import {
+  Link2,
+  Loader2,
+  MessageSquareText,
+  Power,
+  QrCode,
+  RefreshCw,
+  Send,
+  ShieldAlert,
+  Unplug,
+  Clock3,
+  CheckCircle2,
+} from "lucide-react";
+import { toast } from "sonner";
+import { useApp } from "@/context/AppContext";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  acquireWhatsappSendLock,
+  buildTodayQueue,
+  canSendMore,
+  defaultWhatsappAutomation,
+  fetchEvolutionQr,
+  fetchEvolutionStatus,
+  loadSendLog,
+  loadWhatsappSettings,
+  logoutEvolution,
+  nextDelayMs,
+  releaseWhatsappSendLock,
+  saveSendLog,
+  saveWhatsappSettings,
+  sendEvolutionText,
+  type EvolutionRuntimeConfig,
+  type WaConnectionStatus,
+  type WhatsappAutomationSettings,
+  type WaQueueItem,
+  type WaSendLog,
+} from "@/lib/whatsappAutomation";
+import {
+  instanceNameForUser,
+  isEvolutionConfigured,
+  loadEvolutionPlatformConfig,
+  type EvolutionPlatformConfig,
+} from "@/lib/platformApi";
+import { cn } from "@/lib/utils";
+
+function statusLabel(status: WaConnectionStatus) {
+  switch (status) {
+    case "open":
+      return "Conectado";
+    case "qr":
+      return "Escaneie o QR Code";
+    case "connecting":
+      return "Conectando…";
+    case "error":
+      return "Erro";
+    default:
+      return "Desconectado";
+  }
+}
+
+export default function WhatsAppPage() {
+  const { user, data } = useApp();
+  const [settings, setSettings] = useState<WhatsappAutomationSettings>(() =>
+    defaultWhatsappAutomation(),
+  );
+  const [platform, setPlatform] = useState<EvolutionPlatformConfig | null>(
+    null,
+  );
+  const [status, setStatus] = useState<WaConnectionStatus>("disconnected");
+  const [qrBase64, setQrBase64] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [logs, setLogs] = useState<WaSendLog[]>([]);
+  const sendingRef = useRef(false);
+  const pollRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    setSettings(loadWhatsappSettings(user.id));
+    setLogs(loadSendLog(user.id));
+    void loadEvolutionPlatformConfig().then(setPlatform);
+  }, [user]);
+
+  // Mantém a fila alinhada com envios automáticos / outra aba
+  useEffect(() => {
+    if (!user) return;
+    const sync = () => setLogs(loadSendLog(user.id));
+    const id = window.setInterval(sync, 8000);
+    window.addEventListener("focus", sync);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", sync);
+    };
+  }, [user]);
+
+  const runtime: EvolutionRuntimeConfig | null = useMemo(() => {
+    if (!user || !platform || !isEvolutionConfigured(platform)) return null;
+    return {
+      apiBaseUrl: platform.apiBaseUrl,
+      apiKey: platform.apiKey,
+      instanceName: instanceNameForUser(
+        platform.instancePrefix,
+        user.id,
+        user.username,
+      ),
+    };
+  }, [platform, user]);
+
+  const persist = useCallback(
+    (next: WhatsappAutomationSettings) => {
+      if (!user) return;
+      setSettings(next);
+      saveWhatsappSettings(user.id, next);
+    },
+    [user],
+  );
+
+  const myFolders = useMemo(
+    () => data.folders.filter((f) => f.userId === user?.id),
+    [data.folders, user?.id],
+  );
+  const myItems = useMemo(
+    () =>
+      data.items.filter((i) =>
+        myFolders.some((f) => f.id === i.folderId),
+      ),
+    [data.items, myFolders],
+  );
+
+  const queue = useMemo(
+    () => buildTodayQueue(settings, myItems, myFolders, logs),
+    [settings, myItems, myFolders, logs],
+  );
+
+  const sentTodayCount = useMemo(() => {
+    const day = format(new Date(), "yyyy-MM-dd");
+    return logs.filter((l) => l.day === day && l.ok).length;
+  }, [logs]);
+
+  const clearTodaySent = () => {
+    if (!user) return;
+    const day = format(new Date(), "yyyy-MM-dd");
+    const next = loadSendLog(user.id).filter((l) => !(l.day === day && l.ok));
+    saveSendLog(user.id, next);
+    setLogs(next);
+    toast.message("Log de envios de hoje limpo — a fila pode reaparecer");
+  };
+
+  const stopPoll = () => {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const refreshQr = useCallback(async () => {
+    if (!runtime) {
+      setStatus("disconnected");
+      setQrBase64(null);
+      toast.error(
+        "WhatsApp ainda não foi liberado. Peça ao administrador para configurar em Admin → API.",
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetchEvolutionQr(runtime);
+      setStatus(res.status);
+      setQrBase64(res.base64 || null);
+      setPairingCode(res.pairingCode || null);
+      if (res.status === "open") {
+        toast.success("WhatsApp vinculado");
+        stopPoll();
+      }
+    } catch (e) {
+      setStatus("error");
+      setQrBase64(null);
+      toast.error(e instanceof Error ? e.message : "Falha ao obter QR Code");
+    } finally {
+      setBusy(false);
+    }
+  }, [runtime]);
+
+  const checkStatus = useCallback(async () => {
+    if (!runtime) return;
+    try {
+      const st = await fetchEvolutionStatus(runtime);
+      setStatus(st);
+      if (st === "open") {
+        setQrBase64(null);
+        stopPoll();
+      }
+    } catch {
+      /* ignore polling errors */
+    }
+  }, [runtime]);
+
+  useEffect(() => {
+    if (status !== "qr" && status !== "connecting") {
+      stopPoll();
+      return;
+    }
+    stopPoll();
+    pollRef.current = window.setInterval(() => {
+      void checkStatus();
+    }, 4000);
+    return stopPoll;
+  }, [status, checkStatus]);
+
+  useEffect(() => {
+    if (!runtime) return;
+    void checkStatus();
+  }, [runtime, checkStatus]);
+
+  const onDisconnect = async () => {
+    if (!runtime) return;
+    setBusy(true);
+    try {
+      await logoutEvolution(runtime);
+      setStatus("disconnected");
+      setQrBase64(null);
+      toast.message("WhatsApp desvinculado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao desconectar");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const appendLog = (entry: WaSendLog) => {
+    if (!user) return;
+    setLogs((prev) => {
+      const next = [...prev, entry];
+      saveSendLog(user.id, next);
+      return next;
+    });
+  };
+
+  const sendOne = async (item: WaQueueItem) => {
+    const currentLogs = loadSendLog(user.id);
+    const gate = canSendMore(settings, currentLogs);
+    if (!gate.ok) {
+      toast.message(gate.reason || "Limite atingido");
+      return false;
+    }
+    if (!runtime) {
+      toast.error("API do WhatsApp não configurada pelo admin");
+      return false;
+    }
+    await sendEvolutionText(runtime, item.phone, item.message);
+    appendLog({
+      day: format(new Date(), "yyyy-MM-dd"),
+      sentAt: new Date().toISOString(),
+      phone: item.phone,
+      itemId: item.itemId,
+      kind: item.kind,
+      ok: true,
+    });
+    return true;
+  };
+
+  const runOne = async (item: WaQueueItem) => {
+    if (!user || sendingRef.current) return;
+    if (status !== "open") {
+      toast.error("Vincule o WhatsApp pelo QR Code antes de enviar");
+      return;
+    }
+    if (!runtime) {
+      toast.error("API do WhatsApp não configurada pelo admin");
+      return;
+    }
+    if (!acquireWhatsappSendLock()) {
+      toast.message("Já existe um envio em andamento");
+      return;
+    }
+
+    sendingRef.current = true;
+    setSendingId(item.id);
+    try {
+      const ok = await sendOne(item);
+      if (ok) toast.success(`Enviado: ${item.name}`);
+    } catch (e) {
+      appendLog({
+        day: format(new Date(), "yyyy-MM-dd"),
+        sentAt: new Date().toISOString(),
+        phone: item.phone,
+        itemId: item.itemId,
+        kind: item.kind,
+        ok: false,
+        error: e instanceof Error ? e.message : "erro",
+      });
+      toast.error(
+        `Falha em ${item.name}: ${e instanceof Error ? e.message : "erro"}`,
+      );
+    } finally {
+      sendingRef.current = false;
+      setSendingId(null);
+      releaseWhatsappSendLock();
+    }
+  };
+
+  const runQueue = async () => {
+    if (!user || sendingRef.current) return;
+    if (status !== "open") {
+      toast.error("Vincule o WhatsApp pelo QR Code antes de enviar");
+      return;
+    }
+    if (queue.length === 0) {
+      toast.message("Nenhuma mensagem na fila de hoje");
+      return;
+    }
+    if (!acquireWhatsappSendLock()) {
+      toast.message("Já existe um envio em andamento");
+      return;
+    }
+
+    sendingRef.current = true;
+    setSending(true);
+    let sent = 0;
+    try {
+      for (const item of queue) {
+        const gate = canSendMore(settings, loadSendLog(user.id));
+        if (!gate.ok) {
+          toast.message(gate.reason || "Parado pelos limites de segurança");
+          break;
+        }
+        try {
+          const ok = await sendOne(item);
+          if (ok) {
+            sent += 1;
+            toast.success(`Enviado: ${item.name}`);
+          }
+        } catch (e) {
+          appendLog({
+            day: format(new Date(), "yyyy-MM-dd"),
+            sentAt: new Date().toISOString(),
+            phone: item.phone,
+            itemId: item.itemId,
+            kind: item.kind,
+            ok: false,
+            error: e instanceof Error ? e.message : "erro",
+          });
+          toast.error(
+            `Falha em ${item.name}: ${e instanceof Error ? e.message : "erro"}`,
+          );
+          break;
+        }
+        if (sent < queue.length) {
+          await new Promise((r) => setTimeout(r, nextDelayMs(settings)));
+        }
+      }
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+      releaseWhatsappSendLock();
+      if (sent > 0) toast.success(`${sent} mensagem(ns) enviada(s)`);
+    }
+  };
+
+  if (!user) return null;
+
+  const patch = <K extends keyof WhatsappAutomationSettings>(
+    key: K,
+    value: WhatsappAutomationSettings[K],
+  ) => persist({ ...settings, [key]: value });
+
+  const setAutoSend = (on: boolean) => {
+    persist({ ...settings, enabled: on });
+    toast.message(
+      on
+        ? `Autoenvio LIGADO — a partir das ${settings.sendTime}`
+        : "Autoenvio DESLIGADO — nada sai sozinho",
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="WhatsApp"
+        description="Vincule seu número, configure lembretes de vencimento e envie com intervalos seguros."
+      />
+
+      <section
+        className={cn(
+          "ax-surface flex flex-wrap items-center justify-between gap-4 p-5",
+          settings.enabled
+            ? "border-success/40 bg-success/5"
+            : "border-border",
+        )}
+      >
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 font-semibold tracking-tight">
+            <Power
+              className={cn(
+                "h-4 w-4",
+                settings.enabled ? "text-success" : "text-muted-foreground",
+              )}
+            />
+            Autoenvio
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {settings.enabled
+              ? `Ligado — envia sozinho a partir de ${settings.sendTime} (aba aberta + WhatsApp conectado).`
+              : "Desligado — só envia se você clicar em Enviar. Nada sai sozinho."}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant="outline"
+            className={cn(
+              settings.enabled
+                ? "border-success/40 bg-success/15 text-success"
+                : "text-muted-foreground",
+            )}
+          >
+            {settings.enabled ? "LIGADO" : "DESLIGADO"}
+          </Badge>
+          <Button
+            type="button"
+            variant={settings.enabled ? "destructive" : "default"}
+            onClick={() => setAutoSend(!settings.enabled)}
+          >
+            <Power className="h-4 w-4" />
+            {settings.enabled ? "Desligar autoenvio" : "Ligar autoenvio"}
+          </Button>
+        </div>
+      </section>
+
+      <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-foreground">
+        <div className="flex gap-2">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <div className="space-y-1">
+            <p className="font-medium">Proteção anti-ban</p>
+            <p className="text-muted-foreground">
+              O envio respeita intervalo entre mensagens, limite por hora/dia e
+              atraso aleatório. Use um número dedicado, evite spam e não envie
+              em massa fora do horário configurado.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {/* Conexão */}
+        <section className="ax-surface space-y-4 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 font-semibold tracking-tight">
+                <QrCode className="h-4 w-4 text-primary" />
+                Vincular WhatsApp
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Escaneie o QR no WhatsApp do celular (Aparelhos conectados).
+              </p>
+            </div>
+            <Badge
+              variant={status === "open" ? "default" : "secondary"}
+              className={cn(
+                status === "open" && "bg-success/15 text-success hover:bg-success/15",
+              )}
+            >
+              {statusLabel(status)}
+            </Badge>
+          </div>
+
+          {!runtime ? (
+            <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              Aguardando o administrador configurar a API do WhatsApp em{" "}
+              <strong className="text-foreground">Admin → API</strong>. Depois
+              é só gerar o QR e escanear.
+            </div>
+          ) : null}
+
+          <div className="flex min-h-[220px] items-center justify-center rounded-xl border bg-muted/30 p-4">
+            {status === "open" ? (
+              <div className="text-center">
+                <CheckCircle2 className="mx-auto h-10 w-10 text-success" />
+                <p className="mt-2 font-medium">WhatsApp conectado</p>
+                <p className="text-sm text-muted-foreground">
+                  Pronto para enviar lembretes com intervalo seguro.
+                </p>
+              </div>
+            ) : qrBase64 ? (
+              <img
+                src={qrBase64}
+                alt="QR Code WhatsApp"
+                className="max-h-56 rounded-lg bg-white p-2"
+              />
+            ) : (
+              <div className="max-w-sm text-center text-sm text-muted-foreground">
+                <Link2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
+                Gere o QR Code e escaneie no WhatsApp do celular (Aparelhos
+                conectados).
+              </div>
+            )}
+          </div>
+
+          {pairingCode ? (
+            <p className="text-center text-sm text-muted-foreground">
+              Código de pareamento:{" "}
+              <span className="font-mono font-semibold text-foreground">
+                {pairingCode}
+              </span>
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={() => void refreshQr()}
+              disabled={busy || !runtime}
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Gerar / atualizar QR
+            </Button>
+            {status === "open" ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void onDisconnect()}
+                disabled={busy}
+              >
+                <Unplug className="h-4 w-4" />
+                Desconectar
+              </Button>
+            ) : null}
+          </div>
+        </section>
+
+        {/* Agenda */}
+        <section className="ax-surface space-y-4 p-5">
+          <div>
+            <h2 className="flex items-center gap-2 font-semibold tracking-tight">
+              <Clock3 className="h-4 w-4 text-primary" />
+              Quando enviar
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Horário e regras da fila. O autoenvio só roda se estiver{" "}
+              <strong className="text-foreground">Ligado</strong> no botão
+              acima.
+            </p>
+          </div>
+
+          <div className="space-y-3 rounded-lg border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Antes do vencimento</p>
+                <p className="text-xs text-muted-foreground">
+                  Avisa com alguns dias de antecedência
+                </p>
+              </div>
+              <Switch
+                checked={settings.sendBefore}
+                onCheckedChange={(v) => patch("sendBefore", v)}
+              />
+            </div>
+            {settings.sendBefore ? (
+              <div className="space-y-2">
+                <Label htmlFor="wa-days">Quantos dias antes</Label>
+                <Input
+                  id="wa-days"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={settings.daysBefore}
+                  onChange={(e) =>
+                    patch(
+                      "daysBefore",
+                      Math.max(1, Math.min(30, Number(e.target.value) || 1)),
+                    )
+                  }
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+            <div>
+              <p className="text-sm font-medium">No dia do vencimento</p>
+              <p className="text-xs text-muted-foreground">
+                Envia também no dia que vence
+              </p>
+            </div>
+            <Switch
+              checked={settings.sendOnDay}
+              onCheckedChange={(v) => patch("sendOnDay", v)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="wa-time">Horário do envio</Label>
+            <Input
+              id="wa-time"
+              type="time"
+              value={settings.sendTime}
+              onChange={(e) => patch("sendTime", e.target.value || "09:30")}
+            />
+            <p className="text-xs text-muted-foreground">
+              A partir deste horário o app começa a fila automaticamente.
+              Se a aba estiver fechada, o envio retoma quando você abrir de
+              novo (já enviados não repetem).
+            </p>
+          </div>
+
+          <Separator />
+
+          <div>
+            <h3 className="mb-3 text-sm font-semibold">Limites anti-ban</h3>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Entre cada pessoa: intervalo mínimo + variação aleatória (ex.:
+              75s + até 40s ≈ 1m15s a 1m55s). Máx. por hora e por dia param a
+              fila até liberar.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Intervalo mínimo (seg)</Label>
+                <Input
+                  type="number"
+                  min={30}
+                  max={600}
+                  value={settings.minIntervalSec}
+                  onChange={(e) =>
+                    patch(
+                      "minIntervalSec",
+                      Math.max(30, Number(e.target.value) || 75),
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Variação aleatória (seg)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={300}
+                  value={settings.jitterSec}
+                  onChange={(e) =>
+                    patch(
+                      "jitterSec",
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Máx. por hora</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={settings.maxPerHour}
+                  onChange={(e) =>
+                    patch(
+                      "maxPerHour",
+                      Math.max(1, Number(e.target.value) || 12),
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Máx. por dia</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={settings.maxPerDay}
+                  onChange={(e) =>
+                    patch(
+                      "maxPerDay",
+                      Math.max(1, Number(e.target.value) || 40),
+                    )
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* Mensagens */}
+      <section className="ax-surface space-y-4 p-5">
+        <div>
+          <h2 className="flex items-center gap-2 font-semibold tracking-tight">
+            <MessageSquareText className="h-4 w-4 text-primary" />
+            Mensagens
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Variáveis:{" "}
+            <code className="rounded bg-muted px-1">{"{getGreeting}"}</code>{" "}
+            <code className="rounded bg-muted px-1">{"{name}"}</code>{" "}
+            <code className="rounded bg-muted px-1">{"{item_id}"}</code>{" "}
+            <code className="rounded bg-muted px-1">{"{due_date}"}</code>
+          </p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="msg-before">
+              Mensagem — {settings.daysBefore} dia(s) antes
+            </Label>
+            <Textarea
+              id="msg-before"
+              rows={12}
+              value={settings.messageBefore}
+              onChange={(e) => patch("messageBefore", e.target.value)}
+              disabled={!settings.sendBefore}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                patch(
+                  "messageBefore",
+                  defaultWhatsappAutomation().messageBefore,
+                )
+              }
+            >
+              Restaurar padrão
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="msg-day">Mensagem — no dia do vencimento</Label>
+            <Textarea
+              id="msg-day"
+              rows={12}
+              value={settings.messageOnDay}
+              onChange={(e) => patch("messageOnDay", e.target.value)}
+              disabled={!settings.sendOnDay}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                patch("messageOnDay", defaultWhatsappAutomation().messageOnDay)
+              }
+            >
+              Restaurar padrão
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Fila */}
+      <section className="ax-surface space-y-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold tracking-tight">Fila de hoje</h2>
+            <p className="text-sm text-muted-foreground">
+              {queue.length} pendente(s) · {sentTodayCount} já enviado(s) ·
+              horário {settings.sendTime}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sentTodayCount > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={clearTodaySent}
+              >
+                Recolocar enviados na fila
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              onClick={() => void runQueue()}
+              disabled={
+                sending ||
+                Boolean(sendingId) ||
+                status !== "open" ||
+                queue.length === 0
+              }
+            >
+              {sending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Enviar fila com intervalo
+            </Button>
+          </div>
+        </div>
+
+        {queue.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {sentTodayCount > 0
+              ? "Ninguém pendente agora — os de hoje já foram enviados (ou estão fora da regra). Use “Recolocar enviados na fila” para testar de novo."
+              : "Ninguém para avisar hoje: precisa telefone + vencer hoje (ou daqui X dias, se “antes do vencimento” estiver ligado) em pasta Cliente/Produto. “Perto” na pasta não é a mesma regra da fila."}
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {queue.map((q) => {
+              const rowBusy = sending || sendingId === q.id;
+              return (
+                <li
+                  key={q.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{q.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {q.kind === "before"
+                        ? `${settings.daysBefore} dia(s) antes`
+                        : "No dia"}{" "}
+                      · vence {q.dueDate.split("-").reverse().join("/")} ·{" "}
+                      {q.phone}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge variant="outline">
+                      {q.kind === "before" ? "Antecipado" : "Hoje"}
+                    </Badge>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={rowBusy || status !== "open" || !runtime}
+                      onClick={() => void runOne(q)}
+                      title="Enviar só este lembrete"
+                    >
+                      {sendingId === q.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                      Enviar
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}

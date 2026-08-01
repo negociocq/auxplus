@@ -3,8 +3,10 @@ import { ptBR } from "date-fns/locale";
 
 export function formatMoney(value: number) {
   const [intPart, dec] = value.toFixed(2).split(".");
-  const withSpaces = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `R$ ${withSpaces},${dec}`;
+  // Espaço não separável: evita "R$ 3" / "894,99" em linhas diferentes
+  const nbsp = "\u00A0";
+  const withSpaces = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, nbsp);
+  return `R$${nbsp}${withSpaces},${dec}`;
 }
 
 export function formatBrDate(value?: string | null) {

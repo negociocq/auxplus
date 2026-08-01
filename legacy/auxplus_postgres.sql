@@ -89,8 +89,7 @@ CREATE TABLE whatsapp_messages (
 );
 
 INSERT INTO users (id, username, password, is_admin, is_active) VALUES
-(1, 'tarciocq', '$2y$10$cp75Q2VPuS4bujVF9d70v.VY3lO0dlRHKh9pzvVv70zsmUMCQmk9O', FALSE, TRUE),
-(9, 'admin', '$2y$10$7HGd2bF/zWbJE8SN6.ntJu9WrVHG97KxtDShcDCoFA6rLcKWum5By', TRUE, TRUE),
+(1, 'tarciocq', '$2y$10$cp75Q2VPuS4bujVF9d70v.VY3lO0dlRHKh9pzvVv70zsmUMCQmk9O', TRUE, TRUE),
 (12, 'eronvitor', '$2y$10$FjcxXOjFc5RSQ9Bh/0y/CenFNwxXYsO8xcgAl3ChLlm.7MATgcGdG', FALSE, TRUE),
 (18, 'natu', '$2y$10$64Y3ZdI2rRQNsPegpvJUfO4WS1ZJqkkIlVvyU68kRqQX6Y8oX9ER.', FALSE, TRUE),
 (16, 'andrelima', '$2y$10$fIMAbzuBIlFFgRS..vRJDO0jqjGLuLBrVyrSDGkGf3t7GHhaXcMMu', FALSE, TRUE),

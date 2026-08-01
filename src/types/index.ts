@@ -18,9 +18,13 @@ export type ItemStatus =
 export interface User {
   id: string;
   username: string;
+  /** E-mail (opcional) — também serve para login */
+  email?: string | null;
   password: string;
   isAdmin: boolean;
   isActive: boolean;
+  /** Foto de perfil (data URL JPEG/PNG compactada) */
+  avatarUrl?: string | null;
 }
 
 export interface Folder {
@@ -69,6 +73,8 @@ export interface DebtPlan {
   mode?: "fixed" | "unlimited";
   /** equal = mesmo valor | variable = valor diferente por parcela */
   amountMode?: "equal" | "variable";
+  /** Espaçamento entre parcelas em meses (1 = mensal, 6 = semestral…) */
+  intervalMonths?: number;
   monthlyAmount?: number;
   /** null = ilimitada */
   installmentCount?: number | null;

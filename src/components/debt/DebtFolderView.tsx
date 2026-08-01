@@ -15,6 +15,7 @@ import {
   Trash2,
   AlertTriangle,
   PartyPopper,
+  StickyNote,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
@@ -26,8 +27,11 @@ import {
 import {
   buildDebtPlan,
   closeDebtPlan,
+  DEBT_INTERVALS,
   debtSummary,
   getDebtPlan,
+  intervalLabel,
+  isAmountPending,
   markInstallmentPaid,
   reopenDebtPlan,
   stripDebtMarker,
@@ -40,7 +44,8 @@ import {
   type DebtMode,
 } from "@/lib/debts";
 import { stripPaymentMarker } from "@/lib/payments";
-import { formatBrDate, formatMoney } from "@/lib/format";
+import { formatBrDate } from "@/lib/format";
+import { useHideBalance } from "@/hooks/useHideBalance";
 import type { Folder, Item } from "@/types";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -71,6 +76,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 type DebtFilter = "all" | DebtLifecycle;
@@ -104,15 +114,21 @@ function cleanNotes(notes?: string | null) {
 function syncParcelAmounts(
   count: number,
   prev: string[],
-  fallback: string,
+  fallback = "",
 ): string[] {
-  const n = Math.max(1, Math.min(count, 120));
+  const n = Math.max(1, Math.min(count, 240));
   return Array.from({ length: n }, (_, i) => prev[i] ?? fallback);
 }
 
 export function DebtFolderView({ folder }: { folder: Folder }) {
   const { data, setData } = useApp();
+  const { money } = useHideBalance();
   const [filter, setFilter] = useState<DebtFilter>("all");
+
+  const formatParcelAmount = (amount: number, variable: boolean) => {
+    if (variable && isAmountPending(amount)) return "A definir";
+    return money(amount);
+  };
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -123,6 +139,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
     total: "",
     mode: "fixed" as DebtMode,
     amountMode: "equal" as DebtAmountMode,
+    intervalMonths: "1",
     parcels: "1",
     currentParcel: "1",
     firstDue: format(new Date(), "yyyy-MM-dd"),
@@ -199,6 +216,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
       total: "",
       mode: "fixed",
       amountMode: "equal",
+      intervalMonths: "1",
       parcels: "1",
       currentParcel: "1",
       firstDue: today,
@@ -214,16 +232,28 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
       plan.installments.find((i) => !i.paidAt) ??
       plan.installments[plan.installments.length - 1];
     setEditing(item);
+    const knownCount = Math.max(1, current?.n || 1);
     setForm({
       name: item.name,
       spentAt: plan.spentAt,
-      total: String(plan.monthlyAmount || plan.total),
+      total:
+        plan.amountMode === "variable"
+          ? ""
+          : String(
+              plan.monthlyAmount ||
+                plan.installments.find((i) => i.amount > 0)?.amount ||
+                plan.total,
+            ),
       mode: plan.mode === "unlimited" ? "unlimited" : "fixed",
       amountMode: plan.amountMode === "variable" ? "variable" : "equal",
+      intervalMonths: String(plan.intervalMonths || 1),
       parcels: String(plan.installmentCount || plan.installments.length || 1),
       currentParcel: String(current?.n || 1),
       firstDue: current?.dueDate ?? plan.spentAt,
-      parcelAmounts: plan.installments.map((i) => String(i.amount)),
+      // Variável: só valores conhecidos (até a parcela atual)
+      parcelAmounts: plan.installments
+        .slice(0, knownCount)
+        .map((i) => (i.amount > 0 ? String(i.amount) : "")),
       notes: cleanNotes(item.notes),
     });
     setFormOpen(true);
@@ -234,10 +264,31 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
     const amount = Number(String(form.total).replace(",", ".")) || 0;
     const count = Math.max(1, Number(form.parcels) || 1);
     const currentParcel = Math.max(1, Number(form.currentParcel) || 1);
-    const amounts =
-      form.amountMode === "variable"
-        ? form.parcelAmounts.map((v) => Number(String(v).replace(",", ".")) || 0)
-        : undefined;
+    const knownLen =
+      form.mode === "fixed"
+        ? Math.min(currentParcel, count)
+        : currentParcel;
+
+    let amounts: number[] | undefined;
+    if (form.amountMode === "variable") {
+      const known = syncParcelAmounts(knownLen, form.parcelAmounts, "").map(
+        (v) => Number(String(v).replace(",", ".")) || 0,
+      );
+      // Completa o restante com 0 (a definir) — nunca rateia o total
+      amounts =
+        form.mode === "fixed"
+          ? Array.from({ length: count }, (_, i) => known[i] ?? 0)
+          : known;
+
+      const missingPaid = known
+        .slice(0, Math.max(0, knownLen - 1))
+        .some((v) => !(v > 0));
+      if (missingPaid) {
+        toast.error("Informe o valor de cada parcela já paga");
+        return;
+      }
+    }
+
     let plan = buildDebtPlan({
       spentAt: form.spentAt,
       amount,
@@ -250,6 +301,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
           ? Math.min(currentParcel, count)
           : currentParcel,
       firstDue: form.firstDue,
+      intervalMonths: Number(form.intervalMonths) || 1,
     });
 
     // Ao editar ilimitada encerrada, mantém closedAt
@@ -258,23 +310,26 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
       if (form.mode === "unlimited" && prev.closedAt) {
         plan = { ...plan, closedAt: prev.closedAt };
       }
-      // Preserva valores já editados das parcelas ao só mudar metadados
+      // Preserva valores já preenchidos nas parcelas futuras
       if (form.amountMode === "variable" && prev.installments.length) {
+        const installments = plan.installments.map((inst) => {
+          const old = prev.installments.find((p) => p.n === inst.n);
+          if (!old) return inst;
+          const amount =
+            inst.n > knownLen && old.amount > 0 ? old.amount : inst.amount;
+          return {
+            ...inst,
+            amount,
+            paidAt: old.paidAt ?? inst.paidAt,
+          };
+        });
         plan = {
           ...plan,
-          installments: plan.installments.map((inst) => {
-            const old = prev.installments.find((p) => p.n === inst.n);
-            if (!old) return inst;
-            // Se o form trouxe valor para essa parcela, buildDebtPlan já usou;
-            // senão mantém o antigo
-            const fromForm = amounts?.[inst.n - 1];
-            return {
-              ...inst,
-              amount:
-                fromForm != null && fromForm > 0 ? inst.amount : old.amount,
-              paidAt: old.paidAt ?? inst.paidAt,
-            };
-          }),
+          installments,
+          total:
+            Math.round(
+              installments.reduce((s, i) => s + i.amount, 0) * 100,
+            ) / 100,
         };
       }
     }
@@ -303,10 +358,25 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
   };
 
   const payParcel = (item: Item, n: number) => {
-    const plan = markInstallmentPaid(getDebtPlan(item), n);
-    const next = withDebtOnItem(item, plan);
-    setData(updateItem(data, next));
-    const summary = debtSummary(plan);
+    const plan = getDebtPlan(item);
+    const inst = plan.installments.find((i) => i.n === n);
+    if (
+      plan.amountMode === "variable" &&
+      inst &&
+      isAmountPending(inst.amount)
+    ) {
+      setExpanded(item.id);
+      setEditingAmount({
+        itemId: item.id,
+        n,
+        value: "",
+      });
+      toast.message("Informe o valor desta parcela antes de marcar como paga");
+      return;
+    }
+    const nextPlan = markInstallmentPaid(plan, n);
+    setData(updateItem(data, withDebtOnItem(item, nextPlan)));
+    const summary = debtSummary(nextPlan);
     if (summary.lifecycle === "quitada" && !summary.unlimited) {
       toast.success("Dívida quitada! Todas as parcelas foram pagas.");
     } else {
@@ -322,9 +392,8 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
 
   const saveParcelAmount = (item: Item, n: number, raw: string) => {
     const value = Number(String(raw).replace(",", "."));
-    if (!Number.isFinite(value) || value < 0) {
-      toast.error("Valor inválido");
-      setEditingAmount(null);
+    if (!Number.isFinite(value) || value <= 0) {
+      toast.error("Informe um valor maior que zero");
       return;
     }
     const plan = updateInstallmentAmount(getDebtPlan(item), n, value);
@@ -343,27 +412,27 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
   const closeDebt = (item: Item) => {
     if (
       !confirm(
-        "Encerrar esta dívida? Use quando sair do aluguel, cancelar o plano, etc. O histórico de pagamentos fica salvo.",
+        "Encerrar esta cobrança recorrente? O histórico de pagamentos fica salvo e as próximas mensalidades param de ser geradas.",
       )
     ) {
       return;
     }
     const plan = closeDebtPlan(getDebtPlan(item));
     setData(updateItem(data, withDebtOnItem(item, plan)));
-    toast.success("Dívida encerrada");
+    toast.success("Cobrança encerrada");
   };
 
   const reopenDebt = (item: Item) => {
     const plan = reopenDebtPlan(getDebtPlan(item));
     setData(updateItem(data, withDebtOnItem(item, plan)));
-    toast.success("Dívida reaberta — parcelas voltam a correr");
+    toast.success("Cobrança reaberta — mensalidades voltam a correr");
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={folder.name}
-        description="Parcelas fixas ou ilimitadas (aluguel, plano, seguro). Encerre quando parar de pagar."
+        description="Parcelas fixas ou cobrança recorrente. Encerre quando não for mais pagar."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" asChild>
@@ -386,7 +455,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
             Em aberto
           </p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
-            {formatMoney(kpis.aberto)}
+            {money(kpis.aberto)}
           </p>
         </div>
         <div className="ax-surface p-4">
@@ -398,7 +467,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
             {kpis.atrasadas}
           </p>
           <p className="text-xs text-muted-foreground">
-            {formatMoney(kpis.atrasadoValor)}
+            {money(kpis.atrasadoValor)}
           </p>
         </div>
         <div className="ax-surface p-4">
@@ -464,7 +533,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
         <EmptyState
           icon={CircleDollarSign}
           title="Nenhuma dívida aqui"
-          description="À vista, em N parcelas ou ilimitada (aluguel, plano de saúde…)."
+          description="À vista, em N parcelas ou cobrança recorrente sem data de fim."
           action={
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4" />
@@ -503,9 +572,18 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                             <Badge className={life.className}>{life.label}</Badge>
                             {summary.unlimited ? (
                               <Badge variant="secondary">Ilimitada</Badge>
-                            ) : null}
+                            ) : (
+                              <Badge variant="secondary">Com prazo</Badge>
+                            )}
                             {plan.amountMode === "variable" ? (
                               <Badge variant="outline">Valor variável</Badge>
+                            ) : (
+                              <Badge variant="outline">Valor fixo</Badge>
+                            )}
+                            {(plan.intervalMonths || 1) !== 1 ? (
+                              <Badge variant="outline">
+                                {intervalLabel(plan.intervalMonths)}
+                              </Badge>
                             ) : null}
                             {summary.lifecycle === "quitada" ? (
                               <Badge className="gap-1 border-transparent bg-success/15 text-success">
@@ -536,7 +614,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                                   {" · "}
                                   Mensal:{" "}
                                   <span className="font-medium text-foreground">
-                                    {formatMoney(summary.monthlyAmount)}
+                                    {money(summary.monthlyAmount)}
                                   </span>
                                 </>
                               ) : (
@@ -545,21 +623,62 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                                   <span className="font-medium text-foreground">
                                     {summary.paidCount}/{summary.totalCount}
                                   </span>
+                                  {!summary.variable &&
+                                  summary.monthlyAmount > 0 ? (
+                                    <>
+                                      {" · "}
+                                      {summary.totalCount}× de{" "}
+                                      <span className="font-medium text-foreground">
+                                        {money(summary.monthlyAmount)}
+                                      </span>
+                                      {(plan.intervalMonths || 1) !== 1 ? (
+                                        <span>
+                                          {" "}
+                                          · {intervalLabel(plan.intervalMonths)}
+                                        </span>
+                                      ) : null}
+                                    </>
+                                  ) : null}
                                 </>
                               )}
                             </span>
                             <span>
                               Já pago:{" "}
                               <span className="font-medium text-foreground">
-                                {formatMoney(summary.paidAmount)}
+                                {money(summary.paidAmount)}
                               </span>
                             </span>
                             {!summary.closed ? (
                               <span>
-                                Em aberto:{" "}
-                                <span className="font-medium text-foreground">
-                                  {formatMoney(summary.openAmount)}
-                                </span>
+                                {summary.variable ? (
+                                  summary.openAmount > 0 ? (
+                                    <>
+                                      Definido em aberto:{" "}
+                                      <span className="font-medium text-foreground">
+                                        {money(summary.openAmount)}
+                                      </span>
+                                      {summary.pendingCount > 0 ? (
+                                        <span className="text-muted-foreground">
+                                          {" "}
+                                          · {summary.pendingCount} a preencher
+                                        </span>
+                                      ) : null}
+                                    </>
+                                  ) : (
+                                    <span className="text-muted-foreground">
+                                      {summary.pendingCount} parcela
+                                      {summary.pendingCount === 1 ? "" : "s"}{" "}
+                                      sem valor (preencha mês a mês)
+                                    </span>
+                                  )
+                                ) : (
+                                  <>
+                                    Em aberto:{" "}
+                                    <span className="font-medium text-foreground">
+                                      {money(summary.openAmount)}
+                                    </span>
+                                  </>
+                                )}
                               </span>
                             ) : plan.closedAt ? (
                               <span>
@@ -574,7 +693,10 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                                 Próxima:{" "}
                                 <span className="font-medium text-foreground">
                                   {formatBrDate(summary.nextDue.dueDate)} ·{" "}
-                                  {formatMoney(summary.nextDue.amount)}
+                                  {formatParcelAmount(
+                                    summary.nextDue.amount,
+                                    summary.variable,
+                                  )}
                                 </span>
                               </span>
                             ) : null}
@@ -589,31 +711,42 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                           ) : (
                             <p className="pt-1 text-[11px] text-muted-foreground">
                               Recorrente — encerre quando não for mais pagar
-                              (ex.: sair do aluguel)
                             </p>
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-bold tabular-nums">
-                            {formatMoney(
-                              plan.amountMode === "variable" &&
-                                summary.nextDue
-                                ? summary.nextDue.amount
-                                : summary.unlimited
-                                  ? summary.monthlyAmount
-                                  : plan.total,
-                            )}
-                            {summary.unlimited &&
-                            plan.amountMode !== "variable" ? (
-                              <span className="text-xs font-normal text-muted-foreground">
-                                /mês
-                              </span>
-                            ) : plan.amountMode === "variable" ? (
-                              <span className="text-xs font-normal text-muted-foreground">
-                                {summary.nextDue ? " próxima" : ""}
-                              </span>
+                          <div className="text-right">
+                            <p className="text-lg font-bold tabular-nums whitespace-nowrap">
+                              {summary.variable ? (
+                                <>
+                                  {money(summary.paidAmount)}
+                                  <span className="text-xs font-normal text-muted-foreground">
+                                    {" "}
+                                    pago
+                                  </span>
+                                </>
+                              ) : summary.unlimited ? (
+                                <>
+                                  {money(summary.monthlyAmount)}
+                                  <span className="text-xs font-normal text-muted-foreground">
+                                    /mês
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  {money(summary.monthlyAmount)}
+                                  <span className="text-xs font-normal text-muted-foreground">
+                                    /parcela
+                                  </span>
+                                </>
+                              )}
+                            </p>
+                            {!summary.unlimited && !summary.variable ? (
+                              <p className="text-[11px] text-muted-foreground tabular-nums">
+                                Total {money(plan.total)}
+                              </p>
                             ) : null}
-                          </p>
+                          </div>
                           <Button
                             variant="outline"
                             size="sm"
@@ -628,6 +761,34 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                             )}
                             Parcelas
                           </Button>
+                          {cleanNotes(item.notes) ? (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-primary"
+                                  aria-label="Ver notas"
+                                  title="Ver notas"
+                                >
+                                  <StickyNote className="h-4 w-4" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                align="end"
+                                className="w-80 max-w-[min(20rem,calc(100vw-2rem))]"
+                              >
+                                <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                                  <StickyNote className="h-4 w-4 text-primary" />
+                                  Notas
+                                </div>
+                                <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                                  {cleanNotes(item.notes)}
+                                </p>
+                              </PopoverContent>
+                            </Popover>
+                          ) : null}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -652,7 +813,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                                   onClick={() => closeDebt(item)}
                                 >
                                   <CheckCircle2 className="h-4 w-4" />
-                                  Encerrar dívida
+                                  Encerrar cobrança
                                 </DropdownMenuItem>
                               ) : null}
                               {summary.unlimited && summary.closed ? (
@@ -661,7 +822,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                                   onClick={() => reopenDebt(item)}
                                 >
                                   <Clock3 className="h-4 w-4" />
-                                  Reabrir
+                                  Reabrir cobrança
                                 </DropdownMenuItem>
                               ) : null}
                               <DropdownMenuSeparator />
@@ -762,19 +923,34 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                                       ) : (
                                         <button
                                           type="button"
-                                          className="text-left font-medium text-foreground underline-offset-2 hover:underline"
-                                          title="Clique para alterar o valor"
+                                          className={cn(
+                                            "text-left font-medium underline-offset-2 hover:underline",
+                                            summary.variable &&
+                                              isAmountPending(inst.amount)
+                                              ? "text-warning"
+                                              : "text-foreground",
+                                          )}
+                                          title="Clique para informar ou alterar o valor"
                                           onClick={() =>
                                             setEditingAmount({
                                               itemId: item.id,
                                               n: inst.n,
-                                              value: String(inst.amount),
+                                              value:
+                                                inst.amount > 0
+                                                  ? String(inst.amount)
+                                                  : "",
                                             })
                                           }
                                         >
-                                          {formatMoney(inst.amount)}
+                                          {formatParcelAmount(
+                                            inst.amount,
+                                            summary.variable,
+                                          )}
                                           <span className="ml-1 text-xs font-normal text-muted-foreground">
-                                            (editar)
+                                            {summary.variable &&
+                                            isAmountPending(inst.amount)
+                                              ? "(preencher)"
+                                              : "(editar)"}
                                           </span>
                                         </button>
                                       )}
@@ -824,7 +1000,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                               <p className="mt-3 flex items-center gap-2 text-sm font-medium text-success">
                                 <PartyPopper className="h-4 w-4" />
                                 {summary.unlimited
-                                  ? "Dívida encerrada — não gera mais mensalidades."
+                                  ? "Cobrança encerrada — não gera mais mensalidades."
                                   : "Dívida concluída — todas as parcelas foram pagas."}
                               </p>
                             ) : null}
@@ -836,7 +1012,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                                   onClick={() => closeDebt(item)}
                                 >
                                   <CheckCircle2 className="h-4 w-4" />
-                                  Encerrar (saí do aluguel / cancelei)
+                                  Encerrar cobrança
                                 </Button>
                               </div>
                             ) : null}
@@ -882,7 +1058,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="fixed">Nº de parcelas</SelectItem>
+                  <SelectItem value="fixed">Parcelada (N parcelas)</SelectItem>
                   <SelectItem value="unlimited">
                     Ilimitada (recorrente)
                   </SelectItem>
@@ -890,25 +1066,19 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Valor das parcelas</Label>
+              <Label>Tipo de valor</Label>
               <Select
                 value={form.amountMode}
                 onValueChange={(v) => {
                   const amountMode = v as DebtAmountMode;
-                  const count =
-                    form.mode === "fixed"
-                      ? Math.max(1, Number(form.parcels) || 1)
-                      : Math.max(1, Number(form.currentParcel) || 1);
+                  const known = Math.max(1, Number(form.currentParcel) || 1);
                   setForm({
                     ...form,
                     amountMode,
+                    total: amountMode === "variable" ? "" : form.total,
                     parcelAmounts:
                       amountMode === "variable"
-                        ? syncParcelAmounts(
-                            count,
-                            form.parcelAmounts,
-                            form.total || "",
-                          )
+                        ? syncParcelAmounts(known, form.parcelAmounts, "")
                         : form.parcelAmounts,
                   });
                 }}
@@ -918,10 +1088,10 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="equal">
-                    Fixo (mesmo valor todo mês)
+                    Valor fixo (igual todo mês)
                   </SelectItem>
                   <SelectItem value="variable">
-                    Variável (valor diferente por mês)
+                    Valor variável (preenche mês a mês)
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -941,24 +1111,73 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="debt-total">
-                  {form.amountMode === "variable"
-                    ? form.mode === "unlimited"
-                      ? "Valor sugerido (próximas)"
-                      : "Valor de referência"
-                    : form.mode === "unlimited"
+              {form.amountMode === "equal" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="debt-total">
+                    {form.mode === "unlimited"
                       ? "Valor mensal"
-                      : "Valor total"}
-                </Label>
-                <Input
-                  id="debt-total"
-                  value={form.total}
-                  onChange={(e) => setForm({ ...form, total: e.target.value })}
-                  placeholder="0,00"
-                  required={form.amountMode === "equal"}
-                />
-              </div>
+                      : "Valor de cada parcela"}
+                  </Label>
+                  <Input
+                    id="debt-total"
+                    value={form.total}
+                    onChange={(e) =>
+                      setForm({ ...form, total: e.target.value })
+                    }
+                    placeholder="0,00"
+                    required
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Valores futuros</Label>
+                  <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">
+                    Em branco — você preenche todo mês
+                  </div>
+                </div>
+              )}
+            </div>
+            {form.amountMode === "equal" &&
+            form.mode === "fixed" &&
+            Number(form.total.replace(",", ".")) > 0 &&
+            Number(form.parcels) > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {form.parcels}× de{" "}
+                {money(Number(form.total.replace(",", ".")) || 0)}{" "}
+                ({intervalLabel(Number(form.intervalMonths) || 1).toLowerCase()}
+                ) ={" "}
+                <span className="font-medium text-foreground">
+                  {money(
+                    (Number(form.total.replace(",", ".")) || 0) *
+                      (Number(form.parcels) || 0),
+                  )}
+                </span>{" "}
+                no total
+              </p>
+            ) : null}
+            <div className="space-y-2">
+              <Label>Frequência das parcelas</Label>
+              <Select
+                value={form.intervalMonths}
+                onValueChange={(v) =>
+                  setForm({ ...form, intervalMonths: v })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEBT_INTERVALS.map((opt) => (
+                    <SelectItem key={opt.months} value={String(opt.months)}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Ex.: livro de curso, seguro ou mensalidade — use “A cada 6
+                meses” quando não for cobrança mensal.
+              </p>
             </div>
             {form.mode === "fixed" ? (
               <div className="space-y-2">
@@ -969,22 +1188,9 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                   min={1}
                   max={120}
                   value={form.parcels}
-                  onChange={(e) => {
-                    const parcels = e.target.value;
-                    const count = Math.max(1, Number(parcels) || 1);
-                    setForm({
-                      ...form,
-                      parcels,
-                      parcelAmounts:
-                        form.amountMode === "variable"
-                          ? syncParcelAmounts(
-                              count,
-                              form.parcelAmounts,
-                              form.total || "",
-                            )
-                          : form.parcelAmounts,
-                    });
-                  }}
+                  onChange={(e) =>
+                    setForm({ ...form, parcels: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -1000,7 +1206,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
               <div className="space-y-2">
                 <Label htmlFor="debt-current">
                   {form.mode === "unlimited"
-                    ? "Mensalidade atual nº"
+                    ? "Cobrança atual nº"
                     : "Parcela atual"}
                 </Label>
                 <Input
@@ -1011,21 +1217,13 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
                   value={form.currentParcel}
                   onChange={(e) => {
                     const currentParcel = e.target.value;
-                    const count =
-                      form.mode === "unlimited"
-                        ? Math.max(1, Number(currentParcel) || 1)
-                        : Math.max(1, Number(form.parcels) || 1);
+                    const known = Math.max(1, Number(currentParcel) || 1);
                     setForm({
                       ...form,
                       currentParcel,
                       parcelAmounts:
-                        form.amountMode === "variable" &&
-                        form.mode === "unlimited"
-                          ? syncParcelAmounts(
-                              count,
-                              form.parcelAmounts,
-                              form.total || "",
-                            )
+                        form.amountMode === "variable"
+                          ? syncParcelAmounts(known, form.parcelAmounts, "")
                           : form.parcelAmounts,
                     });
                   }}
@@ -1048,51 +1246,50 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Se você já está na parcela 8, coloque <strong>8</strong> — as
-              anteriores ficam como pagas. Ideal para dívidas que começaram
-              antes de cadastrar aqui.
+              Se você já está na parcela 3, coloque <strong>3</strong> — as
+              anteriores ficam como pagas. Os próximos vencimentos seguem a
+              frequência escolhida (ex.: +6 meses).
             </p>
             {form.amountMode === "variable" ? (
               <div className="space-y-2">
                 <Label>
-                  {form.mode === "unlimited"
-                    ? "Valor de cada mensalidade (até a atual)"
-                    : "Valor de cada parcela"}
+                  Valores conhecidos (pagas
+                  {Number(form.currentParcel) > 1 ? " + atual" : ""})
                 </Label>
                 <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-2">
                   {syncParcelAmounts(
-                    form.mode === "fixed"
-                      ? Math.max(1, Number(form.parcels) || 1)
-                      : Math.max(1, Number(form.currentParcel) || 1),
+                    Math.max(1, Number(form.currentParcel) || 1),
                     form.parcelAmounts,
-                    form.total || "",
-                  ).map((value, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2"
-                    >
-                      <span className="w-16 shrink-0 text-xs text-muted-foreground">
-                        {form.mode === "unlimited"
-                          ? `#${idx + 1}`
-                          : `${idx + 1}/${form.parcels || 1}`}
-                      </span>
-                      <Input
-                        value={value}
-                        onChange={(e) => {
-                          const next = [...form.parcelAmounts];
-                          while (next.length <= idx) next.push(form.total || "");
-                          next[idx] = e.target.value;
-                          setForm({ ...form, parcelAmounts: next });
-                        }}
-                        placeholder="0,00"
-                        required
-                      />
-                    </div>
-                  ))}
+                    "",
+                  ).map((value, idx) => {
+                    const current = Math.max(1, Number(form.currentParcel) || 1);
+                    const isPaid = idx + 1 < current;
+                    return (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="w-20 shrink-0 text-xs text-muted-foreground">
+                          {form.mode === "unlimited"
+                            ? `#${idx + 1}`
+                            : `${idx + 1}/${form.parcels || "?"}`}
+                          {isPaid ? " paga" : " atual"}
+                        </span>
+                        <Input
+                          value={value}
+                          onChange={(e) => {
+                            const next = [...form.parcelAmounts];
+                            while (next.length <= idx) next.push("");
+                            next[idx] = e.target.value;
+                            setForm({ ...form, parcelAmounts: next });
+                          }}
+                          placeholder={isPaid ? "valor pago" : "opcional"}
+                          required={isPaid}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Depois você também pode clicar no valor de cada parcela na
-                  lista para corrigir.
+                  As próximas parcelas ficam em <strong>A definir</strong>. Todo
+                  mês você informa o valor na lista (ou ao marcar como paga).
                 </p>
               </div>
             ) : null}

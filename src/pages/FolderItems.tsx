@@ -19,6 +19,7 @@ import {
   Trash2,
   Upload,
   MessageSquareText,
+  StickyNote,
 } from "lucide-react";
 import {
   Bar,
@@ -44,7 +45,8 @@ import {
   updateItem,
   upsertWhatsappMessage,
 } from "@/lib/storage";
-import { formatBrDate, formatMoney } from "@/lib/format";
+import { formatBrDate } from "@/lib/format";
+import { useHideBalance } from "@/hooks/useHideBalance";
 import {
   annualPaymentBalance,
   stripPaymentMarker,
@@ -87,6 +89,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { DebtFolderView } from "@/components/debt/DebtFolderView";
 import { isExpenseFolderType } from "@/types";
@@ -207,6 +214,7 @@ function sendReminder(item: Item, template: string) {
 export default function FolderItems() {
   const { folderId } = useParams();
   const { user, data, setData } = useApp();
+  const { money } = useHideBalance();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | ItemStatus>("all");
   const [showTools, setShowTools] = useState(false);
@@ -614,7 +622,7 @@ export default function FolderItems() {
                 : "Lucro até o vencimento · já vencidos não entram no mês atual"}
             </p>
             <p className="mt-2 text-lg font-bold tracking-tight text-primary">
-              Saldo anual {chartYear}: {formatMoney(annualBalance)}
+              Saldo anual {chartYear}: {money(annualBalance)}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -685,7 +693,7 @@ export default function FolderItems() {
                       }}
                       labelStyle={{ color: "hsl(var(--foreground))" }}
                       formatter={(value: number) => [
-                        formatMoney(Number(value)),
+                        money(Number(value)),
                         "Total",
                       ]}
                     />
@@ -819,20 +827,41 @@ export default function FolderItems() {
                           {item.phone || "—"}
                         </span>
                       </span>
-                      {stripPaymentMarker(item.notes) ? (
-                        <span className="w-full truncate">
-                          Notas:{" "}
-                          <span className="font-medium text-foreground">
-                            {stripPaymentMarker(item.notes)}
-                          </span>
-                        </span>
-                      ) : null}
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">
-                    <p className="text-lg font-bold tabular-nums tracking-tight">
-                      {formatMoney(item.price || 0)}
+                    <p className="text-lg font-bold tabular-nums tracking-tight whitespace-nowrap">
+                      {money(item.price || 0)}
                     </p>
+                    <div className="flex items-center gap-1">
+                      {stripPaymentMarker(item.notes) ? (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-primary"
+                              aria-label="Ver notas"
+                              title="Ver notas"
+                            >
+                              <StickyNote className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            align="end"
+                            className="w-80 max-w-[min(20rem,calc(100vw-2rem))]"
+                          >
+                            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                              <StickyNote className="h-4 w-4 text-primary" />
+                              Notas
+                            </div>
+                            <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                              {stripPaymentMarker(item.notes)}
+                            </p>
+                          </PopoverContent>
+                        </Popover>
+                      ) : null}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -886,6 +915,7 @@ export default function FolderItems() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    </div>
                   </div>
                 </div>
               </motion.li>
@@ -1160,7 +1190,7 @@ export default function FolderItems() {
                   {folder.type === "Dívida" ? "Total de gastos" : "Valor ativo"}
                 </p>
                 <p className="mt-1 text-lg font-bold tabular-nums leading-tight">
-                  {formatMoney(totalPrice)}
+                  {money(totalPrice)}
                 </p>
                 {folder.type !== "Dívida" && counts["Já Vencido"] > 0 ? (
                   <p className="mt-1 text-[11px] text-muted-foreground">
@@ -1204,7 +1234,7 @@ export default function FolderItems() {
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip
                       formatter={(value: number) => [
-                        formatMoney(Number(value)),
+                        money(Number(value)),
                         "Preço",
                       ]}
                       labelFormatter={(_, payload) =>
@@ -1232,7 +1262,7 @@ export default function FolderItems() {
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip
                       formatter={(value: number) => [
-                        formatMoney(Number(value)),
+                        money(Number(value)),
                         "Preço",
                       ]}
                       labelFormatter={(_, payload) =>

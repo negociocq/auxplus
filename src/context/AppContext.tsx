@@ -18,6 +18,7 @@ import {
   loginWithSupabase,
   persistAppDataToSupabase,
 } from "@/lib/supabaseApi";
+import { mergeLocalAvatars } from "@/lib/avatar";
 
 interface AppContextValue {
   data: AppData;
@@ -57,7 +58,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const remote = await fetchAppDataFromSupabase();
-      setDataState(remote);
+      setDataState(mergeLocalAvatars(remote));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao carregar dados";
       setError(msg);
@@ -74,7 +75,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onFocus = () => {
       void fetchAppDataFromSupabase()
-        .then((remote) => setDataState(remote))
+        .then((remote) => setDataState(mergeLocalAvatars(remote)))
         .catch(() => undefined);
     };
     const onVisibility = () => {
