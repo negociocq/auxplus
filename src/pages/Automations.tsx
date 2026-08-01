@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   FlaskConical,
+  History,
   Loader2,
   MonitorPlay,
   RefreshCw,
@@ -149,6 +150,7 @@ export default function Automations() {
   const [testNota, setTestNota] = useState("");
   const [syncingTests, setSyncingTests] = useState(false);
   const [jobsQ, setJobsQ] = useState("");
+  const [renewQ, setRenewQ] = useState("");
   const [uniplaySubTab, setUniplaySubTab] = useState("conexao");
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const [activateOption, setActivateOption] = useState<IptvRenewOption>(
@@ -334,25 +336,50 @@ export default function Automations() {
     return hay.includes(qn);
   };
 
-  const openJobs = useMemo(
+  const openTestJobs = useMemo(
     () =>
       jobs.filter(
         (j) =>
+          j.kind === "test" &&
           (j.status === "pending" || j.status === "doing") &&
           jobMatchesQuery(j, jobsQ),
       ),
     [jobs, jobsQ],
   );
-  const doneJobs = useMemo(() => {
+  const recentTestJobs = useMemo(() => {
     const list = jobs.filter(
       (j) =>
+        j.kind === "test" &&
         (j.status === "done" || j.status === "failed") &&
         jobMatchesQuery(j, jobsQ),
     );
     return list.slice(0, jobsQ.trim() ? 100 : 30);
   }, [jobs, jobsQ]);
+  const openRenewJobs = useMemo(
+    () =>
+      jobs.filter(
+        (j) =>
+          j.kind === "renew" &&
+          (j.status === "pending" || j.status === "doing") &&
+          jobMatchesQuery(j, renewQ),
+      ),
+    [jobs, renewQ],
+  );
+  const renewLog = useMemo(() => {
+    const list = jobs.filter(
+      (j) =>
+        j.kind === "renew" &&
+        (j.status === "done" || j.status === "failed") &&
+        jobMatchesQuery(j, renewQ),
+    );
+    return list.slice(0, renewQ.trim() ? 150 : 80);
+  }, [jobs, renewQ]);
   const testJobsCount = useMemo(
     () => jobs.filter((j) => j.kind === "test").length,
+    [jobs],
+  );
+  const renewLogCount = useMemo(
+    () => jobs.filter((j) => j.kind === "renew").length,
     [jobs],
   );
 
@@ -1200,7 +1227,7 @@ export default function Automations() {
             onValueChange={setUniplaySubTab}
             className="space-y-4"
           >
-            <TabsList className="bg-background/80">
+            <TabsList className="h-auto flex-wrap bg-background/80">
               {uniplayConnected ? (
                 <>
                   <TabsTrigger value="ativos" className="gap-1.5">
@@ -1209,6 +1236,10 @@ export default function Automations() {
                   <TabsTrigger value="testes" className="gap-1.5">
                     <FlaskConical className="h-3.5 w-3.5" />
                     Testes
+                  </TabsTrigger>
+                  <TabsTrigger value="renovacoes" className="gap-1.5">
+                    <History className="h-3.5 w-3.5" />
+                    Renovações
                   </TabsTrigger>
                   <TabsTrigger value="conexao" className="gap-1.5">
                     Conexão
@@ -1739,7 +1770,7 @@ export default function Automations() {
                 <div className="flex min-w-0 items-center gap-2">
                   <h2 className="text-sm font-semibold tracking-tight">Fila</h2>
                   <p className="text-xs text-muted-foreground">
-                    {openJobs.length} em aberto
+                    {openTestJobs.length} em aberto
                     {testJobsCount > 0 ? ` · ${testJobsCount} teste(s)` : ""}
                   </p>
                 </div>
@@ -1776,9 +1807,9 @@ export default function Automations() {
                 />
               </div>
 
-              {openJobs.length > 0 ? (
+              {openTestJobs.length > 0 ? (
                 <ul className="space-y-1.5">
-                  {openJobs.map((job) => (
+                  {openTestJobs.map((job) => (
                     <li
                       key={job.id}
                       className="space-y-2 rounded-md border px-2.5 py-2 text-sm"
@@ -1790,9 +1821,7 @@ export default function Automations() {
                           </p>
                           <p className="text-[11px] text-muted-foreground">
                             {maskUser(job.panelUsername)}
-                            {job.kind === "renew"
-                              ? ` · +${job.months}m`
-                              : ` · ${job.testHours}h`}
+                            {` · ${job.testHours}h`}
                           </p>
                         </div>
                         <Badge
@@ -1803,8 +1832,7 @@ export default function Automations() {
                               "border-primary/40 bg-primary/10 text-primary",
                           )}
                         >
-                          {job.kind === "renew" ? "Renovação" : "Teste"} ·{" "}
-                          {statusLabel(job.status)}
+                          Teste · {statusLabel(job.status)}
                         </Badge>
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -1848,13 +1876,13 @@ export default function Automations() {
                 </ul>
               ) : null}
 
-              {doneJobs.length > 0 ? (
+              {recentTestJobs.length > 0 ? (
                 <div className="space-y-1.5 border-t pt-3">
                   <p className="text-[11px] font-medium text-muted-foreground">
                     Recentes
                   </p>
                   <ul className="space-y-1">
-                    {doneJobs.map((job) => (
+                    {recentTestJobs.map((job) => (
                       <li
                         key={job.id}
                         className="text-[11px] text-muted-foreground"
@@ -1862,12 +1890,9 @@ export default function Automations() {
                         <button
                           type="button"
                           className="min-w-0 w-full truncate text-left hover:text-foreground"
-                          onClick={() => {
-                            if (job.kind === "test") openTestDetail(job);
-                          }}
+                          onClick={() => openTestDetail(job)}
                         >
-                          {job.clientName} ·{" "}
-                          {job.kind === "renew" ? "renovação" : "teste"}
+                          {job.clientName} · teste
                           {job.panelUsername
                             ? ` · ${maskUser(job.panelUsername)}`
                             : ""}
@@ -1885,7 +1910,7 @@ export default function Automations() {
                 </div>
               ) : null}
 
-              {openJobs.length === 0 && doneJobs.length === 0 ? (
+              {openTestJobs.length === 0 && recentTestJobs.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   {jobsQ.trim()
                     ? "Nenhum resultado para essa busca."
@@ -1893,6 +1918,160 @@ export default function Automations() {
                 </p>
               ) : null}
             </section>
+            </TabsContent>
+
+            <TabsContent value="renovacoes" className="mt-0 space-y-4">
+              <section className="ax-surface space-y-3 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-semibold tracking-tight">
+                      Log de renovações
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      Histórico das renovações feitas pelo AuxPlus
+                      {renewLogCount > 0 ? ` · ${renewLogCount} registro(s)` : ""}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={renewQ}
+                    onChange={(e) => setRenewQ(e.target.value)}
+                    placeholder="Buscar renovação (nome, usuário…)"
+                    className="h-9 pl-8"
+                  />
+                </div>
+
+                {openRenewJobs.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      Em andamento
+                    </p>
+                    <ul className="space-y-1.5">
+                      {openRenewJobs.map((job) => (
+                        <li
+                          key={job.id}
+                          className="space-y-2 rounded-md border px-2.5 py-2 text-sm"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-medium leading-tight">
+                                {job.clientName}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {maskUser(job.panelUsername)}
+                                {` · +${job.months}m`}
+                              </p>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[10px]",
+                                job.status === "doing" &&
+                                  "border-primary/40 bg-primary/10 text-primary",
+                              )}
+                            >
+                              Renovação · {statusLabel(job.status)}
+                            </Badge>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8"
+                              onClick={() => void startInPanel(job)}
+                              disabled={busyId === job.id}
+                            >
+                              {busyId === job.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <ClipboardCopy className="h-3.5 w-3.5" />
+                              )}
+                              Abrir painel
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              className="h-8"
+                              onClick={() => completeJob(job)}
+                              disabled={busyId === job.id}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Concluí
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-8"
+                              onClick={() => failJob(job)}
+                            >
+                              Falhou
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {renewLog.length > 0 ? (
+                  <ul className="divide-y rounded-md border">
+                    {renewLog.map((job) => (
+                      <li
+                        key={job.id}
+                        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium leading-tight">
+                            {job.clientName}
+                          </p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {maskUser(job.panelUsername)}
+                            {` · +${job.months}m`}
+                            {job.dueDate
+                              ? ` · vence ${formatBrDate(job.dueDate)}`
+                              : ""}
+                            {" · "}
+                            {format(
+                              new Date(job.updatedAt),
+                              "dd/MM/yyyy HH:mm",
+                            )}
+                          </p>
+                          {job.note ? (
+                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground/80">
+                              {job.note}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "shrink-0 text-[10px]",
+                            job.status === "done" &&
+                              "border-success/40 bg-success/10 text-success",
+                            job.status === "failed" &&
+                              "border-destructive/40 bg-destructive/10 text-destructive",
+                          )}
+                        >
+                          {statusLabel(job.status)}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {openRenewJobs.length === 0 && renewLog.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {renewQ.trim()
+                      ? "Nenhum resultado para essa busca."
+                      : "Nenhuma renovação registrada ainda. Use Renovar em Ativos."}
+                  </p>
+                ) : null}
+              </section>
             </TabsContent>
               </>
             ) : null}
