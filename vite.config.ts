@@ -6,7 +6,8 @@ import path from "path";
 export default defineConfig(() => ({
   server: {
     host: "::",
-    port: 8080,
+    // Alinhado ao Site URL padrão do Supabase (links de e-mail/OTP)
+    port: 3000,
     proxy: {
       // Evita CORS: o browser fala com o Vite, que encaminha à Evolution local
       "/evolution-api": {

@@ -65,7 +65,31 @@ export async function sendLinkEmailConfirmation(
   return {};
 }
 
+function authErrorFromUrl(): string | null {
+  const url = new URL(window.location.href);
+  const hash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+  const fromHash = hash ? new URLSearchParams(hash) : null;
+  const code =
+    url.searchParams.get("error_code") ||
+    fromHash?.get("error_code") ||
+    "";
+  const desc =
+    url.searchParams.get("error_description") ||
+    fromHash?.get("error_description") ||
+    url.searchParams.get("error") ||
+    fromHash?.get("error") ||
+    "";
+  if (!code && !desc) return null;
+  if (/otp_expired|expired|invalid/i.test(`${code} ${desc}`)) {
+    return "O link do e-mail expirou ou já foi usado. Solicite um novo em Configuração (ou no cadastro).";
+  }
+  return decodeURIComponent(desc.replace(/\+/g, " ")) || "Falha na confirmação do e-mail.";
+}
+
 async function ensureAuthSessionFromUrl() {
+  const urlError = authErrorFromUrl();
+  if (urlError) return { error: urlError };
+
   const href = window.location.href;
   const url = new URL(href);
 

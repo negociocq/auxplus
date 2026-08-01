@@ -1,7 +1,11 @@
 import { addMonths, format } from "date-fns";
 import type { AppData, Item } from "@/types";
 import { createItem, updateItem } from "@/lib/storage";
-import { paymentsAfterDueChange, withEmbeddedPayments } from "@/lib/payments";
+import {
+  paymentsAfterDueChange,
+  stripPaymentMarker,
+  withEmbeddedPayments,
+} from "@/lib/payments";
 import {
   fixUtf8Mojibake,
   isIptvTestOrTrialUser,
@@ -339,13 +343,45 @@ export function syncIptvUsersToFolder(
   return { data: next, created, updated, skipped };
 }
 
+/** Notas automáticas do sync de revendedores (e-mail / ativos). */
+function buildResellerSyncNotes(
+  remote: IptvReseller,
+  existingNotes?: string | null,
+): string {
+  const clean = stripPaymentMarker(existingNotes)
+    .split("\n")
+    .filter(
+      (line) =>
+        !/^E-mail:\s*/i.test(line.trim()) &&
+        !/^Ativos:\s*/i.test(line.trim()) &&
+        !/^Última recarga:\s*/i.test(line.trim()),
+    )
+    .join("\n")
+    .trim();
+  const auto: string[] = [];
+  if (remote.email?.trim()) auto.push(`E-mail: ${remote.email.trim()}`);
+  if (remote.ativosLabel?.trim()) {
+    auto.push(`Ativos: ${remote.ativosLabel.trim()}`);
+  }
+  if (
+    remote.daysToDue != null &&
+    Number.isFinite(remote.daysToDue) &&
+    remote.daysToDue >= 0
+  ) {
+    const d = Math.floor(remote.daysToDue);
+    auto.push(`Última recarga: ${d} ${d === 1 ? "dia" : "dias"}`);
+  }
+  return [clean, ...auto].filter(Boolean).join("\n");
+}
+
 /**
  * Sincroniza revendedores do UniPlay numa pasta.
  * - itemId = login do revendedor
  * - name = nota/nome
- * - phone = WhatsApp do painel
- * - price = créditos (saldo no painel)
- * - dueDate = vencimento, se houver
+ * - phone = WhatsApp do painel (no UniPlay costuma vir em `email`)
+ * - price = créditos (saldo no painel — não é R$)
+ * - notes = e-mail / ativos / última recarga
+ * - dueDate = normalmente vazio (revendedor não tem vencimento de cliente)
  */
 export function syncIptvResellersToFolder(
   data: AppData,
@@ -400,6 +436,17 @@ export function syncIptvResellersToFolder(
       if (name && name !== (existing.name || "").trim()) patch.name = name;
       if (phone && phone !== (existing.phone || "").trim()) patch.phone = phone;
       if (credits != null && credits !== existing.price) patch.price = credits;
+      const nextNotes = buildResellerSyncNotes(remote, existing.notes);
+      if (nextNotes !== stripPaymentMarker(existing.notes)) {
+        patch.notes = nextNotes;
+      }
+      if (
+        remote.createdAt &&
+        !existing.createdAt &&
+        /^\d{4}-\d{2}-\d{2}/.test(remote.createdAt)
+      ) {
+        patch.createdAt = remote.createdAt.slice(0, 19).replace("T", " ");
+      }
       if (Object.keys(patch).length === 0) {
         skipped += 1;
         continue;
@@ -414,6 +461,11 @@ export function syncIptvResellersToFolder(
         dueDate,
         phone,
         price: credits ?? 0,
+        notes: buildResellerSyncNotes(remote),
+        createdAt:
+          remote.createdAt && /^\d{4}-\d{2}-\d{2}/.test(remote.createdAt)
+            ? remote.createdAt.slice(0, 19).replace("T", " ")
+            : null,
         isActive: true,
       });
       created += 1;

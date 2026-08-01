@@ -5,3 +5,39 @@ verify_jwt = false
 
 [functions.ges-api]
 verify_jwt = false
+
+# Auth URLs (produção + localhost / Dyad)
+[auth]
+enabled = true
+site_url = "https://auxplus.vercel.app"
+additional_redirect_urls = [
+  "https://auxplus.vercel.app",
+  "https://auxplus.vercel.app/**",
+  "https://auxplus.vercel.app/auth/confirm",
+  "http://localhost:3000",
+  "http://localhost:3000/**",
+  "http://localhost:3000/auth/confirm",
+  "http://localhost:8080",
+  "http://localhost:8080/**",
+  "http://localhost:8080/auth/confirm",
+  "http://localhost:32116",
+  "http://localhost:32116/**",
+  "http://localhost:32116/auth/confirm",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3000/**",
+  "http://127.0.0.1:3000/auth/confirm",
+]
+
+# Manter alinhado ao que já estava no projeto remoto
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = false
+max_frequency = "1m0s"
+otp_length = 8
+otp_expiry = 3600
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true

@@ -111,6 +111,7 @@ import {
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
 import {
   ensureIptvToken,
+  formatIptvCredits,
   getLastIssuedIptvToken,
   listIptvResellers,
   listIptvUsers,
@@ -298,6 +299,12 @@ export default function FolderItems() {
   }, [user, folder, syncFolderIdCloud, syncResellersFolderIdCloud]);
 
   const uniplaySyncEnabled = uniplaySyncMode != null;
+  const isResellerFolder = uniplaySyncMode === "resellers";
+
+  const formatItemAmount = (value: number) =>
+    isResellerFolder
+      ? `${num(formatIptvCredits(value))} créd.`
+      : money(value);
 
   const syncUniplay = async () => {
     if (!user || !folder) return;
@@ -1014,7 +1021,16 @@ export default function FolderItems() {
                     <div className="flex items-start justify-between gap-2 sm:block">
                       <div className="min-w-0 space-y-0.5 sm:space-y-2">
                         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                          <StatusBadge status={item.status} />
+                          {!isResellerFolder ? (
+                            <StatusBadge status={item.status} />
+                          ) : (
+                            <Badge
+                              variant="secondary"
+                              className="font-normal text-[11px] sm:text-xs"
+                            >
+                              Revendedor
+                            </Badge>
+                          )}
                           <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">
                             <span className="sm:hidden">
                               {maskUser(item.itemId)}
@@ -1028,12 +1044,18 @@ export default function FolderItems() {
                           </span>
                         </div>
                         <h3 className="truncate text-sm font-semibold tracking-tight sm:text-base">
-                          {item.name}
+                          {isResellerFolder &&
+                          item.name.trim().toLowerCase() ===
+                            item.itemId.trim().toLowerCase()
+                            ? stripPaymentMarker(item.notes)
+                                ?.match(/^E-mail:\s*(.+)$/im)?.[1]
+                                ?.trim() || item.name
+                            : item.name}
                         </h3>
                       </div>
                       <div className="flex shrink-0 items-start gap-0.5 sm:hidden">
                         <p className="pr-0.5 pt-1 text-sm font-bold tabular-nums tracking-tight whitespace-nowrap">
-                          {money(item.price || 0)}
+                          {formatItemAmount(item.price || 0)}
                         </p>
                         <div className="flex flex-col items-center">
                           <DropdownMenu>
@@ -1137,18 +1159,55 @@ export default function FolderItems() {
                           )}
                         </span>
                       </span>
-                      <span>
-                        <span className="sm:hidden">Vence </span>
-                        <span className="hidden sm:inline">Vencimento: </span>
-                        <span className="font-medium text-foreground">
-                          {item.status === "Sem Vencimento" || !item.dueDate
-                            ? "Indefinido"
-                            : formatBrDate(item.dueDate)}
+                      {!isResellerFolder ? (
+                        <span>
+                          <span className="sm:hidden">Vence </span>
+                          <span className="hidden sm:inline">Vencimento: </span>
+                          <span className="font-medium text-foreground">
+                            {item.status === "Sem Vencimento" || !item.dueDate
+                              ? "Indefinido"
+                              : formatBrDate(item.dueDate)}
+                          </span>
                         </span>
-                      </span>
+                      ) : (
+                        <>
+                          {stripPaymentMarker(item.notes)
+                            ?.match(/^Ativos:\s*(.+)$/im)?.[1]
+                            ?.trim() ? (
+                            <span>
+                              <span className="sm:hidden">Ativos </span>
+                              <span className="hidden sm:inline">Ativos: </span>
+                              <span className="font-medium text-foreground">
+                                {stripPaymentMarker(item.notes)
+                                  ?.match(/^Ativos:\s*(.+)$/im)?.[1]
+                                  ?.trim()}
+                              </span>
+                            </span>
+                          ) : null}
+                          {stripPaymentMarker(item.notes)
+                            ?.match(/^Última recarga:\s*(.+)$/im)?.[1]
+                            ?.trim() ? (
+                            <span>
+                              <span className="sm:hidden">Recarga </span>
+                              <span className="hidden sm:inline">
+                                Última recarga:{" "}
+                              </span>
+                              <span className="font-medium text-foreground">
+                                {stripPaymentMarker(item.notes)
+                                  ?.match(/^Última recarga:\s*(.+)$/im)?.[1]
+                                  ?.trim()}
+                              </span>
+                            </span>
+                          ) : null}
+                        </>
+                      )}
                       <span>
-                        <span className="sm:hidden">Tel </span>
-                        <span className="hidden sm:inline">Telefone: </span>
+                        <span className="sm:hidden">
+                          {isResellerFolder ? "Zap " : "Tel "}
+                        </span>
+                        <span className="hidden sm:inline">
+                          {isResellerFolder ? "WhatsApp: " : "Telefone: "}
+                        </span>
                         <span className="font-medium text-foreground">
                           {maskPhone(item.phone)}
                         </span>
@@ -1157,7 +1216,7 @@ export default function FolderItems() {
                   </div>
                   <div className="hidden items-center justify-between gap-3 sm:flex sm:flex-col sm:items-end">
                     <p className="text-lg font-bold tabular-nums tracking-tight whitespace-nowrap">
-                      {money(item.price || 0)}
+                      {formatItemAmount(item.price || 0)}
                     </p>
                     <div className="flex items-center gap-1">
                       {stripPaymentMarker(item.notes) ? (
@@ -1337,7 +1396,9 @@ export default function FolderItems() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="item-phone">Telefone</Label>
+              <Label htmlFor="item-phone">
+                {isResellerFolder ? "WhatsApp" : "Telefone"}
+              </Label>
               <Input
                 id="item-phone"
                 type={hideSensitive ? "password" : "text"}
@@ -1347,12 +1408,14 @@ export default function FolderItems() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="item-price">Preço</Label>
+              <Label htmlFor="item-price">
+                {isResellerFolder ? "Créditos" : "Preço"}
+              </Label>
               <Input
                 id="item-price"
                 type={hideSensitive ? "password" : "text"}
                 value={form.price}
-                placeholder="0.00"
+                placeholder={isResellerFolder ? "0" : "0.00"}
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
                 readOnly={hideSensitive}
               />

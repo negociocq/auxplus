@@ -1035,6 +1035,11 @@ export type IptvReseller = {
   credits?: number;
   phone?: string;
   email?: string;
+  /** Ex.: "45 / 45" (diretos / árvore) */
+  ativosLabel?: string;
+  /** Dias desde a última recarga (painel). */
+  daysToDue?: number | null;
+  createdAt?: string;
   exp_date?: string;
   [k: string]: unknown;
 };
@@ -1058,6 +1063,32 @@ function pickCreditLoose(u: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
+/** WhatsApp/telefone do painel (só dígitos, com DDI). */
+function looksLikePhoneDigits(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15 && !value.includes("@");
+}
+
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function pickLooseString(
+  u: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const k of keys) {
+    const v = u[k];
+    if (v == null) continue;
+    // UniPlay usa 0 para “sem WhatsApp”
+    if (typeof v === "number" && v === 0) continue;
+    if (typeof v === "string" && (!v.trim() || v.trim() === "0")) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return undefined;
+}
+
 function pickResellerFields(u: Record<string, unknown>): IptvReseller {
   const notaRaw =
     typeof u.nota === "string"
@@ -1077,9 +1108,63 @@ function pickResellerFields(u: Record<string, unknown>): IptvReseller {
   const username = String(
     u.username ?? u.user ?? u.reseller ?? u.login ?? "",
   ).trim();
-  const phoneRaw =
-    u.whatsapp ?? u.phone ?? u.telefone ?? u.celular ?? u.whatsApp;
-  const emailRaw = u.email ?? u.email_contact;
+
+  /**
+   * No front UniPlay a coluna “Whatsapp” lê `item.email` (número),
+   * e a coluna “E-mail” lê `item.email_contact`.
+   * `whatsapp` também existe em formulários de edição.
+   */
+  const whatsappDirect = pickLooseString(u, [
+    "whatsapp",
+    "phone",
+    "telefone",
+    "celular",
+    "whatsApp",
+  ]);
+  const emailField = pickLooseString(u, ["email"]);
+  const emailContact = pickLooseString(u, ["email_contact", "emailContact"]);
+
+  let phone: string | undefined;
+  if (whatsappDirect && looksLikePhoneDigits(whatsappDirect)) {
+    phone = whatsappDirect.replace(/\D/g, "");
+  } else if (emailField && looksLikePhoneDigits(emailField)) {
+    phone = emailField.replace(/\D/g, "");
+  }
+
+  let email: string | undefined;
+  if (emailContact && looksLikeEmail(emailContact)) {
+    email = emailContact;
+  } else if (emailField && looksLikeEmail(emailField)) {
+    email = emailField;
+  } else if (emailContact) {
+    email = emailContact;
+  }
+
+  const totalIptv = Number(u.total_iptv ?? u.totalIptv ?? 0) || 0;
+  const totalUp2p = Number(u.total_up2p ?? u.totalUp2p ?? 0) || 0;
+  const totalActives = Number(u.total_actives ?? u.totalActives ?? 0) || 0;
+  const diretos = totalIptv + totalUp2p;
+  const arvore = Number.isFinite(totalActives) ? totalActives : diretos;
+  const ativosLabel =
+    diretos > 0 || arvore > 0 ? `${diretos} / ${arvore}` : undefined;
+
+  const daysRaw = u.days_to_due ?? u.daysToDue;
+  const daysToDue =
+    typeof daysRaw === "number" && Number.isFinite(daysRaw)
+      ? daysRaw
+      : typeof daysRaw === "string" && daysRaw.trim()
+        ? Number(daysRaw)
+        : null;
+
+  const createdRaw = pickLooseString(u, [
+    "created_at",
+    "createdAt",
+    "date_regis",
+    "date_register",
+    "date_registration",
+    "created",
+  ]);
+
   return {
     ...u,
     id: (u.id ?? u.reseller_id ?? u.user_id ?? u.uid ?? username) as
@@ -1089,14 +1174,12 @@ function pickResellerFields(u: Record<string, unknown>): IptvReseller {
     name: nota || nameRaw || undefined,
     nota,
     credits: pickCreditLoose(u),
-    phone:
-      phoneRaw != null && String(phoneRaw).trim()
-        ? String(phoneRaw).trim()
-        : undefined,
-    email:
-      emailRaw != null && String(emailRaw).trim()
-        ? String(emailRaw).trim()
-        : undefined,
+    phone,
+    email,
+    ativosLabel,
+    daysToDue:
+      daysToDue != null && Number.isFinite(daysToDue) ? daysToDue : null,
+    createdAt: createdRaw,
     exp_date: u.exp_date
       ? String(u.exp_date)
       : u.expDate
@@ -1141,6 +1224,35 @@ export async function listIptvResellers(
   throw lastErr instanceof Error
     ? lastErr
     : new Error("Não foi possível listar revendedores no UniPlay.");
+}
+
+/** Mínimo de créditos que o painel aceita transferir para um revendedor. */
+export const IPTV_RESELLER_CREDITS_MIN = 10;
+
+/**
+ * Adiciona créditos a um revendedor (sub-conta).
+ * Front UniPlay: POST /criar { id_res, qtd_creditos }
+ */
+export async function addIptvResellerCredits(
+  creds: IptvPanelCreds,
+  opts: { resellerId: string | number; credits: number },
+): Promise<unknown> {
+  const credits = Math.floor(Number(opts.credits));
+  if (!Number.isFinite(credits) || credits < IPTV_RESELLER_CREDITS_MIN) {
+    throw new Error(
+      `A UniPlay só permite passar ${IPTV_RESELLER_CREDITS_MIN} créditos ou mais.`,
+    );
+  }
+  if (opts.resellerId == null || opts.resellerId === "") {
+    throw new Error("Revendedor inválido.");
+  }
+  return panelFetch(creds, "/criar", {
+    method: "POST",
+    body: JSON.stringify({
+      id_res: opts.resellerId,
+      qtd_creditos: credits,
+    }),
+  });
 }
 
 export async function findIptvUserByUsername(

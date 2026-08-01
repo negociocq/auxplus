@@ -12,6 +12,7 @@ import {
   History,
   Loader2,
   MonitorPlay,
+  Plus,
   QrCode,
   RefreshCw,
   Save,
@@ -77,6 +78,7 @@ import {
 } from "@/lib/iptvAutomation";
 import {
   activatePartnerApp,
+  addIptvResellerCredits,
   buildRenewalReceiptMessage,
   createIptvTest,
   deleteSmartApp,
@@ -91,6 +93,7 @@ import {
   getLastIssuedIptvToken,
   enrichCreateTestResult,
   IPTV_RENEW_OPTIONS,
+  IPTV_RESELLER_CREDITS_MIN,
   IPTV_TEST_HOURS,
   listIptvResellers,
   listIptvUsers,
@@ -166,6 +169,9 @@ export default function Automations() {
   const [loadingResellers, setLoadingResellers] = useState(false);
   const [syncingResellers, setSyncingResellers] = useState(false);
   const [resellersQ, setResellersQ] = useState("");
+  const [creditTarget, setCreditTarget] = useState<IptvReseller | null>(null);
+  const [creditAmount, setCreditAmount] = useState(String(IPTV_RESELLER_CREDITS_MIN));
+  const [addingCredits, setAddingCredits] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [renewTargetId, setRenewTargetId] = useState<string | null>(null);
   const [renewOption, setRenewOption] = useState<IptvRenewOption>(
@@ -655,6 +661,60 @@ export default function Automations() {
       );
     } finally {
       setSyncingResellers(false);
+    }
+  };
+
+  const openAddCredits = (reseller: IptvReseller) => {
+    setCreditTarget(reseller);
+    setCreditAmount(String(IPTV_RESELLER_CREDITS_MIN));
+  };
+
+  const creditAmountNum = Math.floor(Number(creditAmount));
+  const creditAmountValid =
+    Number.isFinite(creditAmountNum) &&
+    creditAmountNum >= IPTV_RESELLER_CREDITS_MIN;
+
+  const submitAddCredits = async () => {
+    if (!creditTarget) return;
+    const amount = Math.floor(Number(creditAmount));
+    if (!Number.isFinite(amount) || amount < IPTV_RESELLER_CREDITS_MIN) {
+      toast.error(
+        `Na UniPlay só é permitido a partir de ${IPTV_RESELLER_CREDITS_MIN} créditos.`,
+      );
+      setCreditAmount(String(IPTV_RESELLER_CREDITS_MIN));
+      return;
+    }
+    if (
+      typeof panelCredits === "number" &&
+      Number.isFinite(panelCredits) &&
+      amount > panelCredits
+    ) {
+      toast.error(
+        `Saldo insuficiente. Você tem ${formatIptvCredits(panelCredits)} crédito(s).`,
+      );
+      return;
+    }
+    setAddingCredits(true);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
+      await addIptvResellerCredits(creds, {
+        resellerId: creditTarget.id,
+        credits: amount,
+      });
+      toast.success(
+        `${amount} crédito(s) enviados para ${creditTarget.username || creditTarget.name || "revendedor"}`,
+      );
+      setCreditTarget(null);
+      void refreshResellers(true);
+      void refreshPanelCredits(true);
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Falha ao adicionar créditos",
+      );
+    } finally {
+      setAddingCredits(false);
     }
   };
 
@@ -1506,26 +1566,64 @@ export default function Automations() {
     <div className="space-y-6">
       <PageHeader
         title="Automações"
-        description="Integrações: UniPlay, conexão Mercado Pago e Winbox. PIX em WhatsApp."
+        description="Conecte as ferramentas que o AuxPlus usa no dia a dia."
       />
 
       <Tabs defaultValue="painel" className="space-y-4">
-        <TabsList className="h-auto flex-wrap bg-background/80">
-          <TabsTrigger value="painel" className="gap-1.5">
-            <MonitorPlay className="h-3.5 w-3.5" />
-            UniPlay
-          </TabsTrigger>
-          <TabsTrigger value="mercado-pago" className="gap-1.5">
-            <QrCode className="h-3.5 w-3.5" />
-            Mercado Pago
-          </TabsTrigger>
-          <TabsTrigger value="winbox" className="gap-1.5">
-            <Cable className="h-3.5 w-3.5" />
-            Winbox
-          </TabsTrigger>
-        </TabsList>
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Escolha a integração
+          </p>
+          <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-background/80 p-1">
+            <TabsTrigger
+              value="painel"
+              className="h-auto flex-col items-start gap-0.5 px-3 py-2 text-left data-[state=active]:shadow-sm sm:min-w-[9.5rem]"
+            >
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <MonitorPlay className="h-3.5 w-3.5" />
+                UniPlay
+              </span>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                IPTV, testes e créditos
+              </span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="mercado-pago"
+              className="h-auto flex-col items-start gap-0.5 px-3 py-2 text-left data-[state=active]:shadow-sm sm:min-w-[9.5rem]"
+            >
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <QrCode className="h-3.5 w-3.5" />
+                Mercado Pago
+              </span>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                Token para PIX
+              </span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="winbox"
+              className="h-auto flex-col items-start gap-0.5 px-3 py-2 text-left data-[state=active]:shadow-sm sm:min-w-[9.5rem]"
+            >
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <Cable className="h-3.5 w-3.5" />
+                Winbox
+              </span>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                Em breve
+              </span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="painel" className="mt-0 space-y-4">
+          <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+            <p className="text-sm font-medium">UniPlay</p>
+            <p className="text-xs text-muted-foreground">
+              {uniplayConnected
+                ? "Conta conectada. Use as abas abaixo para clientes, revendedores, testes e renovações."
+                : "Primeiro conecte sua conta UniPlay na aba Conta. Depois liberam as outras funções."}
+            </p>
+          </div>
+
           {uniplayConnected ? (
             <div className="ax-surface flex flex-wrap items-center justify-between gap-3 p-3">
               <div className="flex min-w-0 items-center gap-2">
@@ -1570,7 +1668,7 @@ export default function Automations() {
               {uniplayConnected ? (
                 <>
                   <TabsTrigger value="ativos" className="gap-1.5">
-                    Ativos
+                    Clientes
                   </TabsTrigger>
                   <TabsTrigger value="revendedores" className="gap-1.5">
                     <Users className="h-3.5 w-3.5" />
@@ -1593,12 +1691,12 @@ export default function Automations() {
                     Renovações
                   </TabsTrigger>
                   <TabsTrigger value="conexao" className="gap-1.5">
-                    Conexão
+                    Conta
                   </TabsTrigger>
                 </>
               ) : (
                 <TabsTrigger value="conexao" className="gap-1.5">
-                  Conexão
+                  Conta
                 </TabsTrigger>
               )}
             </TabsList>
@@ -1606,9 +1704,14 @@ export default function Automations() {
             <TabsContent value="conexao" className="mt-0 space-y-4">
           <section className="ax-surface space-y-3 p-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold tracking-tight">
-                Sua conta
-              </h2>
+              <div>
+                <h2 className="text-sm font-semibold tracking-tight">
+                  Login UniPlay
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Usuário e senha do painel para conectar o AuxPlus.
+                </p>
+              </div>
               <span className="truncate text-[11px] text-muted-foreground">
                 {tokenInfo}
               </span>
@@ -1706,81 +1809,91 @@ export default function Automations() {
                 </Button>
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs">Pasta de clientes (sync)</Label>
-                <Select
-                  value={syncFolderId || "__none__"}
-                  onValueChange={(v) => {
-                    const nextId = v === "__none__" ? "" : v;
-                    setSyncFolderId(nextId);
-                    // Só grava qual pasta tem o botão — não sincroniza nada
-                    if (!user) return;
-                    const cur = loadAutomationsConfig(user.id);
-                    const next = { ...cur, syncFolderId: nextId };
-                    saveAutomationsConfig(user.id, next);
-                    setConfig(next);
-                    toast.message(
-                      nextId
-                        ? "Botão Sincronizar UniPlay liberado nessa pasta"
-                        : "Botão de sincronizar clientes removido",
-                    );
-                  }}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Escolha a pasta de clientes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Nenhuma</SelectItem>
-                    {clientFolders.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  Botão “Sincronizar UniPlay” na pasta de clientes IPTV.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Pasta de revendedores (sync)</Label>
-                <Select
-                  value={syncResellersFolderId || "__none__"}
-                  onValueChange={(v) => {
-                    const nextId = v === "__none__" ? "" : v;
-                    setSyncResellersFolderId(nextId);
-                    if (!user) return;
-                    const cur = loadAutomationsConfig(user.id);
-                    const next = { ...cur, syncResellersFolderId: nextId };
-                    saveAutomationsConfig(user.id, next);
-                    void saveAutomationsConfigRemote(user.id, next);
-                    setConfig(next);
-                    toast.message(
-                      nextId
-                        ? "Pasta de revendedores vinculada"
-                        : "Pasta de revendedores desvinculada",
-                    );
-                  }}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Escolha a pasta de revendedores" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Nenhuma</SelectItem>
-                    {clientFolders.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  Crie uma pasta Cliente (ex.: Revendedores) e vincule aqui.
-                  Sync pela aba Revendedores ou pelo botão na pasta.
-                </p>
-              </div>
             </form>
+          </section>
+
+          <section className="ax-surface space-y-3 p-4">
+            <div>
+              <h2 className="text-sm font-semibold tracking-tight">
+                Pastas de sincronização
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Onde o AuxPlus grava clientes e revendedores vindos da UniPlay.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Pasta de clientes IPTV</Label>
+              <Select
+                value={syncFolderId || "__none__"}
+                onValueChange={(v) => {
+                  const nextId = v === "__none__" ? "" : v;
+                  setSyncFolderId(nextId);
+                  if (!user) return;
+                  const cur = loadAutomationsConfig(user.id);
+                  const next = { ...cur, syncFolderId: nextId };
+                  saveAutomationsConfig(user.id, next);
+                  setConfig(next);
+                  toast.message(
+                    nextId
+                      ? "Botão Sincronizar UniPlay liberado nessa pasta"
+                      : "Botão de sincronizar clientes removido",
+                  );
+                }}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Escolha a pasta de clientes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhuma</SelectItem>
+                  {clientFolders.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Libera o botão “Sincronizar UniPlay” dentro da pasta.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Pasta de revendedores</Label>
+              <Select
+                value={syncResellersFolderId || "__none__"}
+                onValueChange={(v) => {
+                  const nextId = v === "__none__" ? "" : v;
+                  setSyncResellersFolderId(nextId);
+                  if (!user) return;
+                  const cur = loadAutomationsConfig(user.id);
+                  const next = { ...cur, syncResellersFolderId: nextId };
+                  saveAutomationsConfig(user.id, next);
+                  void saveAutomationsConfigRemote(user.id, next);
+                  setConfig(next);
+                  toast.message(
+                    nextId
+                      ? "Pasta de revendedores vinculada"
+                      : "Pasta de revendedores desvinculada",
+                  );
+                }}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Escolha a pasta de revendedores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhuma</SelectItem>
+                  {clientFolders.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Crie uma pasta Cliente (ex.: Revendedores) e vincule aqui.
+              </p>
+            </div>
           </section>
             </TabsContent>
 
@@ -2227,11 +2340,24 @@ export default function Automations() {
                               {r.email ? ` · ${r.email}` : ""}
                             </p>
                           </div>
-                          <Badge variant="outline" className="tabular-nums">
-                            {r.credits != null
-                              ? `${maskNum(formatIptvCredits(r.credits))} créd.`
-                              : "—"}
-                          </Badge>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <Badge variant="outline" className="tabular-nums">
+                              {r.credits != null
+                                ? `${maskNum(formatIptvCredits(r.credits))} créd.`
+                                : "—"}
+                            </Badge>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1"
+                              disabled={!uniplayConnected || addingCredits}
+                              onClick={() => openAddCredits(r)}
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Créditos
+                            </Button>
+                          </div>
                         </li>
                       ))}
                   </ul>
@@ -2627,19 +2753,28 @@ export default function Automations() {
         </TabsContent>
 
         <TabsContent value="mercado-pago" className="mt-0 space-y-4">
+          <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+            <p className="text-sm font-medium">Mercado Pago</p>
+            <p className="text-xs text-muted-foreground">
+              Aqui você só configura o token. O PIX para o cliente é gerado e
+              enviado na página <span className="font-medium">WhatsApp</span>.
+            </p>
+          </div>
+
           <section className="ax-surface space-y-3 p-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold tracking-tight">
-                Conexão Mercado Pago
-              </h2>
-              <span className="truncate text-[11px] text-muted-foreground">
-                {mpAccessToken.trim() ? "Configurado" : "Não configurado"}
-              </span>
+              <div>
+                <h2 className="text-sm font-semibold tracking-tight">
+                  Token da API
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Access Token de produção (não use a Public Key).
+                </p>
+              </div>
+              <Badge variant={mpAccessToken.trim() ? "default" : "outline"}>
+                {mpAccessToken.trim() ? "Configurado" : "Pendente"}
+              </Badge>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Só a conexão da API. Para gerar e enviar PIX ao cliente, use a
-              página WhatsApp.
-            </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="space-y-1 sm:col-span-2">
                 <Label className="text-xs" htmlFor="mp-token">
@@ -2729,22 +2864,108 @@ export default function Automations() {
         </TabsContent>
 
         <TabsContent value="winbox" className="mt-0 space-y-4">
+          <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
+            <p className="text-sm font-medium">Winbox</p>
+            <p className="text-xs text-muted-foreground">
+              Integração com MikroTik para internet (PPPoE). Ainda não está
+              disponível.
+            </p>
+          </div>
           <section className="ax-surface space-y-3 p-5">
             <div className="flex items-start gap-2">
               <Cable className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <div>
-                <h2 className="font-semibold tracking-tight">
-                  Winbox / PPPoE
-                </h2>
+                <h2 className="font-semibold tracking-tight">Em breve</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Em breve: liberação automática via API do RouterOS (MikroTik)
-                  para PPPoE dos clientes de internet.
+                  Liberação automática via API do RouterOS para clientes de
+                  internet. Por enquanto use só UniPlay e Mercado Pago.
                 </p>
               </div>
             </div>
           </section>
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={!!creditTarget}
+        onOpenChange={(open) => {
+          if (!open && !addingCredits) setCreditTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adicionar créditos</DialogTitle>
+            <DialogDescription>
+              Passar créditos da sua conta UniPlay para{" "}
+              <span className="font-medium text-foreground">
+                {creditTarget?.name || creditTarget?.username || "revendedor"}
+              </span>
+              . A UniPlay não aceita menos de {IPTV_RESELLER_CREDITS_MIN}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-2">
+              <Label htmlFor="reseller-credits-amount">Quantidade</Label>
+              <Input
+                id="reseller-credits-amount"
+                type="number"
+                min={IPTV_RESELLER_CREDITS_MIN}
+                step={1}
+                inputMode="numeric"
+                value={creditAmount}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^\d]/g, "");
+                  setCreditAmount(raw);
+                }}
+                onBlur={() => {
+                  const n = Math.floor(Number(creditAmount));
+                  if (!Number.isFinite(n) || n < IPTV_RESELLER_CREDITS_MIN) {
+                    setCreditAmount(String(IPTV_RESELLER_CREDITS_MIN));
+                  } else {
+                    setCreditAmount(String(n));
+                  }
+                }}
+                autoComplete="off"
+              />
+              {creditAmount !== "" && !creditAmountValid ? (
+                <p className="text-xs font-medium text-destructive">
+                  Não pode menos de {IPTV_RESELLER_CREDITS_MIN}. Use{" "}
+                  {IPTV_RESELLER_CREDITS_MIN} ou mais.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Somente {IPTV_RESELLER_CREDITS_MIN} ou mais. Seu saldo:{" "}
+                  {panelCredits == null
+                    ? "—"
+                    : maskNum(formatIptvCredits(panelCredits))}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={addingCredits}
+              onClick={() => setCreditTarget(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={addingCredits || !creditAmountValid}
+              onClick={() => void submitAddCredits()}
+            >
+              {addingCredits ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Coins className="h-4 w-4" />
+              )}
+              {addingCredits ? "Enviando…" : "Enviar créditos"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={!!renewTargetId}
