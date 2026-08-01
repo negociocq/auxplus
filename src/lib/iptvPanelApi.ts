@@ -270,8 +270,13 @@ export async function loginIptvPanel(
     }
     throw new Error("Login ok, mas a resposta não trouxe access_token");
   } catch (e) {
-    if (e instanceof Error) throw e;
-    throw new Error("Erro de rede no login");
+    const msg = e instanceof Error ? e.message : "Erro de rede no login";
+    if (/Failed to fetch|NetworkError|Load failed|fetch/i.test(msg)) {
+      throw new Error(
+        "Não alcançou o Proxy API. Confira se npm run ges-proxy e o cloudflared estão rodando neste PC, e se a URL no Admin está atualizada (túnel novo = URL nova).",
+      );
+    }
+    throw e instanceof Error ? e : new Error(msg);
   }
 }
 
