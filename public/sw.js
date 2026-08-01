@@ -1,6 +1,13 @@
 /* AuxPlus — service worker mínimo para instalação PWA (rede primeiro). */
-const CACHE = "auxplus-shell-v1";
-const SHELL = ["/", "/manifest.webmanifest", "/auxplus-logo.png", "/pwa-192.png", "/pwa-512.png"];
+const CACHE = "auxplus-shell-v2";
+const SHELL = [
+  "/",
+  "/manifest.webmanifest",
+  "/auxplus-logo.png",
+  "/pwa-192.png",
+  "/pwa-512.png",
+  "/apple-touch-icon.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
