@@ -808,11 +808,14 @@ export default function Automations() {
                   </Label>
                   <Input
                     id="iptv-user"
+                    name="uniplay-user"
                     value={panelUser}
                     onChange={(e) => setPanelUser(e.target.value)}
                     placeholder="Login do painel"
                     className="h-9"
-                    autoComplete="username"
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
                   />
                 </div>
                 <div className="space-y-1">
@@ -822,11 +825,14 @@ export default function Automations() {
                   <div className="relative">
                     <Input
                       id="iptv-pass"
+                      name="uniplay-pass"
                       type={showPass ? "text" : "password"}
                       value={panelPass}
                       onChange={(e) => setPanelPass(e.target.value)}
-                      placeholder="Senha"
-                      autoComplete="current-password"
+                      placeholder="Senha da UniPlay"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
                       className="h-9 pr-9"
                     />
                     <button

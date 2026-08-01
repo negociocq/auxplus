@@ -60,7 +60,11 @@ function normalizeConfig(
     iptvApiBaseUrl: parsed.iptvApiBaseUrl?.trim() || base.iptvApiBaseUrl,
     iptvBearerToken: parsed.iptvBearerToken?.trim() || "",
     iptvUsername: parsed.iptvUsername?.trim() || "",
-    iptvPassword: parsed.iptvPassword ?? "",
+    // Mantém senha se o parsed vier sem (evita apagar na nuvem)
+    iptvPassword:
+      parsed.iptvPassword != null && String(parsed.iptvPassword).length > 0
+        ? String(parsed.iptvPassword)
+        : (base.iptvPassword ?? ""),
     iptvRegPassword: parsed.iptvRegPassword?.trim() || "",
     iptvPackageId: parsed.iptvPackageId?.trim() || "1",
     renewMonths: Math.max(1, Math.min(24, Number(parsed.renewMonths) || 1)),
@@ -153,9 +157,20 @@ export async function loadAutomationsConfigRemote(
       typeof data.value === "string"
         ? (JSON.parse(data.value) as Partial<AutomationsConfig>)
         : (data.value as Partial<AutomationsConfig>);
+    // Nuvem manda; se senha/user vierem vazios, aproveita o local
     const merged = normalizeConfig(local, value);
-    writeLocal(userId, merged);
-    return merged;
+    const withSecrets: AutomationsConfig = {
+      ...merged,
+      iptvUsername: merged.iptvUsername || local.iptvUsername,
+      iptvPassword: merged.iptvPassword || local.iptvPassword,
+      iptvBearerToken: merged.iptvBearerToken || local.iptvBearerToken,
+    };
+    writeLocal(userId, withSecrets);
+    // Local tem senha e a nuvem não → sobe agora (outros PCs passam a ver)
+    if (local.iptvPassword && !String(value.iptvPassword || "").trim()) {
+      void persistRemote(userId, withSecrets);
+    }
+    return withSecrets;
   } catch {
     return local;
   }
