@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -101,6 +101,7 @@ import { DebtFolderView } from "@/components/debt/DebtFolderView";
 import { isExpenseFolderType } from "@/types";
 import {
   loadAutomationsConfig,
+  loadAutomationsConfigRemote,
   saveAutomationsConfig,
 } from "@/lib/automationsConfig";
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
@@ -250,15 +251,26 @@ export default function FolderItems() {
   const [farDays, setFarDays] = useState(3);
   const [whatsMsg, setWhatsMsg] = useState("");
   const [syncingUniplay, setSyncingUniplay] = useState(false);
+  const [syncFolderIdCloud, setSyncFolderIdCloud] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folder = data.folders.find(
     (f) => f.id === folderId && f.userId === user?.id,
   );
+
+  useEffect(() => {
+    if (!user) return;
+    void loadAutomationsConfigRemote(user.id).then((cfg) => {
+      setSyncFolderIdCloud(cfg.syncFolderId);
+    });
+  }, [user]);
+
   const uniplaySyncEnabled = useMemo(() => {
     if (!user || !folder || folder.type !== "Cliente") return false;
-    return loadAutomationsConfig(user.id).syncFolderId === folder.id;
-  }, [user, folder]);
+    const id =
+      syncFolderIdCloud || loadAutomationsConfig(user.id).syncFolderId;
+    return id === folder.id;
+  }, [user, folder, syncFolderIdCloud]);
 
   const syncUniplay = async () => {
     if (!user || !folder) return;
@@ -268,7 +280,7 @@ export default function FolderItems() {
     }
     setSyncingUniplay(true);
     try {
-      const cfg = loadAutomationsConfig(user.id);
+      const cfg = await loadAutomationsConfigRemote(user.id);
       const plat = await loadIptvPlatformConfig();
       if (!cfg.iptvUsername.trim() || !cfg.iptvPassword) {
         toast.error(

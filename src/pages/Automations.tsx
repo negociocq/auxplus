@@ -33,7 +33,9 @@ import {
 } from "@/components/ui/select";
 import {
   loadAutomationsConfig,
+  loadAutomationsConfigRemote,
   saveAutomationsConfig,
+  saveAutomationsConfigRemote,
   type AutomationsConfig,
 } from "@/lib/automationsConfig";
 import {
@@ -126,16 +128,18 @@ export default function Automations() {
 
   useEffect(() => {
     if (!user) return;
-    const next = loadAutomationsConfig(user.id);
-    setConfig(next);
-    setBearer(next.iptvBearerToken);
-    setPanelUser(next.iptvUsername);
-    setPanelPass(next.iptvPassword);
-    setRenewMonths(next.renewMonths);
-    setTestHours(next.testHours);
-    setSyncFolderId(next.syncFolderId);
     setJobs(loadIptvJobs(user.id));
     void loadIptvPlatformConfig().then(setPlatform);
+    // Conta UniPlay vem da nuvem (todos os PCs) + cache local
+    void loadAutomationsConfigRemote(user.id).then((next) => {
+      setConfig(next);
+      setBearer(next.iptvBearerToken);
+      setPanelUser(next.iptvUsername);
+      setPanelPass(next.iptvPassword);
+      setRenewMonths(next.renewMonths);
+      setTestHours(next.testHours);
+      setSyncFolderId(next.syncFolderId);
+    });
   }, [user]);
 
   useEffect(() => {
@@ -312,14 +316,14 @@ export default function Automations() {
     }
   };
 
-  const onSavePanel = (e: FormEvent) => {
+  const onSavePanel = async (e: FormEvent) => {
     e.preventDefault();
     if (!panelUser.trim() || !panelPass) {
       toast.error("Informe usuário e senha da sua conta");
       return;
     }
     setSaving(true);
-    persistConfig({
+    const next: AutomationsConfig = {
       ...config,
       iptvBearerToken: bearer.trim(),
       iptvUsername: panelUser.trim(),
@@ -328,10 +332,16 @@ export default function Automations() {
       testHours,
       syncFolderId,
       iptvAutoRefreshToken: true,
-    });
+    };
+    setConfig(next);
+    const saved = await saveAutomationsConfigRemote(user.id, next);
     setSaving(false);
     setShowPass(false);
-    toast.success("Conta UniPlay salva");
+    if (saved.warning) {
+      toast.message("Conta salva neste PC", { description: saved.warning });
+    } else {
+      toast.success("Conta UniPlay salva em todos os dispositivos");
+    }
     void refreshTokenNow();
   };
 
