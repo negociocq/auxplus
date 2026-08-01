@@ -14,6 +14,7 @@ import {
   releaseWhatsappSendLock,
   saveSendLog,
   sendEvolutionText,
+  syncWhatsappAccountData,
   type WaSendLog,
 } from "@/lib/whatsappAutomation";
 import {
@@ -66,8 +67,20 @@ export function useWhatsappAutoSend(user: User | null, data: AppData) {
 
     let cancelled = false;
 
+    let lastCloudSync = 0;
+    const refreshCloud = async () => {
+      const now = Date.now();
+      if (now - lastCloudSync < 30_000) return;
+      lastCloudSync = now;
+      await syncWhatsappAccountData(user.id);
+    };
+    void refreshCloud();
+
     const tick = async () => {
       if (cancelled || runningRef.current) return;
+
+      await refreshCloud();
+      if (cancelled) return;
 
       const settings = loadWhatsappSettings(user.id);
       if (!settings.enabled) return;

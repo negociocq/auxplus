@@ -1,6 +1,7 @@
 import { addDays, differenceInCalendarDays, format } from "date-fns";
 import type { Folder, Item } from "@/types";
 import { isRevenueFolderType } from "@/types";
+import { supabase } from "@/integrations/supabase/client";
 
 export type WaConnectionStatus =
   | "disconnected"
@@ -60,6 +61,8 @@ export interface WaSendLog {
 
 const SETTINGS_KEY = "auxplus-wa-settings";
 const LOG_KEY = "auxplus-wa-send-log";
+const settingsDbKey = (userId: string) => `wa_settings_user_${userId}`;
+const logDbKey = (userId: string) => `wa_send_log_user_${userId}`;
 
 /** Trava global: evita fila manual e automática ao mesmo tempo. */
 let sendLock = false;
@@ -114,6 +117,116 @@ export function defaultWhatsappAutomation(): WhatsappAutomationSettings {
   };
 }
 
+function normalizeWhatsappSettings(
+  base: WhatsappAutomationSettings,
+  parsed: Partial<WhatsappAutomationSettings> & {
+    apiBaseUrl?: string;
+    apiKey?: string;
+    instanceName?: string;
+  },
+): WhatsappAutomationSettings {
+  const {
+    apiBaseUrl: _a,
+    apiKey: _k,
+    instanceName: _i,
+    ...rest
+  } = parsed;
+  return {
+    ...base,
+    ...rest,
+    daysBefore: Math.max(
+      1,
+      Math.min(30, Number(rest.daysBefore) || base.daysBefore),
+    ),
+    sendBefore:
+      rest.sendBefore !== undefined ? Boolean(rest.sendBefore) : base.sendBefore,
+    sendOnDay:
+      rest.sendOnDay !== undefined ? Boolean(rest.sendOnDay) : base.sendOnDay,
+    sendTime: String(rest.sendTime || base.sendTime).trim() || base.sendTime,
+    messageBefore: String(rest.messageBefore ?? base.messageBefore),
+    messageOnDay: String(rest.messageOnDay ?? base.messageOnDay),
+    minIntervalSec: Math.max(
+      30,
+      Number(rest.minIntervalSec) || base.minIntervalSec,
+    ),
+    jitterSec: Math.max(
+      0,
+      rest.jitterSec !== undefined ? Number(rest.jitterSec) : base.jitterSec,
+    ),
+    maxPerDay: Math.max(1, Number(rest.maxPerDay) || base.maxPerDay),
+    maxPerHour: Math.max(1, Number(rest.maxPerHour) || base.maxPerHour),
+    enabled:
+      rest.enabled !== undefined ? Boolean(rest.enabled) : base.enabled,
+  };
+}
+
+function writeLocalSettings(
+  userId: string,
+  settings: WhatsappAutomationSettings,
+) {
+  localStorage.setItem(`${SETTINGS_KEY}:${userId}`, JSON.stringify(settings));
+}
+
+function trimSendLogs(logs: WaSendLog[]): WaSendLog[] {
+  const cutoff = format(addDays(new Date(), -14), "yyyy-MM-dd");
+  return logs.filter((l) => l.day >= cutoff).slice(-500);
+}
+
+function writeLocalSendLog(userId: string, logs: WaSendLog[]) {
+  localStorage.setItem(
+    `${LOG_KEY}:${userId}`,
+    JSON.stringify(trimSendLogs(logs)),
+  );
+}
+
+function mergeSendLogs(a: WaSendLog[], b: WaSendLog[]): WaSendLog[] {
+  const map = new Map<string, WaSendLog>();
+  for (const row of [...a, ...b]) {
+    if (!row || typeof row !== "object") continue;
+    const key = `${row.day}|${row.itemId}|${row.kind}|${row.sentAt}|${row.ok ? 1 : 0}`;
+    map.set(key, row);
+  }
+  return trimSendLogs(
+    [...map.values()].sort((x, y) => x.sentAt.localeCompare(y.sentAt)),
+  );
+}
+
+async function persistSettingsRemote(
+  userId: string,
+  settings: WhatsappAutomationSettings,
+) {
+  if (!supabase || !userId) return;
+  try {
+    await supabase.from("platform_settings").upsert(
+      {
+        key: settingsDbKey(userId),
+        value: settings,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+  } catch {
+    /* local já salvo */
+  }
+}
+
+async function persistSendLogRemote(userId: string, logs: WaSendLog[]) {
+  if (!supabase || !userId) return;
+  try {
+    await supabase.from("platform_settings").upsert(
+      {
+        key: logDbKey(userId),
+        value: { logs: trimSendLogs(logs) },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+  } catch {
+    /* local já salvo */
+  }
+}
+
+/** Leitura síncrona do cache local. */
 export function loadWhatsappSettings(
   userId: string,
 ): WhatsappAutomationSettings {
@@ -121,46 +234,117 @@ export function loadWhatsappSettings(
   try {
     const raw = localStorage.getItem(`${SETTINGS_KEY}:${userId}`);
     if (!raw) return base;
-    const parsed = JSON.parse(raw) as Partial<WhatsappAutomationSettings> & {
-      apiBaseUrl?: string;
-      apiKey?: string;
-      instanceName?: string;
-    };
-    // Remove campos antigos de API (agora só no admin)
-    const {
-      apiBaseUrl: _a,
-      apiKey: _k,
-      instanceName: _i,
-      ...rest
-    } = parsed;
-    return { ...base, ...rest };
+    return normalizeWhatsappSettings(
+      base,
+      JSON.parse(raw) as Partial<WhatsappAutomationSettings>,
+    );
   } catch {
     return base;
   }
 }
 
+/**
+ * Carrega regras WhatsApp da conta (nuvem) + cache local.
+ * Assim localhost e domínio ficam iguais.
+ */
+export async function loadWhatsappSettingsRemote(
+  userId: string,
+): Promise<WhatsappAutomationSettings> {
+  const local = loadWhatsappSettings(userId);
+  if (!supabase || !userId) return local;
+  try {
+    const { data, error } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", settingsDbKey(userId))
+      .maybeSingle();
+    if (error || !data?.value) {
+      // 1ª sincronização: sobe o que já estava neste PC
+      void persistSettingsRemote(userId, local);
+      return local;
+    }
+    const value =
+      typeof data.value === "string"
+        ? (JSON.parse(data.value) as Partial<WhatsappAutomationSettings>)
+        : (data.value as Partial<WhatsappAutomationSettings>);
+    const merged = normalizeWhatsappSettings(local, value);
+    writeLocalSettings(userId, merged);
+    return merged;
+  } catch {
+    return local;
+  }
+}
+
+/** Salva local + nuvem (vinculado à conta). */
 export function saveWhatsappSettings(
   userId: string,
   settings: WhatsappAutomationSettings,
 ) {
-  localStorage.setItem(`${SETTINGS_KEY}:${userId}`, JSON.stringify(settings));
+  const clean = normalizeWhatsappSettings(
+    defaultWhatsappAutomation(),
+    settings,
+  );
+  writeLocalSettings(userId, clean);
+  void persistSettingsRemote(userId, clean);
 }
 
 export function loadSendLog(userId: string): WaSendLog[] {
   try {
     const raw = localStorage.getItem(`${LOG_KEY}:${userId}`);
     if (!raw) return [];
-    return JSON.parse(raw) as WaSendLog[];
+    const list = JSON.parse(raw) as WaSendLog[];
+    return Array.isArray(list) ? trimSendLogs(list) : [];
   } catch {
     return [];
   }
 }
 
+/** Carrega log de envios da conta (evita reenviar em outro dispositivo). */
+export async function loadSendLogRemote(userId: string): Promise<WaSendLog[]> {
+  const local = loadSendLog(userId);
+  if (!supabase || !userId) return local;
+  try {
+    const { data, error } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", logDbKey(userId))
+      .maybeSingle();
+    if (error || !data?.value) {
+      if (local.length) void persistSendLogRemote(userId, local);
+      return local;
+    }
+    const raw =
+      typeof data.value === "string"
+        ? (JSON.parse(data.value) as { logs?: WaSendLog[] })
+        : (data.value as { logs?: WaSendLog[] });
+    const remote = Array.isArray(raw?.logs) ? raw.logs : [];
+    const merged = mergeSendLogs(local, remote);
+    writeLocalSendLog(userId, merged);
+    if (local.length !== remote.length || local.length !== merged.length) {
+      void persistSendLogRemote(userId, merged);
+    }
+    return merged;
+  } catch {
+    return local;
+  }
+}
+
 export function saveSendLog(userId: string, logs: WaSendLog[]) {
-  // Mantém só os últimos 14 dias
-  const cutoff = format(addDays(new Date(), -14), "yyyy-MM-dd");
-  const trimmed = logs.filter((l) => l.day >= cutoff).slice(-500);
-  localStorage.setItem(`${LOG_KEY}:${userId}`, JSON.stringify(trimmed));
+  const trimmed = trimSendLogs(logs);
+  writeLocalSendLog(userId, trimmed);
+  void persistSendLogRemote(userId, trimmed);
+}
+
+/** Prefetch: baixa settings + log da conta para o cache local (autoenvio). */
+export async function syncWhatsappAccountData(userId: string): Promise<{
+  settings: WhatsappAutomationSettings;
+  logs: WaSendLog[];
+}> {
+  const [settings, logs] = await Promise.all([
+    loadWhatsappSettingsRemote(userId),
+    loadSendLogRemote(userId),
+  ]);
+  return { settings, logs };
 }
 
 export function phoneDigits(phone: string) {
@@ -328,7 +512,13 @@ export function buildTodayQueue(
     }
   }
 
-  return queue.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  // Ordem de envio: vence primeiro → hoje antes de antecipado → nome
+  return queue.sort((a, b) => {
+    const byDue = a.dueDate.localeCompare(b.dueDate);
+    if (byDue !== 0) return byDue;
+    if (a.kind !== b.kind) return a.kind === "onday" ? -1 : 1;
+    return a.name.localeCompare(b.name, "pt-BR");
+  });
 }
 
 export function nextDelayMs(settings: WhatsappAutomationSettings) {

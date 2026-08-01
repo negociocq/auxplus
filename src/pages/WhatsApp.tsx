@@ -57,6 +57,7 @@ import {
   saveSendLog,
   saveWhatsappSettings,
   sendEvolutionText,
+  syncWhatsappAccountData,
   type EvolutionRuntimeConfig,
   type WaConnectionStatus,
   type WhatsappAutomationSettings,
@@ -114,13 +115,23 @@ export default function WhatsAppPage() {
     setSettings(loadWhatsappSettings(user.id));
     setLogs(loadSendLog(user.id));
     void loadEvolutionPlatformConfig().then(setPlatform);
+    // Conta (nuvem): mesmas regras/log em localhost e domínio
+    void syncWhatsappAccountData(user.id).then(({ settings: s, logs: l }) => {
+      setSettings(s);
+      setLogs(l);
+    });
   }, [user]);
 
-  // Mantém a fila alinhada com envios automáticos / outra aba
+  // Mantém a fila alinhada com envios automáticos / outra aba / outros PCs
   useEffect(() => {
     if (!user) return;
-    const sync = () => setLogs(loadSendLog(user.id));
-    const id = window.setInterval(sync, 8000);
+    const sync = () => {
+      void syncWhatsappAccountData(user.id).then(({ settings: s, logs: l }) => {
+        setSettings(s);
+        setLogs(l);
+      });
+    };
+    const id = window.setInterval(sync, 20000);
     window.addEventListener("focus", sync);
     return () => {
       window.clearInterval(id);

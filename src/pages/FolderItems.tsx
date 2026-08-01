@@ -119,6 +119,7 @@ import {
   excludeFromSync,
   excludedUsernamesForFolder,
   includeInSync,
+  loadSyncExclusionsRemote,
 } from "@/lib/syncExclusions";
 
 type DueMode = "com" | "sem";
@@ -275,6 +276,7 @@ export default function FolderItems() {
     void loadAutomationsConfigRemote(user.id).then((cfg) => {
       setSyncFolderIdCloud(cfg.syncFolderId);
     });
+    void loadSyncExclusionsRemote(user.id);
   }, [user]);
 
   const uniplaySyncEnabled = useMemo(() => {
