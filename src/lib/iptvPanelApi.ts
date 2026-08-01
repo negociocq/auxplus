@@ -1,7 +1,12 @@
 /**
  * API interna do painel (gesapioffice) usada pelo front searchdefense.
- * Em dev, preferir proxy /ges-api para evitar CORS.
+ * Dev: proxy Vite /ges-api. Produção: Edge Function Supabase (ges-api).
  */
+
+import {
+  GES_API_PROXY_URL,
+  SUPABASE_ANON_KEY,
+} from "@/integrations/supabase/client";
 
 export type IptvPanelCreds = {
   apiBaseUrl: string;
@@ -46,25 +51,51 @@ export function getLastIssuedIptvToken() {
   return lastIssuedToken;
 }
 
+function shouldUseGesProxy(apiBaseUrl: string) {
+  try {
+    const u = new URL(apiBaseUrl || "https://gesapioffice.com/api");
+    return (
+      u.hostname.includes("gesapioffice") || u.pathname.includes("/api")
+    );
+  } catch {
+    return true;
+  }
+}
+
+/** Edge Function Supabase (produção) — path vai em x-iptv-path */
+function isSupabaseGesProxy(base: string) {
+  return base.includes("/functions/v1/ges-api");
+}
+
 function resolveBase(apiBaseUrl: string) {
   const configured = (apiBaseUrl || "https://gesapioffice.com/api").replace(
     /\/$/,
     "",
   );
+  if (!shouldUseGesProxy(configured)) return configured;
+
+  // Dev: proxy do Vite (injeta Origin do painel)
   if (typeof window !== "undefined" && import.meta.env.DEV) {
-    try {
-      const u = new URL(configured);
-      if (
-        u.hostname.includes("gesapioffice") ||
-        u.pathname.includes("/api")
-      ) {
-        return "/ges-api";
-      }
-    } catch {
-      /* keep */
-    }
+    return "/ges-api";
   }
-  return configured;
+  // Produção: Edge Function no Supabase
+  return GES_API_PROXY_URL;
+}
+
+function proxyHeaders(
+  path: string,
+  iptvBearer?: string,
+): Record<string, string> {
+  const h: Record<string, string> = {
+    apikey: SUPABASE_ANON_KEY,
+    "x-iptv-path": path.startsWith("/") ? path : `/${path}`,
+  };
+  if (iptvBearer?.trim()) {
+    h["x-iptv-authorization"] = `Bearer ${iptvBearer
+      .trim()
+      .replace(/^Bearer\s+/i, "")}`;
+  }
+  return h;
 }
 
 /** Lê exp (unix seconds) do JWT sem validar assinatura. */
@@ -132,8 +163,7 @@ function parseApiError(data: unknown, text: string, statusText: string) {
 /**
  * Login na API do painel → novo Bearer.
  * Body igual ao front do painel: { username, password, code }.
- * Em DEV use o proxy /ges-api (injeta Origin do painel; sem isso a API
- * responde "Credencias não encontradas").
+ * Usa proxy (dev Vite ou Edge Function) com Origin do painel.
  */
 export async function loginIptvPanel(
   apiBaseUrl: string,
@@ -148,18 +178,18 @@ export async function loginIptvPanel(
   }
 
   const base = resolveBase(apiBaseUrl);
-  if (!import.meta.env.DEV && !base.startsWith("/")) {
-    throw new Error(
-      "Login automático só funciona via proxy (/ges-api). Em produção cole o Bearer, ou rode o app em modo dev.",
-    );
-  }
+  const loginPath = "/login";
+  const loginUrl = isSupabaseGesProxy(base)
+    ? base
+    : `${base}${loginPath}`;
 
   try {
-    const res = await fetch(`${base}/login`, {
+    const res = await fetch(loginUrl, {
       method: "POST",
       headers: {
         accept: "application/json, text/plain, */*",
         "content-type": "application/json",
+        ...(isSupabaseGesProxy(base) ? proxyHeaders(loginPath) : {}),
       },
       body: JSON.stringify({ username: user, password: pass, code }),
     });
@@ -174,12 +204,17 @@ export async function loginIptvPanel(
       const err = parseApiError(data, text, res.statusText);
       if (/credencias?\s+n[aã]o\s+encontradas/i.test(err)) {
         throw new Error(
-          "API bloqueou o login (Origin). Reinicie o servidor Vite (npm run dev) para aplicar o proxy e tente de novo. Confira também usuário/senha do painel IPTV.",
+          "API bloqueou o login (Origin). Confira se a Edge Function ges-api está publicada no Supabase, ou usuário/senha do painel.",
         );
       }
       if (/inv[aá]lid/i.test(err)) {
         throw new Error(
           "Usuário ou senha do painel incorretos. Use o mesmo login de https://searchdefense.top (não o do AuxPlus).",
+        );
+      }
+      if (res.status === 404 && isSupabaseGesProxy(base)) {
+        throw new Error(
+          "Proxy UniPlay não encontrado. Publique a Edge Function ges-api no Supabase (veja supabase/functions/ges-api).",
         );
       }
       throw new Error(err);
@@ -255,13 +290,16 @@ async function panelFetch(
 
   const base = resolveBase(creds.apiBaseUrl);
   const p = path.startsWith("/") ? path : `/${path}`;
+  const url = isSupabaseGesProxy(base) ? base : `${base}${p}`;
   const doFetch = (t: string) =>
-    fetch(`${base}${p}`, {
+    fetch(url, {
       ...init,
       headers: {
         accept: "application/json, text/plain, */*",
         "content-type": "application/json",
-        authorization: `Bearer ${t}`,
+        ...(isSupabaseGesProxy(base)
+          ? proxyHeaders(p, t)
+          : { authorization: `Bearer ${t}` }),
         ...(init?.headers || {}),
       },
     });

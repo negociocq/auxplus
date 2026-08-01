@@ -1,0 +1,5 @@
+# Mínimo para deploy da function ges-api (proxy UniPlay).
+
+[functions.ges-api]
+# O Bearer do painel IPTV vai no Authorization — não é JWT do Supabase.
+verify_jwt = false
