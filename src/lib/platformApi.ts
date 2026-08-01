@@ -124,6 +124,10 @@ export interface IptvPlatformConfig {
    * Vazio = /api/gesapi na Vercel ou /ges-api no Vite.
    */
   apiProxyUrl: string;
+  /** DNS Smarters padrão (ex.: http://blushes.top). */
+  dnsSmarters: string;
+  /** Host da lista M3U (ex.: http://ibetsa.top) — diferente do DNS Smarters. */
+  m3uHost: string;
 }
 
 const IPTV_LOCAL_KEY = "auxplus-platform-iptv";
@@ -139,6 +143,8 @@ export function defaultIptvPlatformConfig(): IptvPlatformConfig {
     regPassword: "",
     panelUrl: DEFAULT_IPTV_PANEL_URL,
     apiProxyUrl: "",
+    dnsSmarters: "http://blushes.top",
+    m3uHost: "http://ibetsa.top",
   };
 }
 
@@ -175,6 +181,17 @@ function readIptvLocal(): IptvPlatformConfig {
           "string" &&
           String((parsed as { api_proxy_url?: string }).api_proxy_url).trim()) ||
         "",
+      dnsSmarters:
+        (typeof parsed.dnsSmarters === "string" && parsed.dnsSmarters.trim()) ||
+        (typeof (parsed as { dns_smarters?: string }).dns_smarters ===
+          "string" &&
+          String((parsed as { dns_smarters?: string }).dns_smarters).trim()) ||
+        base.dnsSmarters,
+      m3uHost:
+        (typeof parsed.m3uHost === "string" && parsed.m3uHost.trim()) ||
+        (typeof (parsed as { m3u_host?: string }).m3u_host === "string" &&
+          String((parsed as { m3u_host?: string }).m3u_host).trim()) ||
+        base.m3uHost,
     };
   } catch {
     return base;
@@ -215,6 +232,19 @@ export async function loadIptvPlatformConfig(): Promise<IptvPlatformConfig> {
           String((value as { api_proxy_url?: string }).api_proxy_url).trim()) ||
         fallback.apiProxyUrl ||
         "",
+      dnsSmarters:
+        (typeof value.dnsSmarters === "string" && value.dnsSmarters.trim()) ||
+        (typeof (value as { dns_smarters?: unknown }).dns_smarters ===
+          "string" &&
+          String((value as { dns_smarters?: string }).dns_smarters).trim()) ||
+        fallback.dnsSmarters ||
+        defaultIptvPlatformConfig().dnsSmarters,
+      m3uHost:
+        (typeof value.m3uHost === "string" && value.m3uHost.trim()) ||
+        (typeof (value as { m3u_host?: unknown }).m3u_host === "string" &&
+          String((value as { m3u_host?: string }).m3u_host).trim()) ||
+        fallback.m3uHost ||
+        defaultIptvPlatformConfig().m3uHost,
     };
     writeIptvLocal(merged);
     return merged;
@@ -226,13 +256,16 @@ export async function loadIptvPlatformConfig(): Promise<IptvPlatformConfig> {
 export async function saveIptvPlatformConfig(
   config: IptvPlatformConfig,
 ): Promise<{ ok: boolean; warning?: string }> {
+  const defaults = defaultIptvPlatformConfig();
   const clean: IptvPlatformConfig = {
     apiBaseUrl: config.apiBaseUrl.trim().replace(/\/$/, "") ||
-      defaultIptvPlatformConfig().apiBaseUrl,
+      defaults.apiBaseUrl,
     packageId: config.packageId.trim() || "1",
     regPassword: config.regPassword.trim(),
     panelUrl: config.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL,
     apiProxyUrl: config.apiProxyUrl.trim().replace(/\/$/, ""),
+    dnsSmarters: config.dnsSmarters.trim() || defaults.dnsSmarters,
+    m3uHost: config.m3uHost.trim() || defaults.m3uHost,
   };
   writeIptvLocal(clean);
   if (!supabase) {

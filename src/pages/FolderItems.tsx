@@ -47,7 +47,11 @@ import {
   updateItem,
   upsertWhatsappMessage,
 } from "@/lib/storage";
-import { formatBrDate } from "@/lib/format";
+import {
+  formatBrDate,
+  fromDatetimeLocalValue,
+  toDatetimeLocalValue,
+} from "@/lib/format";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import {
   annualPaymentBalance,
@@ -207,14 +211,15 @@ function sendReminder(item: Item, template: string) {
     return;
   }
 
-  const due = parseISO(item.dueDate);
+  const dueKey = String(item.dueDate).slice(0, 10);
+  const due = parseISO(dueKey);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dueCmp = new Date(due);
   dueCmp.setHours(0, 0, 0, 0);
   const isExpired = dueCmp < today;
   const dateText = isExpired ? "Venceu em:" : "Vai vencer em:";
-  const formattedDue = format(due, "dd/MM/yyyy");
+  const formattedDue = formatBrDate(item.dueDate);
 
   const message = template
     .replace(/\{getGreeting\}/g, getGreeting())
@@ -233,7 +238,14 @@ function sendReminder(item: Item, template: string) {
 export default function FolderItems() {
   const { folderId } = useParams();
   const { user, data, setData } = useApp();
-  const { money } = useHideBalance();
+  const {
+    hidden: hideSensitive,
+    money,
+    num,
+    text,
+    phone: maskPhone,
+    user: maskUser,
+  } = useHideBalance();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | ItemStatus>("all");
   const [showTools, setShowTools] = useState(false);
@@ -491,7 +503,7 @@ export default function FolderItems() {
         ? String(item.createdAt).slice(0, 10)
         : format(new Date(), "yyyy-MM-dd"),
       dueMode: item.status === "Sem Vencimento" || !item.dueDate ? "sem" : "com",
-      dueDate: item.dueDate ?? "",
+      dueDate: toDatetimeLocalValue(item.dueDate),
       phone: item.phone || "+55",
       price: item.price != null ? String(item.price) : "",
       notes: stripPaymentMarker(item.notes),
@@ -507,7 +519,7 @@ export default function FolderItems() {
       folderId: folder.id,
       itemId: form.itemId.trim(),
       name: form.name.trim(),
-      dueDate: noDue ? null : form.dueDate || null,
+      dueDate: noDue ? null : fromDatetimeLocalValue(form.dueDate),
       phone: form.phone.trim(),
       price,
       notes: form.notes.trim(),
@@ -669,7 +681,7 @@ export default function FolderItems() {
                 Todos
               </Badge>
             )}
-            <span className="tabular-nums">{chip.count}</span>
+            <span className="tabular-nums">{num(chip.count)}</span>
           </button>
         ))}
       </div>
@@ -841,6 +853,7 @@ export default function FolderItems() {
                         fill: "hsl(var(--muted-foreground))",
                       }}
                       stroke="hsl(var(--border))"
+                      tickFormatter={(v) => num(v)}
                     />
                     <Tooltip
                       contentStyle={{
@@ -889,19 +902,19 @@ export default function FolderItems() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">
-              Mostrar Todos ({counts.all})
+              Mostrar Todos ({num(counts.all)})
             </SelectItem>
             <SelectItem value="Sem Vencimento">
-              Sem vencimento ({counts["Sem Vencimento"]})
+              Sem vencimento ({num(counts["Sem Vencimento"])})
             </SelectItem>
             <SelectItem value="Longe de Vencer">
-              Longe de Vencer ({counts["Longe de Vencer"]})
+              Longe de Vencer ({num(counts["Longe de Vencer"])})
             </SelectItem>
             <SelectItem value="Perto de Vencer">
-              Perto de Vencer ({counts["Perto de Vencer"]})
+              Perto de Vencer ({num(counts["Perto de Vencer"])})
             </SelectItem>
             <SelectItem value="Já Vencido">
-              Já Vencido ({counts["Já Vencido"]})
+              Já Vencido ({num(counts["Já Vencido"])})
             </SelectItem>
           </SelectContent>
         </Select>
@@ -958,7 +971,9 @@ export default function FolderItems() {
                       <StatusBadge status={item.status} />
                       <span className="text-xs font-medium text-muted-foreground">
                         Usuário:{" "}
-                        <span className="text-foreground">{item.itemId}</span>
+                        <span className="text-foreground">
+                          {maskUser(item.itemId)}
+                        </span>
                       </span>
                     </div>
                     <h3 className="truncate text-base font-semibold tracking-tight">
@@ -968,7 +983,9 @@ export default function FolderItems() {
                       <span>
                         Criado em:{" "}
                         <span className="font-medium text-foreground">
-                          {formatBrDate(item.createdAt)}
+                          {formatBrDate(
+                            String(item.createdAt || "").slice(0, 10),
+                          )}
                         </span>
                       </span>
                       <span>
@@ -982,7 +999,7 @@ export default function FolderItems() {
                       <span>
                         Telefone:{" "}
                         <span className="font-medium text-foreground">
-                          {item.phone || "—"}
+                          {maskPhone(item.phone)}
                         </span>
                       </span>
                     </div>
@@ -1102,9 +1119,11 @@ export default function FolderItems() {
               <Label htmlFor="item-user">Usuário</Label>
               <Input
                 id="item-user"
+                type={hideSensitive ? "password" : "text"}
                 value={form.itemId}
                 onChange={(e) => setForm({ ...form, itemId: e.target.value })}
                 required
+                readOnly={hideSensitive}
               />
             </div>
             <div className="space-y-2">
@@ -1153,10 +1172,11 @@ export default function FolderItems() {
             </div>
             {form.dueMode === "com" && (
               <div className="space-y-2">
-                <Label htmlFor="item-due">Data de Vencimento</Label>
+                <Label htmlFor="item-due">Data e hora de vencimento</Label>
                 <Input
                   id="item-due"
-                  type="date"
+                  type="datetime-local"
+                  step={1}
                   value={form.dueDate}
                   onChange={(e) =>
                     setForm({ ...form, dueDate: e.target.value })
@@ -1169,17 +1189,21 @@ export default function FolderItems() {
               <Label htmlFor="item-phone">Telefone</Label>
               <Input
                 id="item-phone"
+                type={hideSensitive ? "password" : "text"}
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                readOnly={hideSensitive}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="item-price">Preço</Label>
               <Input
                 id="item-price"
+                type={hideSensitive ? "password" : "text"}
                 value={form.price}
                 placeholder="0.00"
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
+                readOnly={hideSensitive}
               />
             </div>
             <div className="space-y-2">
@@ -1354,7 +1378,7 @@ export default function FolderItems() {
                   Total de Itens
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums">
-                  {counts.all}
+                  {num(counts.all)}
                 </p>
               </div>
               <div className="rounded-xl border bg-muted/40 p-3">
@@ -1366,7 +1390,7 @@ export default function FolderItems() {
                 </p>
                 {folder.type !== "Dívida" && counts["Já Vencido"] > 0 ? (
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    Sem os {counts["Já Vencido"]} já vencidos
+                    {text(`Sem os ${counts["Já Vencido"]} já vencidos`)}
                   </p>
                 ) : null}
               </div>
@@ -1378,9 +1402,13 @@ export default function FolderItems() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={statusChartData}>
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(v) => num(v)}
+                    />
                     <Tooltip
-                      formatter={(value: number) => [value, "Itens"]}
+                      formatter={(value: number) => [num(value), "Itens"]}
                       labelFormatter={(_, payload) =>
                         String(payload?.[0]?.payload?.fullName ?? "")
                       }
@@ -1403,7 +1431,10 @@ export default function FolderItems() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={statusChartData}>
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(v) => num(v)}
+                    />
                     <Tooltip
                       formatter={(value: number) => [
                         money(Number(value)),
@@ -1431,7 +1462,10 @@ export default function FolderItems() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={statusChartData}>
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(v) => num(v)}
+                    />
                     <Tooltip
                       formatter={(value: number) => [
                         money(Number(value)),

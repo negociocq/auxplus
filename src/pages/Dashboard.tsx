@@ -91,7 +91,7 @@ import { toast } from "sonner";
 
 export default function Dashboard() {
   const { user, data, setData } = useApp();
-  const { money } = useHideBalance();
+  const { money, num, text, hidden } = useHideBalance();
   const [name, setName] = useState("");
   const [type, setType] = useState<FolderType>("Cliente");
   const [editFolder, setEditFolder] = useState<Folder | null>(null);
@@ -591,7 +591,7 @@ export default function Dashboard() {
                             </Badge>
                             {(stats[folder.id]?.overdue || 0) > 0 ? (
                               <Badge variant="destructive">
-                                {stats[folder.id].overdue} atrasados
+                                {text(`${stats[folder.id].overdue} atrasados`)}
                               </Badge>
                             ) : null}
                           </div>
@@ -599,8 +599,10 @@ export default function Dashboard() {
                             {folder.name}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            {stats[folder.id]?.activeCount || 0} ativos ·{" "}
-                            {money(stats[folder.id]?.total || 0)}
+                            {text(
+                              `${stats[folder.id]?.activeCount || 0} ativos`,
+                            )}{" "}
+                            · {money(stats[folder.id]?.total || 0)}
                           </p>
                         </div>
                       </Link>
@@ -647,21 +649,21 @@ export default function Dashboard() {
           <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
             <StatCard
               label="Pastas de dívida"
-              value={byType.Dívida.length}
+              value={num(byType.Dívida.length)}
               icon={FolderKanban}
-              hint={`${debtKpis.total} dívidas cadastradas`}
+              hint={text(`${debtKpis.total} dívidas cadastradas`)}
               delay={0.02}
             />
             <StatCard
               label="Em aberto"
               value={money(debtKpis.aberto)}
               icon={CircleDollarSign}
-              hint={`${debtKpis.ilimitadas} recorrentes / ilimitadas`}
+              hint={text(`${debtKpis.ilimitadas} recorrentes / ilimitadas`)}
               delay={0.06}
             />
             <StatCard
               label="Em atraso"
-              value={debtKpis.atrasadas}
+              value={num(debtKpis.atrasadas)}
               icon={AlertTriangle}
               tone={debtKpis.atrasadas ? "danger" : "success"}
               hint={money(debtKpis.atrasadoValor)}
@@ -669,10 +671,10 @@ export default function Dashboard() {
             />
             <StatCard
               label="Em dia"
-              value={debtKpis.emDia}
+              value={num(debtKpis.emDia)}
               icon={Clock3}
               tone="warning"
-              hint={`${debtKpis.encerradas} encerradas`}
+              hint={text(`${debtKpis.encerradas} encerradas`)}
               delay={0.14}
             />
             <StatCard
@@ -711,7 +713,7 @@ export default function Dashboard() {
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Dívidas · {item.label}
                   </p>
-                  <p className="mt-1 text-2xl font-bold">{item.value}</p>
+                  <p className="mt-1 text-2xl font-bold">{num(item.value)}</p>
                 </div>
                 <item.icon className="h-5 w-5 text-primary/70" />
               </div>
@@ -769,6 +771,7 @@ export default function Dashboard() {
                         fill: "hsl(var(--muted-foreground))",
                       }}
                       stroke="hsl(var(--border))"
+                      tickFormatter={(v) => num(v)}
                     />
                     <Tooltip
                       contentStyle={{
@@ -910,17 +913,22 @@ export default function Dashboard() {
                       </div>
                       <Progress
                         value={
-                          debtKpis.aberto
-                            ? Math.min(
-                                100,
-                                (row.total / debtKpis.aberto) * 100,
-                              )
-                            : 0
+                          hidden
+                            ? 0
+                            : debtKpis.aberto
+                              ? Math.min(
+                                  100,
+                                  (row.total / debtKpis.aberto) * 100,
+                                )
+                              : 0
                         }
                       />
                       <p className="mt-1 text-[11px] text-muted-foreground">
-                        {row.count} dívidas
-                        {row.overdue ? ` · ${row.overdue} em atraso` : ""}
+                        {text(
+                          `${row.count} dívidas${
+                            row.overdue ? ` · ${row.overdue} em atraso` : ""
+                          }`,
+                        )}
                       </p>
                     </div>
                   </motion.div>
@@ -934,24 +942,28 @@ export default function Dashboard() {
           <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
             <StatCard
               label="Pastas"
-              value={byType.Cliente.length + byType.Produto.length}
+              value={num(byType.Cliente.length + byType.Produto.length)}
               icon={FolderKanban}
-              hint={`${byType.Cliente.length} clientes · ${byType.Produto.length} produtos`}
+              hint={text(
+                `${byType.Cliente.length} clientes · ${byType.Produto.length} produtos`,
+              )}
               delay={0.02}
             />
             <StatCard
               label="Itens ativos"
-              value={revenueItems.length}
+              value={num(revenueItems.length)}
               icon={CalendarClock}
-              hint={`${kpis.day} vencem hoje · ${kpis.week} na semana`}
+              hint={text(
+                `${kpis.day} vencem hoje · ${kpis.week} na semana`,
+              )}
               delay={0.06}
             />
             <StatCard
               label="Em atraso"
-              value={kpis.vencido}
+              value={num(kpis.vencido)}
               icon={AlertTriangle}
               tone={kpis.vencido ? "danger" : "success"}
-              hint={`${kpis.perto} perto de vencer`}
+              hint={text(`${kpis.perto} perto de vencer`)}
               delay={0.1}
             />
             <StatCard
@@ -959,7 +971,7 @@ export default function Dashboard() {
               value={money(kpis.revenue)}
               icon={TrendingUp}
               tone="success"
-              hint={`Saúde ${kpis.healthy}% em dia`}
+              hint={text(`Saúde ${kpis.healthy}% em dia`)}
               delay={0.14}
             />
             <StatCard
@@ -986,7 +998,7 @@ export default function Dashboard() {
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Vencimentos · {item.label}
                   </p>
-                  <p className="mt-1 text-2xl font-bold">{item.value}</p>
+                  <p className="mt-1 text-2xl font-bold">{num(item.value)}</p>
                 </div>
                 <BarChart3 className="h-5 w-5 text-primary/70" />
               </div>
@@ -1064,6 +1076,7 @@ export default function Dashboard() {
                         fill: "hsl(var(--muted-foreground))",
                       }}
                       stroke="hsl(var(--border))"
+                      tickFormatter={(v) => num(v)}
                     />
                     <Tooltip
                       contentStyle={{
@@ -1076,7 +1089,7 @@ export default function Dashboard() {
                       formatter={(value: number, key: string) =>
                         key === "total"
                           ? [money(Number(value)), "Total"]
-                          : [value, "Itens"]
+                          : [num(value), "Itens"]
                       }
                     />
                     <Bar
@@ -1109,18 +1122,24 @@ export default function Dashboard() {
                         <Cell key={entry.name} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip
+                      formatter={(value: number) => [num(value), "Itens"]}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
               <div className="mt-2 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Taxa em dia</span>
-                  <span className="font-semibold">{kpis.healthy}%</span>
+                  <span className="font-semibold">
+                    {hidden ? "••" : `${kpis.healthy}%`}
+                  </span>
                 </div>
-                <Progress value={kpis.healthy} />
+                <Progress value={hidden ? 0 : kpis.healthy} />
                 <p className="text-xs text-muted-foreground">
-                  Sequência sem novo atraso crítico: {kpis.streakDays} dia(s)
+                  {text(
+                    `Sequência sem novo atraso crítico: ${kpis.streakDays} dia(s)`,
+                  )}
                 </p>
               </div>
             </div>
@@ -1154,12 +1173,7 @@ export default function Dashboard() {
                     >
                       <p className="font-medium">{item.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {String(item.dueDate)
-                          .slice(0, 10)
-                          .split("-")
-                          .reverse()
-                          .join("/")}{" "}
-                        · {money(item.price || 0)}
+                        {formatBrDate(item.dueDate)} · {money(item.price || 0)}
                       </p>
                     </li>
                   ))}
@@ -1211,9 +1225,11 @@ export default function Dashboard() {
                       </div>
                       <Progress
                         value={
-                          kpis.revenue
-                            ? Math.min(100, (row.total / kpis.revenue) * 100)
-                            : 0
+                          hidden
+                            ? 0
+                            : kpis.revenue
+                              ? Math.min(100, (row.total / kpis.revenue) * 100)
+                              : 0
                         }
                       />
                     </div>

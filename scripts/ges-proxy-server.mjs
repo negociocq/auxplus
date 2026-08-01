@@ -1,11 +1,13 @@
 /**
  * Proxy local UniPlay (mesmo efeito do Vite /ges-api).
- * Rode no PC onde o login já funciona e exponha com ngrok se quiser usar no domínio.
+ * Rode no PC onde o login já funciona e exponha com ngrok/cloudflared.
  *
  *   node scripts/ges-proxy-server.mjs
- *   ngrok http 8787
+ *   cloudflared tunnel --url http://127.0.0.1:8787
  *
- * No Admin → Automações → cole a URL do ngrok em "Proxy API".
+ * No Admin → Automações → cole a URL do túnel em "Proxy API".
+ *
+ * Rotas GES misturam verbos: users-iptv usa POST; /clean-trials aceita DELETE/PUT.
  */
 
 import http from "node:http";
@@ -32,7 +34,6 @@ const server = http.createServer(async (req, res) => {
 
   const pathHeader = String(req.headers["x-iptv-path"] || "").trim();
   let apiPath = pathHeader || (req.url || "/").split("?")[0] || "/";
-  // Aceita /login direto ou /ges-api/login
   apiPath = apiPath.replace(/^\/ges-api/, "") || "/";
   if (!apiPath.startsWith("/")) apiPath = `/${apiPath}`;
   const qs = (req.url || "").includes("?")
@@ -57,10 +58,11 @@ const server = http.createServer(async (req, res) => {
       req.headers["x-iptv-authorization"] || req.headers.authorization;
     if (auth) headers.Authorization = String(auth);
 
+    const method = req.method || "GET";
     const upstream = await fetch(dest, {
-      method: req.method || "GET",
+      method,
       headers,
-      body: ["GET", "HEAD"].includes(req.method || "") ? undefined : body,
+      body: ["GET", "HEAD"].includes(method) ? undefined : body,
     });
     const text = await upstream.text();
     const ct = upstream.headers.get("content-type");
@@ -68,6 +70,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(upstream.status);
     res.end(text);
   } catch (e) {
+    // Reaplica CORS (já setado acima) para o browser não mascarar como falha de CORS
     res.writeHead(502, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({
@@ -80,5 +83,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`[ges-proxy] http://127.0.0.1:${PORT}`);
-  console.log(`[ges-proxy] Exemplo: ngrok http ${PORT}`);
+  console.log(
+    `[ges-proxy] Exponha com: cloudflared tunnel --url http://127.0.0.1:${PORT}`,
+  );
 });

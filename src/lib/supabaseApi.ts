@@ -57,15 +57,34 @@ function mapFolder(row: Record<string, unknown>): Folder {
 function normalizeDueDate(value: unknown): string | null {
   if (value == null || value === "") return null;
   if (typeof value === "string") {
-    const m = value.trim().match(/^(\d{4}-\d{2}-\d{2})/);
-    return m ? m[1] : null;
+    const s = value.trim();
+    const m = s.match(
+      /^(\d{4}-\d{2}-\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/,
+    );
+    if (!m) return null;
+    if (!m[2]) return m[1];
+    return `${m[1]} ${m[2]}:${m[3]}:${m[4] ?? "00"}`;
   }
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    // date do Postgres vem como UTC midnight — usar UTC para não voltar 1 dia
-    const y = value.getUTCFullYear();
-    const m = String(value.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(value.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
+    // timestamp sem tz: preferir componentes locais se houver hora
+    const hasTime =
+      value.getUTCHours() !== 0 ||
+      value.getUTCMinutes() !== 0 ||
+      value.getUTCSeconds() !== 0;
+    if (!hasTime) {
+      // legado date (meia-noite UTC) — manter dia civil via UTC
+      const y = value.getUTCFullYear();
+      const m = String(value.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(value.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    const hh = String(value.getHours()).padStart(2, "0");
+    const mm = String(value.getMinutes()).padStart(2, "0");
+    const ss = String(value.getSeconds()).padStart(2, "0");
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
   }
   return null;
 }

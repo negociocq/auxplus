@@ -122,7 +122,7 @@ function syncParcelAmounts(
 
 export function DebtFolderView({ folder }: { folder: Folder }) {
   const { data, setData } = useApp();
-  const { money } = useHideBalance();
+  const { money, num } = useHideBalance();
   const [filter, setFilter] = useState<DebtFilter>("all");
 
   const formatParcelAmount = (amount: number, variable: boolean) => {
@@ -464,7 +464,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
             Em atraso
           </p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-destructive">
-            {kpis.atrasadas}
+            {num(kpis.atrasadas)}
           </p>
           <p className="text-xs text-muted-foreground">
             {money(kpis.atrasadoValor)}
@@ -475,7 +475,9 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
             <Clock3 className="h-3.5 w-3.5" />
             Em dia
           </p>
-          <p className="mt-1 text-2xl font-bold tabular-nums">{kpis.emDia}</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums">
+            {num(kpis.emDia)}
+          </p>
         </div>
         <div className="ax-surface p-4">
           <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-success">
@@ -483,7 +485,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
             Encerradas
           </p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-success">
-            {kpis.quitadas}
+            {num(kpis.quitadas)}
           </p>
         </div>
       </div>
@@ -517,7 +519,7 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
             )}
           >
             {chip.label}
-            <span className="tabular-nums">{chip.count}</span>
+            <span className="tabular-nums">{num(chip.count)}</span>
           </button>
         ))}
       </div>

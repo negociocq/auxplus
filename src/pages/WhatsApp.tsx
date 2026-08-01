@@ -15,6 +15,8 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatBrDate } from "@/lib/format";
+import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -86,6 +88,7 @@ function statusLabel(status: WaConnectionStatus) {
 
 export default function WhatsAppPage() {
   const { user, data } = useApp();
+  const { phone: maskPhone } = useHideBalance();
   const [settings, setSettings] = useState<WhatsappAutomationSettings>(() =>
     defaultWhatsappAutomation(),
   );
@@ -945,8 +948,7 @@ export default function WhatsAppPage() {
                             ),
                           )} dia(s) antes`
                         : "No dia"}{" "}
-                      · vence {q.dueDate.split("-").reverse().join("/")} ·{" "}
-                      {q.phone}
+                      · vence {formatBrDate(q.dueDate)} · {maskPhone(q.phone)}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

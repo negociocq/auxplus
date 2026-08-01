@@ -45,7 +45,280 @@ export type CreateTestResult = {
   username?: string;
   password?: string;
   message?: string;
+  /** Id remoto no UniPlay (users-iptv) */
+  remoteId?: string | number;
+  /** Link M3U completo, se o painel devolver */
+  m3u?: string;
+  /** DNS / URL Smarters */
+  dnsSmarters?: string;
+  /** Vencimento do teste `yyyy-MM-dd HH:mm:ss` */
+  dueDate?: string;
 };
+
+/** Opções de duração do teste (1–6 horas). */
+export const IPTV_TEST_HOURS = [1, 2, 3, 4, 5, 6] as const;
+
+function pickNestedString(
+  obj: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return undefined;
+}
+
+function isHttpUrl(value: string) {
+  return /^https?:\/\/[^\s]+$/i.test(value.trim());
+}
+
+function isM3uLink(value: string) {
+  const v = value.trim();
+  return (
+    isHttpUrl(v) &&
+    (/get\.php\?/i.test(v) || /type=m3u/i.test(v) || /\/m3u/i.test(v))
+  );
+}
+
+function isDnsHost(value: string) {
+  const v = value.trim();
+  if (!isHttpUrl(v)) return false;
+  if (isM3uLink(v)) return false;
+  try {
+    const u = new URL(v);
+    return Boolean(u.hostname) && !u.pathname.includes("get.php");
+  } catch {
+    return false;
+  }
+}
+
+/** Monta link M3U a partir do host de lista + usuário/senha. */
+export function buildIptvM3uLink(
+  hostOrUrl: string,
+  username: string,
+  password: string,
+): string {
+  const host = hostOrUrl.trim().replace(/\/+$/, "");
+  if (!host || !username || !password) return "";
+  const base = /^https?:\/\//i.test(host) ? host : `http://${host}`;
+  // Se já veio um get.php completo, devolve como está
+  if (/get\.php\?/i.test(base)) return base;
+  try {
+    const u = new URL(base);
+    const origin = `${u.protocol}//${u.host}`;
+    return `${origin}/get.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&type=m3u_plus&output=ts`;
+  } catch {
+    return "";
+  }
+}
+
+/** Completa M3U/DNS com hosts padrão do painel quando a API não devolve. */
+export function resolveTestAccessLinks(opts: {
+  username?: string;
+  password?: string;
+  m3u?: string;
+  dnsSmarters?: string;
+  m3uHost?: string;
+  dnsFallback?: string;
+}): { m3u: string; dnsSmarters: string } {
+  const username = opts.username?.trim() || "";
+  const password = opts.password?.trim() || "";
+  let m3u = opts.m3u?.trim() || "";
+  let dnsSmarters = opts.dnsSmarters?.trim() || "";
+
+  if (!dnsSmarters && opts.dnsFallback?.trim()) {
+    dnsSmarters = opts.dnsFallback.trim();
+  }
+  if (!m3u && username && password && opts.m3uHost?.trim()) {
+    m3u = buildIptvM3uLink(opts.m3uHost, username, password);
+  }
+  if (m3u && !isM3uLink(m3u)) m3u = "";
+  if (dnsSmarters && !isDnsHost(dnsSmarters)) dnsSmarters = "";
+  return { m3u, dnsSmarters };
+}
+
+/** Extrai M3U + DNS Smarters da mensagem de boas-vindas do painel. */
+function parseBrDateTimeToCanonical(raw: string): string | undefined {
+  const m = raw
+    .trim()
+    .match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/,
+    );
+  if (!m) return undefined;
+  const d = m[1].padStart(2, "0");
+  const mo = m[2].padStart(2, "0");
+  const h = (m[4] ?? "00").padStart(2, "0");
+  const mi = (m[5] ?? "00").padStart(2, "0");
+  const s = (m[6] ?? "00").padStart(2, "0");
+  return `${m[3]}-${mo}-${d} ${h}:${mi}:${s}`;
+}
+
+export function parseWelcomeAccessMessage(text: string): {
+  m3u?: string;
+  dnsSmarters?: string;
+  username?: string;
+  password?: string;
+  dueDate?: string;
+} {
+  const src = String(text || "");
+  if (!src.trim()) return {};
+
+  const username =
+    src.match(/USU[ÁA]RIO\s*:\s*([^\s\r\n]+)/i)?.[1]?.trim() || undefined;
+  const password =
+    src.match(/SENHA\s*:\s*([^\s\r\n]+)/i)?.[1]?.trim() || undefined;
+
+  // Preferir o LINK (M3U8) completo (não o encurtado)
+  const m3u =
+    src.match(
+      /LINK\s*\(M3U8\)\s*:\s*(https?:\/\/[^\s]+get\.php\?[^\s]+)/i,
+    )?.[1]?.trim() ||
+    src.match(/(https?:\/\/[^\s]+\/get\.php\?[^\s]+)/i)?.[1]?.trim() ||
+    undefined;
+
+  const dnsSmarters =
+    src.match(
+      /DNS\s*Smarters[^:\r\n]*:\s*(https?:\/\/[^\s]+)/i,
+    )?.[1]?.trim() ||
+    src.match(/^\s*DNS\s*:\s*(https?:\/\/[^\s]+)/im)?.[1]?.trim() ||
+    undefined;
+
+  const vencRaw =
+    src.match(
+      /VENCIMENTO\s*:\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}(?:\s+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?)/i,
+    )?.[1] || "";
+  const dueDate = vencRaw ? parseBrDateTimeToCanonical(vencRaw) : undefined;
+
+  return {
+    username,
+    password,
+    m3u: m3u && isM3uLink(m3u) ? m3u : undefined,
+    dnsSmarters:
+      dnsSmarters && isDnsHost(dnsSmarters) ? dnsSmarters : undefined,
+    dueDate,
+  };
+}
+
+function collectTextBlobs(value: unknown, out: string[] = [], depth = 0): string[] {
+  if (depth > 5 || value == null) return out;
+  if (typeof value === "string") {
+    if (value.length > 20) out.push(value);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectTextBlobs(item, out, depth + 1);
+    return out;
+  }
+  if (typeof value === "object") {
+    for (const v of Object.values(value as Record<string, unknown>)) {
+      collectTextBlobs(v, out, depth + 1);
+    }
+  }
+  return out;
+}
+
+export function enrichCreateTestResult(result: CreateTestResult): CreateTestResult {
+  let username = result.username?.trim() || "";
+  let password = result.password?.trim() || "";
+  let m3u = result.m3u?.trim() || "";
+  let dnsSmarters = result.dnsSmarters?.trim() || "";
+  let dueDate = result.dueDate?.trim() || "";
+
+  // 1) Mensagem de boas-vindas (fonte confiável no UniPlay)
+  const blobs = [
+    result.message || "",
+    ...collectTextBlobs(result.raw),
+  ];
+  for (const blob of blobs) {
+    if (
+      !/SENHA|USU[ÁA]RIO|LINK\s*\(M3U8\)|DNS\s*Smarters|get\.php\?|VENCIMENTO/i.test(
+        blob,
+      )
+    ) {
+      continue;
+    }
+    const parsed = parseWelcomeAccessMessage(blob);
+    if (!username && parsed.username) username = parsed.username;
+    if (!password && parsed.password) password = parsed.password;
+    if (!m3u && parsed.m3u) m3u = parsed.m3u;
+    if (!dnsSmarters && parsed.dnsSmarters) dnsSmarters = parsed.dnsSmarters;
+    if (!dueDate && parsed.dueDate) dueDate = parsed.dueDate;
+    if (username && password && m3u && dnsSmarters && dueDate) break;
+  }
+
+  // 2) Campos explícitos do JSON (sem url/link genéricos — pegavam senha)
+  if (
+    (!m3u || !dnsSmarters || !dueDate) &&
+    result.raw &&
+    typeof result.raw === "object"
+  ) {
+    const obj = result.raw as Record<string, unknown>;
+    const nested =
+      (obj.data && typeof obj.data === "object"
+        ? (obj.data as Record<string, unknown>)
+        : null) ||
+      (obj.user && typeof obj.user === "object"
+        ? (obj.user as Record<string, unknown>)
+        : null) ||
+      (obj.infos && typeof obj.infos === "object"
+        ? (obj.infos as Record<string, unknown>)
+        : null) ||
+      obj;
+
+    if (!m3u) {
+      const candidate = pickNestedString(nested, [
+        "m3u",
+        "m3u_url",
+        "url_m3u",
+        "link_m3u",
+        "playlist",
+        "playlist_url",
+      ]);
+      if (candidate && isM3uLink(candidate)) m3u = candidate;
+    }
+    if (!dnsSmarters) {
+      const candidate = pickNestedString(nested, [
+        "dns",
+        "dns_smarters",
+        "dnsSmarters",
+        "dns_url",
+      ]);
+      if (candidate && isDnsHost(candidate)) dnsSmarters = candidate;
+    }
+    if (!dueDate) {
+      const expRaw =
+        pickNestedString(nested, ["exp_date", "expDate", "expira", "due_date"]) ||
+        "";
+      dueDate =
+        parseIptvExpToDateTime(expRaw) ||
+        parseBrDateTimeToCanonical(expRaw) ||
+        "";
+    }
+  }
+
+  // Nunca usar senha/usuário como DNS ou M3U
+  if (password && (m3u === password || dnsSmarters === password)) {
+    if (m3u === password) m3u = "";
+    if (dnsSmarters === password) dnsSmarters = "";
+  }
+  if (username && (m3u === username || dnsSmarters === username)) {
+    if (m3u === username) m3u = "";
+    if (dnsSmarters === username) dnsSmarters = "";
+  }
+  if (m3u && !isM3uLink(m3u)) m3u = "";
+  if (dnsSmarters && !isDnsHost(dnsSmarters)) dnsSmarters = "";
+
+  return {
+    ...result,
+    username: username || undefined,
+    password: password || undefined,
+    m3u: m3u || undefined,
+    dnsSmarters: dnsSmarters || undefined,
+    dueDate: dueDate || undefined,
+  };
+}
 
 /** Último token usado/renovado nas chamadas da API (para persistir na UI). */
 let lastIssuedToken = "";
@@ -185,15 +458,40 @@ function extractToken(data: unknown): string | null {
 function parseApiError(data: unknown, text: string, statusText: string) {
   if (typeof data === "string" && data.trim()) return data.trim();
   if (typeof data === "object" && data) {
-    const o = data as { message?: unknown; error?: unknown; msg?: unknown };
+    const o = data as {
+      message?: unknown;
+      error?: unknown;
+      msg?: unknown;
+      errors?: unknown;
+    };
     const msg = o.message ?? o.error ?? o.msg;
     if (msg != null && String(msg).trim()) return String(msg).trim();
+    // Validação Laravel-like: { whatsapp: ["The whatsapp must be an integer."] }
+    const parts: string[] = [];
+    for (const [k, v] of Object.entries(o)) {
+      if (k === "message" || k === "error" || k === "msg" || k === "errors")
+        continue;
+      if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
+        parts.push(`${k}: ${v.join(" ")}`);
+      }
+    }
+    if (parts.length) return parts.join(" · ");
+    if (o.errors && typeof o.errors === "object") {
+      for (const [k, v] of Object.entries(o.errors as Record<string, unknown>)) {
+        if (Array.isArray(v)) parts.push(`${k}: ${v.join(" ")}`);
+        else if (typeof v === "string") parts.push(`${k}: ${v}`);
+      }
+      if (parts.length) return parts.join(" · ");
+    }
   }
   const raw = text?.trim();
   if (raw) {
     try {
       const once = JSON.parse(raw);
       if (typeof once === "string" && once.trim()) return once.trim();
+      if (once && typeof once === "object") {
+        return parseApiError(once, "", statusText);
+      }
     } catch {
       /* keep */
     }
@@ -382,20 +680,17 @@ async function panelFetch(
   }
 
   if (!res.ok) {
-    const msg =
-      typeof data === "object" &&
-      data &&
-      ("message" in data || "error" in data || "msg" in data)
-        ? String(
-            (data as { message?: unknown; error?: unknown; msg?: unknown })
-              .message ??
-              (data as { error?: unknown }).error ??
-              (data as { msg?: unknown }).msg,
-          )
-        : text || res.statusText;
+    const msg = parseApiError(data, text, res.statusText);
     if (res.status === 401 || res.status === 403) {
       throw new Error(
         "Token inválido ou expirado. Salve usuário/senha do painel ou cole um Bearer novo.",
+      );
+    }
+    if (res.status === 405) {
+      throw new Error(
+        msg && msg !== res.statusText
+          ? msg
+          : "Método não permitido no proxy (405). Tentando alternativa…",
       );
     }
     throw new Error(msg || `Erro HTTP ${res.status}`);
@@ -428,15 +723,55 @@ function pickPassword(u: Record<string, unknown>): string | undefined {
     "user_password",
     "iptv_password",
     "pwd",
+    "passowrd", // typo comum em APIs
   ]) {
     const v = u[k];
-    if (typeof v === "string" && v.trim()) return v;
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
   }
   // às vezes vem aninhado em infos
   if (u.infos && typeof u.infos === "object") {
     return pickPassword(u.infos as Record<string, unknown>);
   }
   return undefined;
+}
+
+function deepFindPassword(value: unknown, depth = 0): string | undefined {
+  if (depth > 6 || value == null) return undefined;
+  if (typeof value === "string") {
+    const fromMsg = value.match(/SENHA\s*:\s*([^\s\r\n]+)/i)?.[1]?.trim();
+    if (fromMsg) return fromMsg;
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = deepFindPassword(item, depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (typeof value === "object") {
+    const direct = pickPassword(value as Record<string, unknown>);
+    if (direct) return direct;
+    for (const v of Object.values(value as Record<string, unknown>)) {
+      const found = deepFindPassword(v, depth + 1);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+/** Senha no estilo do painel (ex.: W249t1154X). */
+export function generateIptvTestPassword(): string {
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghjkmnpqrstuvwxyz";
+  const nums = "23456789";
+  const pick = (alphabet: string, n: number) =>
+    Array.from({ length: n }, () => {
+      const i = Math.floor(Math.random() * alphabet.length);
+      return alphabet[i]!;
+    }).join("");
+  return `${pick(upper, 1)}${pick(nums, 3)}${pick(lower, 1)}${pick(nums, 4)}${pick(upper, 1)}`;
 }
 
 /**
@@ -544,49 +879,67 @@ function pickUserFields(u: Record<string, unknown>): IptvRemoteUser {
   };
 }
 
-/** Converte exp_date do painel → yyyy-MM-dd (ou null). */
-export function parseIptvExpToYmd(
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function formatLocalDateTime(dt: Date): string {
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`;
+}
+
+/**
+ * Converte exp_date do painel → `yyyy-MM-dd HH:mm:ss` (preserva horário do UniPlay).
+ */
+export function parseIptvExpToDateTime(
   raw: string | null | undefined,
 ): string | null {
   if (raw == null) return null;
   const s = String(raw).trim();
   if (!s) return null;
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const br = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
-  if (br) {
-    const d = br[1].padStart(2, "0");
-    const m = br[2].padStart(2, "0");
-    return `${br[3]}-${m}-${d}`;
+
+  let m = s.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/,
+  );
+  if (m) {
+    const time = m[4]
+      ? `${m[4]}:${m[5]}:${m[6] ?? "00"}`
+      : "00:00:00";
+    return `${m[1]}-${m[2]}-${m[3]} ${time}`;
   }
+
+  m = s.match(
+    /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/,
+  );
+  if (m) {
+    const d = m[1].padStart(2, "0");
+    const mo = m[2].padStart(2, "0");
+    const time = m[4]
+      ? `${m[4]}:${m[5]}:${m[6] ?? "00"}`
+      : "00:00:00";
+    return `${m[3]}-${mo}-${d} ${time}`;
+  }
+
   const n = Number(s);
   if (Number.isFinite(n) && n > 1e9) {
     const ms = n > 1e12 ? n : n * 1000;
     const dt = new Date(ms);
-    if (!Number.isNaN(dt.getTime())) {
-      const y = dt.getFullYear();
-      const mo = String(dt.getMonth() + 1).padStart(2, "0");
-      const day = String(dt.getDate()).padStart(2, "0");
-      return `${y}-${mo}-${day}`;
-    }
+    if (!Number.isNaN(dt.getTime())) return formatLocalDateTime(dt);
   }
+
   const iso = new Date(s);
-  if (!Number.isNaN(iso.getTime())) {
-    const y = iso.getFullYear();
-    const mo = String(iso.getMonth() + 1).padStart(2, "0");
-    const day = String(iso.getDate()).padStart(2, "0");
-    return `${y}-${mo}-${day}`;
-  }
+  if (!Number.isNaN(iso.getTime())) return formatLocalDateTime(iso);
   return null;
 }
 
-/**
- * Detecta linha de teste/trial no painel (não sincronizar no AuxPlus).
- * Heurística: flags, test_hours, nota/nome com “teste”, ou vida útil menor que 3 dias.
- */
-export function isIptvTestOrTrialUser(
-  u: IptvRemoteUser | Record<string, unknown>,
-): boolean {
-  const row = u as Record<string, unknown>;
+/** Converte exp_date do painel → yyyy-MM-dd (ou null). */
+export function parseIptvExpToYmd(
+  raw: string | null | undefined,
+): string | null {
+  const full = parseIptvExpToDateTime(raw);
+  return full ? full.slice(0, 10) : null;
+}
+
+function hasIptvTestFlag(row: Record<string, unknown>): boolean {
   for (const k of [
     "is_test",
     "is_trial",
@@ -600,7 +953,18 @@ export function isIptvTestOrTrialUser(
     if (v === true || v === 1 || v === "1" || v === "true") return true;
   }
   const testHours = Number(row.test_hours ?? row.testHours ?? 0);
-  if (Number.isFinite(testHours) && testHours > 0) return true;
+  return Number.isFinite(testHours) && testHours > 0;
+}
+
+/**
+ * Detecta linha de teste/trial no painel (não sincronizar no AuxPlus).
+ * Heurística: flags, test_hours, nota/nome com “teste”, ou vida útil menor que 3 dias.
+ */
+export function isIptvTestOrTrialUser(
+  u: IptvRemoteUser | Record<string, unknown>,
+): boolean {
+  const row = u as Record<string, unknown>;
+  if (hasIptvTestFlag(row)) return true;
 
   const label = [
     row.nota,
@@ -633,6 +997,17 @@ export function isIptvTestOrTrialUser(
   return false;
 }
 
+/**
+ * Critério estrito para APAGAR em lote: só o que o painel marca como teste
+ * (flag / test_hours). Nunca usa nome, nota ou “vence em poucos dias”
+ * — evita risco com clientes ativos.
+ */
+export function isConfirmedIptvTestUser(
+  u: IptvRemoteUser | Record<string, unknown>,
+): boolean {
+  return hasIptvTestFlag(u as Record<string, unknown>);
+}
+
 /** Lista usuários IPTV no painel. */
 export async function listIptvUsers(
   creds: IptvPanelCreds,
@@ -654,15 +1029,35 @@ export async function listIptvUsers(
 export async function findIptvUserByUsername(
   creds: IptvPanelCreds,
   username: string,
+  opts?: { exactOnly?: boolean },
 ): Promise<IptvRemoteUser | null> {
   const want = username.trim().toLowerCase();
   if (!want) return null;
   const users = await listIptvUsers(creds);
+  const exact = users.find(
+    (u) => String(u.username || "").toLowerCase() === want,
+  );
+  if (exact || opts?.exactOnly) return exact || null;
   return (
-    users.find((u) => String(u.username || "").toLowerCase() === want) ||
     users.find((u) => String(u.username || "").toLowerCase().includes(want)) ||
     null
   );
+}
+
+function extractRemoteUserId(raw: unknown): string | number | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const obj = raw as Record<string, unknown>;
+  const nested =
+    (obj.data && typeof obj.data === "object"
+      ? (obj.data as Record<string, unknown>)
+      : null) ||
+    (obj.user && typeof obj.user === "object"
+      ? (obj.user as Record<string, unknown>)
+      : null) ||
+    obj;
+  const id = nested.id ?? nested.user_id ?? nested.uid ?? obj.id;
+  if (id == null || id === "") return undefined;
+  return id as string | number;
 }
 
 /**
@@ -680,18 +1075,29 @@ export async function createIptvTest(
     /** Login IPTV desejado (ex.: itemId do cliente no AuxPlus) */
     username?: string;
     whatsapp?: string;
+    /** Se omitido, gera uma senha e envia ao painel */
+    password?: string;
   },
 ): Promise<CreateTestResult> {
+  // Enviamos a senha na criação — a API muitas vezes não devolve depois.
+  const chosenPassword =
+    opts.password?.trim() || generateIptvTestPassword();
   const body: Record<string, unknown> = {
     isOficial: false,
     package: String(opts.packageId || creds.defaultPackage || "1"),
     credits: opts.credits ?? 1,
     isCustomPackage: false,
-    nota: opts.nota?.trim() || "teste auxplus",
+    nota: opts.nota?.trim() || "",
     test_hours: String(Math.max(1, Math.min(6, Number(opts.testHours) || 6))),
-    whatsapp: opts.whatsapp?.trim() || "",
+    // Várias builds do GES aceitam password / pass / senha
+    password: chosenPassword,
+    pass: chosenPassword,
+    senha: chosenPassword,
     bouquets: [] as string[],
   };
+  // Painel exige whatsapp como inteiro — omitir se vazio (string "" quebra).
+  const waDigits = String(opts.whatsapp || "").replace(/\D/g, "");
+  if (waDigits) body.whatsapp = Number(waDigits);
   const desiredUser = opts.username?.trim();
   if (desiredUser) body.username = desiredUser;
   if (creds.regPassword?.trim()) {
@@ -701,6 +1107,15 @@ export async function createIptvTest(
     method: "POST",
     body: JSON.stringify(body),
   });
+
+  // Resposta às vezes é só a mensagem de boas-vindas (string)
+  if (typeof raw === "string") {
+    return enrichCreateTestResult({
+      raw,
+      password: chosenPassword,
+      message: raw,
+    });
+  }
 
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<
     string,
@@ -715,52 +1130,370 @@ export async function createIptvTest(
           ? (obj.infos as Record<string, unknown>)
           : obj;
 
-  return {
+  const message =
+    (typeof obj.message === "string" && obj.message) ||
+    (typeof obj.msg === "string" && obj.msg) ||
+    (typeof nested.message === "string" && nested.message) ||
+    (typeof nested.msg === "string" && nested.msg) ||
+    (typeof nested.whatsapp_message === "string" && nested.whatsapp_message) ||
+    (typeof nested.text === "string" && nested.text) ||
+    (typeof nested.whatsMessage === "string" && nested.whatsMessage) ||
+    undefined;
+
+  const passwordFromApi =
+    pickPassword(nested) ||
+    pickPassword(obj) ||
+    deepFindPassword(raw) ||
+    undefined;
+
+  let result = enrichCreateTestResult({
     raw,
     username: nested.username
       ? String(nested.username)
       : nested.user
         ? String(nested.user)
         : undefined,
-    password: nested.password ? String(nested.password) : undefined,
-    message:
-      typeof obj.message === "string"
-        ? obj.message
-        : typeof obj.msg === "string"
-          ? obj.msg
-          : undefined,
+    // Prioriza senha da API; se não vier, usa a que enviamos
+    password: passwordFromApi || chosenPassword,
+    m3u: pickNestedString(nested, [
+      "m3u",
+      "m3u_url",
+      "url_m3u",
+      "link_m3u",
+      "playlist",
+      "playlist_url",
+    ]),
+    dnsSmarters: pickNestedString(nested, [
+      "dns",
+      "dns_smarters",
+      "dnsSmarters",
+      "dns_url",
+    ]),
+    message,
+  });
+
+  // Garante senha conhecida para montar M3U mesmo se a mensagem não trouxer
+  if (!result.password) {
+    result = { ...result, password: chosenPassword };
+  }
+
+  // Tenta ficha completa por id (pode trazer senha/exp)
+  const remoteId = nested.id ?? obj.id ?? (obj.data as { id?: unknown } | undefined)?.id;
+  if (remoteId != null && String(remoteId)) {
+    try {
+      const detail = await panelFetch(
+        creds,
+        `/users-iptv/${encodeURIComponent(String(remoteId))}`,
+      );
+      const detailPass = deepFindPassword(detail);
+      result = enrichCreateTestResult({
+        ...result,
+        raw: detail ?? result.raw,
+        password: detailPass || result.password || chosenPassword,
+        message:
+          result.message ||
+          (typeof detail === "object" &&
+          detail &&
+          typeof (detail as { message?: unknown }).message === "string"
+            ? String((detail as { message: string }).message)
+            : undefined),
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Sempre devolve a senha enviada na criação se a API não ecoar outra
+  const resolvedId =
+    extractRemoteUserId(result.raw) ??
+    (remoteId != null && String(remoteId)
+      ? (remoteId as string | number)
+      : undefined);
+  let finalId = resolvedId;
+  if (finalId == null && result.username) {
+    try {
+      const found = await findIptvUserByUsername(creds, result.username, {
+        exactOnly: true,
+      });
+      if (found?.id != null) finalId = found.id;
+    } catch {
+      /* ignore */
+    }
+  }
+  return {
+    ...result,
+    password: result.password?.trim() || chosenPassword,
+    remoteId: finalId,
   };
 }
 
+/** Busca senha/dados de um usuário IPTV pelo login. */
+export async function fetchIptvUserPassword(
+  creds: IptvPanelCreds,
+  username: string,
+): Promise<string | null> {
+  const remote = await findIptvUserByUsername(creds, username);
+  if (!remote) return null;
+  const fromList = remote.password || deepFindPassword(remote);
+  if (fromList) return fromList;
+  if (remote.id == null) return null;
+  try {
+    const detail = await panelFetch(
+      creds,
+      `/users-iptv/${encodeURIComponent(String(remote.id))}`,
+    );
+    return deepFindPassword(detail) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Planos de renovação do painel (sem opção de 15 dias). */
+export const IPTV_RENEW_OPTIONS = [
+  { months: 1, credits: 1, label: "1 mês — 1 Crédito" },
+  { months: 2, credits: 2, label: "2 meses — 2 Créditos" },
+  { months: 3, credits: 3, label: "3 meses — 3 Créditos" },
+  { months: 4, credits: 4, label: "4 meses — 4 Créditos" },
+  { months: 6, credits: 5, label: "6 meses — 5 Créditos (Promoção)" },
+  { months: 12, credits: 10, label: "12 meses — 10 Créditos (Promoção)" },
+] as const;
+
+export type IptvRenewOption = (typeof IPTV_RENEW_OPTIONS)[number];
+
 /**
  * Renova usuário existente.
- * No painel: action=1 + credits (meses), em /users-iptv/{id}
+ * No painel: action=1 + credits (= créditos gastos do plano, ex. 6m=5, 12m=10).
  */
 export async function renewIptvUser(
   creds: IptvPanelCreds,
   remoteUserId: string | number,
-  months: number,
+  monthsOrOption: number | Pick<IptvRenewOption, "months" | "credits">,
 ): Promise<unknown> {
-  const body = {
+  const credits =
+    typeof monthsOrOption === "number"
+      ? Math.max(1, monthsOrOption)
+      : Math.max(0.1, monthsOrOption.credits);
+  const body: Record<string, unknown> = {
     action: 1,
-    credits: Math.max(1, months),
+    credits,
   };
+  if (creds.regPassword?.trim()) {
+    body.reg_password = creds.regPassword.trim();
+  }
   const id = encodeURIComponent(String(remoteUserId));
-  try {
-    return await panelFetch(creds, `/users-iptv/${id}`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  } catch (e1) {
-    try {
-      return await panelFetch(creds, `/users-iptv/${id}`, {
-        method: "PUT",
+  return panelFetch(creds, `/users-iptv/${id}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Apaga usuário IPTV no painel.
+ * No front UniPlay: POST /users-iptv/{id} com
+ * `{ action: 2, id_iptv, reg_password }` (a API NÃO aceita HTTP DELETE).
+ */
+export async function deleteIptvUser(
+  creds: IptvPanelCreds,
+  remoteUserId: string | number,
+  opts?: {
+    username?: string;
+    /** id_iptv do painel (se diferente do id da linha) */
+    idIptv?: string | number;
+    nota?: string;
+    isOficial?: boolean;
+  },
+): Promise<unknown> {
+  const idRaw = String(remoteUserId);
+  const id = encodeURIComponent(idRaw);
+  const idIptv = opts?.idIptv ?? remoteUserId;
+  const regPassword = creds.regPassword?.trim() || "";
+
+  const body: Record<string, unknown> = {
+    action: 2,
+    id_iptv: idIptv,
+  };
+  if (regPassword) body.reg_password = regPassword;
+
+  const attempts: Array<() => Promise<unknown>> = [
+    // Formato oficial do painel (sendActionUserIPTV)
+    () =>
+      panelFetch(creds, `/users-iptv/${id}`, {
+        method: "POST",
         body: JSON.stringify(body),
-      });
-    } catch {
-      throw e1;
+      }),
+    // Sem id_iptv (algumas builds)
+    () =>
+      panelFetch(creds, `/users-iptv/${id}`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: 2,
+          ...(regPassword ? { reg_password: regPassword } : {}),
+        }),
+      }),
+  ];
+
+  const stillExists = async () => {
+    const user = opts?.username?.trim();
+    if (!user) return null;
+    const found = await findIptvUserByUsername(creds, user, { exactOnly: true });
+    if (!found) return null;
+    if (found.id != null && String(found.id) === idRaw) return found;
+    if (found.id == null) return found;
+    return null;
+  };
+
+  let lastError: unknown = null;
+  let lastOk: unknown = null;
+  for (const attempt of attempts) {
+    try {
+      lastOk = await attempt();
+      if (opts?.username?.trim()) {
+        const still = await stillExists();
+        if (!still) return lastOk;
+        lastError = new Error(
+          `Usuário ${opts.username} ainda aparece no UniPlay após exclusão`,
+        );
+        continue;
+      }
+      return lastOk;
+    } catch (e) {
+      lastError = e;
     }
   }
+
+  if (opts?.username?.trim()) {
+    const still = await stillExists();
+    if (!still && lastOk != null) return lastOk;
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Falha ao apagar usuário no UniPlay");
+}
+
+/**
+ * Limpa testes na UniPlay.
+ * 1) Endpoint oficial: /clean-trials { range }
+ *    (a API GES rejeita POST nesse path — aceita DELETE/PUT/PATCH)
+ * 2) Fallback: apaga um a um com action:2 (só testes confirmados)
+ */
+export async function deleteAllIptvTests(
+  creds: IptvPanelCreds,
+): Promise<{ deleted: number; failed: number; total: number }> {
+  const allBefore = await listIptvUsers(creds);
+  const activeIdsBefore = new Set(
+    allBefore
+      .filter((u) => !isConfirmedIptvTestUser(u))
+      .map((u) => String(u.id))
+      .filter((id) => id && id !== "undefined"),
+  );
+
+  const tests = allBefore.filter((u) => isConfirmedIptvTestUser(u));
+  const initialTotal = tests.length;
+
+  const assertActivesIntact = async () => {
+    const allAfter = await listIptvUsers(creds);
+    const activeIdsAfter = new Set(
+      allAfter
+        .filter((u) => !isConfirmedIptvTestUser(u))
+        .map((u) => String(u.id))
+        .filter((id) => id && id !== "undefined"),
+    );
+    for (const id of activeIdsBefore) {
+      if (!activeIdsAfter.has(id)) {
+        throw new Error(
+          `Abortado: cliente ativo (id ${id}) sumiu da lista. Verifique o UniPlay imediatamente.`,
+        );
+      }
+    }
+    return allAfter;
+  };
+
+  // Painel: cleanTrials({ range }) → URL /api/clean-trials
+  // range 2/3 = botões “Limpar testes”; 6 aparece em settings
+  const cleanMethods = ["DELETE", "PUT", "PATCH"] as const;
+  for (const range of [2, 3, 6, 1]) {
+    for (const method of cleanMethods) {
+      try {
+        await panelFetch(creds, "/clean-trials", {
+          method,
+          body: JSON.stringify({ range }),
+        });
+        const after = await assertActivesIntact();
+        const still = after.filter((u) => isConfirmedIptvTestUser(u)).length;
+        if (still === 0) {
+          return {
+            deleted: initialTotal,
+            failed: 0,
+            total: initialTotal,
+          };
+        }
+      } catch (e) {
+        if (e instanceof Error && /Abortado:/.test(e.message)) throw e;
+        /* tenta outro método / range / fallback */
+      }
+    }
+  }
+
+  if (tests.length === 0) {
+    await assertActivesIntact().catch(() => undefined);
+    return { deleted: 0, failed: 0, total: 0 };
+  }
+
+  let deleted = 0;
+  let failed = 0;
+  for (const t of tests) {
+    const username = String(t.username || t.user || "").trim();
+    if (t.id == null || t.id === "") {
+      failed += 1;
+      continue;
+    }
+    if (!isConfirmedIptvTestUser(t)) continue;
+    if (activeIdsBefore.has(String(t.id))) continue;
+
+    const row = t as Record<string, unknown>;
+    const idIptv = row.id_iptv ?? row.idIptv ?? t.id;
+    try {
+      await deleteIptvUser(creds, t.id, {
+        username: username || undefined,
+        idIptv: idIptv as string | number,
+      });
+      deleted += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  try {
+    const after = await assertActivesIntact();
+    const still = after.filter((u) => isConfirmedIptvTestUser(u)).length;
+    if (still > 0) {
+      failed = Math.max(failed, still);
+      deleted = Math.max(0, initialTotal - still);
+    } else {
+      deleted = initialTotal;
+      failed = 0;
+    }
+  } catch (e) {
+    if (e instanceof Error && /Abortado:/.test(e.message)) throw e;
+  }
+
+  return { deleted, failed, total: initialTotal };
+}
+
+/** Texto do comprovante enviado ao cliente (sem senha). */
+export function buildRenewalReceiptMessage(
+  username: string,
+  dueDateFormatted: string,
+): string {
+  return [
+    "Comprovante de Renovação de TV!",
+    "",
+    `Usuário: ${username}`,
+    "Estendido com sucesso!",
+    "",
+    `O novo vencimento é: ${dueDateFormatted}`,
+  ].join("\n");
 }
 
 export async function fetchIptvPackages(

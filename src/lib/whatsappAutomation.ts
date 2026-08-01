@@ -200,13 +200,23 @@ export function formatYmdBr(ymd: string) {
   return `${d}/${m}/${y}`;
 }
 
+function formatDueForMessage(value: string | null | undefined): string {
+  const s = String(value || "").trim();
+  const m = s.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/,
+  );
+  if (!m) return "—";
+  const base = `${m[3]}/${m[2]}/${m[1]}`;
+  if (m[4] != null) return `${base} ${m[4]}:${m[5]}:${m[6] ?? "00"}`;
+  return base;
+}
+
 export function fillWhatsappTemplate(
   template: string,
   item: Pick<Item, "name" | "itemId" | "dueDate" | "price">,
   kind: "before" | "onday",
 ) {
-  const dueKey = ymdOnly(item.dueDate);
-  const due = dueKey ? formatYmdBr(dueKey) : "—";
+  const due = formatDueForMessage(item.dueDate);
   const dateText =
     kind === "onday" ? "Vence hoje:" : "Vai vencer em:";
   return template

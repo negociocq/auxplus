@@ -465,7 +465,11 @@ export function AppLayout() {
                   type="button"
                   size="icon"
                   variant="ghost"
-                  aria-label={hideBalance ? "Mostrar saldo" : "Ocultar saldo"}
+                  aria-label={
+                    hideBalance
+                      ? "Mostrar números e saldos"
+                      : "Ocultar números e saldos"
+                  }
                   onClick={toggleHideBalance}
                 >
                   {hideBalance ? (
@@ -476,7 +480,9 @@ export function AppLayout() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {hideBalance ? "Mostrar saldo" : "Ocultar saldo"}
+                {hideBalance
+                  ? "Mostrar números e saldos"
+                  : "Ocultar números e saldos"}
               </TooltipContent>
             </Tooltip>
             <ThemeToggle />

@@ -17,6 +17,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatBrDate } from "@/lib/format";
+import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   loadAutomationsConfig,
   loadAutomationsConfigRemote,
   saveAutomationsConfig,
@@ -41,6 +51,9 @@ import {
 import {
   DEFAULT_IPTV_PANEL_URL,
   defaultIptvPlatformConfig,
+  instanceNameForUser,
+  isEvolutionConfigured,
+  loadEvolutionPlatformConfig,
   loadIptvPlatformConfig,
   type IptvPlatformConfig,
 } from "@/lib/platformApi";
@@ -50,6 +63,7 @@ import {
   copyText,
   createIptvJob,
   loadIptvJobs,
+  mergePanelTestsIntoJobs,
   nextDueAfterRenew,
   patchIptvJob,
   saveIptvJobs,
@@ -57,12 +71,20 @@ import {
 } from "@/lib/iptvAutomation";
 import {
   activatePartnerApp,
+  buildRenewalReceiptMessage,
   createIptvTest,
   deleteSmartApp,
   ensureIptvToken,
+  fetchIptvUserPassword,
   findIptvUserByUsername,
   formatMacInput,
   getLastIssuedIptvToken,
+  enrichCreateTestResult,
+  IPTV_RENEW_OPTIONS,
+  IPTV_TEST_HOURS,
+  listIptvUsers,
+  parseIptvExpToDateTime,
+  resolveTestAccessLinks,
   listSmartAppsForUsername,
   PARTNER_APPS,
   rememberPartnerAppActivation,
@@ -71,9 +93,14 @@ import {
   setDeviceNickname,
   tokenExpiresInSec,
   type IptvPanelCreds,
+  type IptvRenewOption,
   type PartnerAppId,
   type SmartAppEntry,
 } from "@/lib/iptvPanelApi";
+import {
+  fetchEvolutionStatus,
+  sendEvolutionText,
+} from "@/lib/whatsappAutomation";
 import { openPanelWindow } from "@/lib/panelKeepAlive";
 import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
@@ -93,6 +120,7 @@ function statusLabel(s: IptvJob["status"]) {
 
 export default function Automations() {
   const { user, data, setData } = useApp();
+  const { hidden: hideSensitive, user: maskUser } = useHideBalance();
   const [config, setConfig] = useState<AutomationsConfig>(() =>
     loadAutomationsConfig(user?.id || "0"),
   );
@@ -112,7 +140,31 @@ export default function Automations() {
   const [testHours, setTestHours] = useState(config.testHours);
   const [syncFolderId, setSyncFolderId] = useState(config.syncFolderId);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [lastCreds, setLastCreds] = useState<string | null>(null);
+  const [renewTargetId, setRenewTargetId] = useState<string | null>(null);
+  const [renewOption, setRenewOption] = useState<IptvRenewOption>(
+    IPTV_RENEW_OPTIONS[0],
+  );
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [testHoursPick, setTestHoursPick] = useState<number>(6);
+  const [testNota, setTestNota] = useState("");
+  const [syncingTests, setSyncingTests] = useState(false);
+  const [jobsQ, setJobsQ] = useState("");
+  const [uniplaySubTab, setUniplaySubTab] = useState("conexao");
+  const [detailJobId, setDetailJobId] = useState<string | null>(null);
+  const [activateOption, setActivateOption] = useState<IptvRenewOption>(
+    IPTV_RENEW_OPTIONS[0],
+  );
+  const [activatingTest, setActivatingTest] = useState(false);
+  const [lastTest, setLastTest] = useState<{
+    jobId: string;
+    username: string;
+    password: string;
+    m3u: string;
+    dnsSmarters: string;
+    clientName: string;
+    hours: number;
+    dueDate: string | null;
+  } | null>(null);
   const [appId, setAppId] = useState<PartnerAppId>("prime");
   const [appUsername, setAppUsername] = useState("");
   const [appPassword, setAppPassword] = useState("");
@@ -143,6 +195,13 @@ export default function Automations() {
     });
   }, [user]);
 
+  const uniplayConnected = useMemo(() => {
+    if (!bearer.trim()) return false;
+    const left = tokenExpiresInSec(bearer);
+    if (left == null) return true;
+    return left > 0;
+  }, [bearer]);
+
   useEffect(() => {
     const left = bearer ? tokenExpiresInSec(bearer) : null;
     if (left == null) {
@@ -156,6 +215,15 @@ export default function Automations() {
       setTokenInfo(`Conectado · ~${h}h ${m}min`);
     }
   }, [bearer]);
+
+  useEffect(() => {
+    if (!uniplayConnected) {
+      setUniplaySubTab("conexao");
+      return;
+    }
+    // Ao conectar, abre Ativos (Conexão fica como 3ª aba)
+    setUniplaySubTab((tab) => (tab === "conexao" ? "ativos" : tab));
+  }, [uniplayConnected]);
 
   // Renova o Bearer sozinho a cada 15 min (se usuário/senha salvos)
   useEffect(() => {
@@ -251,13 +319,46 @@ export default function Automations() {
       .slice(0, 50);
   }, [clients, q]);
 
+  const jobMatchesQuery = (job: IptvJob, query: string) => {
+    const qn = query.trim().toLowerCase();
+    if (!qn) return true;
+    const hay = [
+      job.clientName,
+      job.panelUsername,
+      job.note,
+      job.panelPassword || "",
+      job.kind === "renew" ? "renovação" : "teste",
+    ]
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(qn);
+  };
+
   const openJobs = useMemo(
-    () => jobs.filter((j) => j.status === "pending" || j.status === "doing"),
+    () =>
+      jobs.filter(
+        (j) =>
+          (j.status === "pending" || j.status === "doing") &&
+          jobMatchesQuery(j, jobsQ),
+      ),
+    [jobs, jobsQ],
+  );
+  const doneJobs = useMemo(() => {
+    const list = jobs.filter(
+      (j) =>
+        (j.status === "done" || j.status === "failed") &&
+        jobMatchesQuery(j, jobsQ),
+    );
+    return list.slice(0, jobsQ.trim() ? 100 : 30);
+  }, [jobs, jobsQ]);
+  const testJobsCount = useMemo(
+    () => jobs.filter((j) => j.kind === "test").length,
     [jobs],
   );
-  const doneJobs = useMemo(
-    () => jobs.filter((j) => j.status === "done" || j.status === "failed").slice(0, 30),
-    [jobs],
+
+  const detailJob = useMemo(
+    () => (detailJobId ? jobs.find((j) => j.id === detailJobId) || null : null),
+    [detailJobId, jobs],
   );
 
   if (!user) return null;
@@ -312,6 +413,7 @@ export default function Automations() {
         10 ** 9,
       );
       persistToken(token);
+      setUniplaySubTab("ativos");
       toast.success(renewed ? "UniPlay conectado" : "Sessão atualizada");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao conectar");
@@ -365,7 +467,60 @@ export default function Automations() {
     }
   };
 
-  const runApiRenew = async (itemId: string) => {
+  const openRenewDialog = (itemId: string) => {
+    const preferred =
+      IPTV_RENEW_OPTIONS.find((o) => o.months === renewMonths) ||
+      IPTV_RENEW_OPTIONS[0];
+    setRenewOption(preferred);
+    setRenewTargetId(itemId);
+  };
+
+  const sendRenewalReceipt = async (
+    phone: string,
+    username: string,
+    dueDate: string | null,
+  ) => {
+    if (!user) return;
+    if (!phone.trim()) {
+      toast.message("Renovado, mas sem telefone para enviar o comprovante");
+      return;
+    }
+    try {
+      const evo = await loadEvolutionPlatformConfig();
+      if (!isEvolutionConfigured(evo)) {
+        toast.message("Renovado. Configure o WhatsApp (Evolution) para enviar o comprovante");
+        return;
+      }
+      const runtime = {
+        apiBaseUrl: evo.apiBaseUrl,
+        apiKey: evo.apiKey,
+        instanceName: instanceNameForUser(
+          evo.instancePrefix,
+          user.id,
+          user.username,
+        ),
+      };
+      const status = await fetchEvolutionStatus(runtime);
+      if (status !== "open") {
+        toast.message("Renovado. WhatsApp desconectado — comprovante não enviado");
+        return;
+      }
+      const text = buildRenewalReceiptMessage(
+        username,
+        formatBrDate(dueDate),
+      );
+      await sendEvolutionText(runtime, phone, text);
+      toast.success("Comprovante enviado no WhatsApp do cliente");
+    } catch (e) {
+      toast.message(
+        e instanceof Error
+          ? `Renovado, mas falhou o WhatsApp: ${e.message}`
+          : "Renovado, mas falhou o envio do comprovante",
+      );
+    }
+  };
+
+  const runApiRenew = async (itemId: string, option: IptvRenewOption) => {
     const item = clients.find((i) => i.id === itemId);
     if (!item) return;
     if (!item.itemId.trim()) {
@@ -376,7 +531,9 @@ export default function Automations() {
       toast.error("Conecte sua conta UniPlay antes");
       return;
     }
-    const months = renewMonths;
+    const months = option.months;
+    setRenewMonths(months);
+    setRenewTargetId(null);
     const job = createIptvJob({
       kind: "renew",
       status: "doing",
@@ -387,7 +544,7 @@ export default function Automations() {
       dueDate: item.dueDate,
       months,
       testHours,
-      note: `API · +${months} mês(es)`,
+      note: `API · ${option.label}`,
     });
     let nextJobs = [job, ...jobs];
     persistJobs(nextJobs);
@@ -402,7 +559,7 @@ export default function Automations() {
           `Usuário ${item.itemId} não encontrado no painel. Confira o login/token ou o reg_password.`,
         );
       }
-      await renewIptvUser(creds, remote.id, months);
+      await renewIptvUser(creds, remote.id, option);
       const issued = getLastIssuedIptvToken();
       if (issued) persistToken(issued);
       // Busca de novo para pegar o vencimento real do painel → lembrete
@@ -424,11 +581,16 @@ export default function Automations() {
       nextJobs = patchIptvJob(nextJobs, job.id, {
         status: "done",
         dueDate: updated.dueDate,
-        note: `Renovado via API · vence ${updated.dueDate?.split("-").reverse().join("/") || "—"}`,
+        note: `Renovado via API · ${option.label} · vence ${formatBrDate(updated.dueDate)}`,
       });
       persistJobs(nextJobs);
       toast.success(
-        `Renovado: ${item.name} · vence ${updated.dueDate?.split("-").reverse().join("/") || "—"}`,
+        `Renovado: ${item.name} · vence ${formatBrDate(updated.dueDate)}`,
+      );
+      await sendRenewalReceipt(
+        updated.phone || item.phone || "",
+        updated.itemId.trim(),
+        updated.dueDate,
       );
     } catch (e) {
       nextJobs = patchIptvJob(nextJobs, job.id, {
@@ -559,6 +721,15 @@ export default function Automations() {
     }
   };
 
+  const clearActivateApp = () => {
+    setAppUsername("");
+    setAppPassword("");
+    setAppNickname("");
+    setAppDevice("");
+    setRegisteredApps([]);
+    setShowAppPass(false);
+  };
+
   const fillActivateFromClient = (itemId: string) => {
     const item = clients.find((i) => i.id === itemId);
     if (!item) return;
@@ -646,64 +817,191 @@ export default function Automations() {
     );
   };
 
-  const runApiTest = async (itemId?: string) => {
-    const item = itemId ? clients.find((i) => i.id === itemId) : undefined;
-    if (!bearer.trim()) {
-      toast.error("Conecte sua conta UniPlay antes");
+  const openTestDialog = (prefillNota?: string) => {
+    setTestNota(prefillNota?.trim() || "");
+    setTestHoursPick(testHours || 6);
+    setTestDialogOpen(true);
+  };
+
+  const copyField = async (label: string, value: string) => {
+    if (!value.trim()) {
+      toast.error(`${label} indisponível`);
       return;
     }
-    const job = createIptvJob({
-      kind: "test",
-      status: "doing",
-      itemRefId: item?.id || "",
-      clientName: item?.name || "Teste avulso",
-      panelUsername: item?.itemId?.trim() || "",
-      phone: item?.phone || "",
-      dueDate: item?.dueDate || null,
-      months: renewMonths,
-      testHours,
-      note: `API · teste ${testHours}h`,
-    });
-    let nextJobs = [job, ...jobs];
-    persistJobs(nextJobs);
-    setBusyId(item?.id || job.id);
+    const ok = await copyText(value);
+    if (ok) toast.success(`${label} copiado`);
+    else toast.error(`Não foi possível copiar ${label.toLowerCase()}`);
+  };
+
+  const refreshPanelTests = async () => {
+    const canReach =
+      Boolean(bearer.trim()) || Boolean(panelUser.trim() && panelPass);
+    if (!canReach) {
+      toast.error("Conecte a conta UniPlay antes");
+      return;
+    }
+    setSyncingTests(true);
     try {
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
       const creds = { ...panelCreds(), bearerToken: ensured.token };
-      const panelUser = item?.itemId?.trim() || "";
-      const iptvLogin = item?.itemId?.trim() || "";
+      const users = await listIptvUsers(creds);
+      const issued = getLastIssuedIptvToken();
+      if (issued) persistToken(issued);
+      const result = mergePanelTestsIntoJobs(loadIptvJobs(user.id), users, {
+        m3uHost: platform.m3uHost,
+        dnsFallback: platform.dnsSmarters,
+      });
+      persistJobs(result.jobs);
+      const parts = [
+        result.created ? `${result.created} novo(s)` : "",
+        result.updated ? `${result.updated} atualizado(s)` : "",
+        result.removed ? `${result.removed} removido(s)` : "",
+      ].filter(Boolean);
+      toast.success(
+        parts.length
+          ? `Testes UniPlay: ${parts.join(" · ")}`
+          : "Nenhum teste na lista da UniPlay",
+      );
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Falha ao atualizar testes",
+      );
+    } finally {
+      setSyncingTests(false);
+    }
+  };
+
+  const runApiTest = async (hours: number, notaRaw?: string) => {
+    if (!bearer.trim()) {
+      toast.error("Conecte sua conta UniPlay antes");
+      return;
+    }
+    const hoursSafe = Math.max(1, Math.min(6, hours || 6));
+    const nota = (notaRaw ?? testNota).trim();
+    setTestHours(hoursSafe);
+    setTestDialogOpen(false);
+    const job = createIptvJob({
+      kind: "test",
+      status: "doing",
+      itemRefId: "",
+      clientName: nota || "Teste avulso",
+      panelUsername: "",
+      phone: "",
+      dueDate: null,
+      months: renewMonths,
+      testHours: hoursSafe,
+      note: `API · teste avulso ${hoursSafe}h${nota ? ` · ${nota}` : ""}`,
+    });
+    let nextJobs = [job, ...jobs];
+    persistJobs(nextJobs);
+    setBusyId(job.id);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
+      // Avulso: painel gera usuário/senha novos; nota opcional
       const result = await createIptvTest(creds, {
-        testHours,
+        testHours: hoursSafe,
         packageId: platform.packageId,
-        username: iptvLogin || undefined,
-        whatsapp: item?.phone?.trim() || undefined,
-        nota: item
-          ? `${item.name}${iptvLogin ? ` · ${iptvLogin}` : ""}`
-          : "teste uniplay",
+        nota: nota || undefined,
       });
       const issued = getLastIssuedIptvToken();
       if (issued) persistToken(issued);
-      const createdUser = result.username || iptvLogin;
-      const userPass = [createdUser, result.password].filter(Boolean).join(" / ");
-      if (userPass) {
-        setLastCreds(userPass);
-        await copyText(userPass);
+
+      let access = result;
+      if (
+        (!access.m3u || !access.dnsSmarters || !access.dueDate) &&
+        access.username
+      ) {
+        try {
+          const remote = await findIptvUserByUsername(creds, access.username);
+          if (remote) {
+            const row = remote as Record<string, unknown>;
+            access = {
+              ...access,
+              m3u:
+                access.m3u ||
+                (typeof row.m3u === "string" ? row.m3u : undefined) ||
+                (typeof row.url_m3u === "string" ? row.url_m3u : undefined),
+              dnsSmarters:
+                access.dnsSmarters ||
+                (typeof row.dns === "string" ? row.dns : undefined) ||
+                (typeof row.server === "string" ? row.server : undefined) ||
+                (typeof row.url === "string" ? row.url : undefined),
+              password:
+                access.password ||
+                (typeof row.password === "string" ? row.password : undefined),
+              dueDate:
+                access.dueDate ||
+                (typeof row.exp_date === "string" ? row.exp_date : undefined) ||
+                (typeof row.expDate === "string" ? row.expDate : undefined),
+            };
+            access = enrichCreateTestResult({ ...access, raw: remote });
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const createdUser = access.username || "";
+      let password = access.password?.trim() || "";
+      // Último recurso: busca senha na ficha do painel
+      if (!password && createdUser) {
+        try {
+          password = (await fetchIptvUserPassword(creds, createdUser)) || "";
+        } catch {
+          /* ignore */
+        }
+      }
+      const links = resolveTestAccessLinks({
+        username: createdUser,
+        password,
+        m3u: access.m3u,
+        dnsSmarters: access.dnsSmarters,
+        m3uHost: platform.m3uHost,
+        dnsFallback: platform.dnsSmarters,
+      });
+      const testDue = access.dueDate || null;
+      setLastTest({
+        jobId: job.id,
+        username: createdUser,
+        password,
+        m3u: links.m3u,
+        dnsSmarters: links.dnsSmarters,
+        clientName: nota || "Teste avulso",
+        hours: hoursSafe,
+        dueDate: testDue,
+      });
+      let remoteId = access.remoteId;
+      if ((remoteId == null || remoteId === "") && createdUser) {
+        try {
+          const remote = await findIptvUserByUsername(creds, createdUser, {
+            exactOnly: true,
+          });
+          remoteId = remote?.id;
+        } catch {
+          /* ignore */
+        }
       }
       nextJobs = patchIptvJob(nextJobs, job.id, {
         status: "done",
         panelUsername: createdUser || job.panelUsername,
-        note: userPass
-          ? `Teste OK · ${userPass}`
-          : result.message || "Teste criado via API",
+        panelRemoteId: remoteId,
+        panelPassword: password || undefined,
+        m3u: links.m3u || undefined,
+        dnsSmarters: links.dnsSmarters || undefined,
+        dueDate: testDue,
+        note: createdUser
+          ? `Teste OK · ${createdUser}${password ? ` / ${password}` : ""} · ${hoursSafe}h`
+          : access.message || "Teste criado via API",
       });
       persistJobs(nextJobs);
+      setDetailJobId(job.id);
       toast.success(
-        userPass
-          ? `Teste criado: ${userPass} (copiado)`
-          : iptvLogin
-            ? `Teste criado para ${iptvLogin}`
-            : "Teste criado no painel",
+        createdUser
+          ? `Teste avulso de ${hoursSafe}h criado: ${createdUser}`
+          : `Teste avulso de ${hoursSafe}h criado`,
       );
     } catch (e) {
       nextJobs = patchIptvJob(nextJobs, job.id, {
@@ -751,7 +1049,7 @@ export default function Automations() {
             ),
           });
           toast.success(
-            `Renovado no AuxPlus até ${updated.dueDate?.split("-").reverse().join("/")}`,
+            `Renovado no AuxPlus até ${formatBrDate(updated.dueDate)}`,
           );
         } else {
           toast.message("Item não encontrado — job só marcado como concluído");
@@ -770,8 +1068,111 @@ export default function Automations() {
     toast.message("Marcado como falhou");
   };
 
-  const removeJob = (job: IptvJob) => {
-    persistJobs(jobs.filter((j) => j.id !== job.id));
+  const openTestDetail = (job: IptvJob) => {
+    if (job.kind !== "test") return;
+    setActivateOption(IPTV_RENEW_OPTIONS[0]);
+    setDetailJobId(job.id);
+    // Testes antigos sem senha/M3U: tenta completar ao abrir o modal
+    if (
+      job.panelUsername.trim() &&
+      (!job.panelPassword?.trim() || !job.m3u?.trim()) &&
+      (bearer.trim() || (panelUser.trim() && panelPass))
+    ) {
+      void (async () => {
+        try {
+          const ensured = await ensureIptvToken(panelCreds());
+          if (ensured.renewed) persistToken(ensured.token);
+          const creds = { ...panelCreds(), bearerToken: ensured.token };
+          let password = job.panelPassword?.trim() || "";
+          if (!password) {
+            password =
+              (await fetchIptvUserPassword(creds, job.panelUsername.trim())) ||
+              "";
+          }
+          if (!password) return;
+          const links = resolveTestAccessLinks({
+            username: job.panelUsername,
+            password,
+            m3u: job.m3u,
+            dnsSmarters: job.dnsSmarters,
+            m3uHost: platform.m3uHost,
+            dnsFallback: platform.dnsSmarters,
+          });
+          persistJobs(
+            patchIptvJob(loadIptvJobs(user.id), job.id, {
+              panelPassword: password,
+              m3u: links.m3u || job.m3u,
+              dnsSmarters: links.dnsSmarters || job.dnsSmarters,
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
+      })();
+    }
+  };
+
+  const linksForJob = (job: IptvJob) =>
+    resolveTestAccessLinks({
+      username: job.panelUsername,
+      password: job.panelPassword,
+      m3u: job.m3u,
+      dnsSmarters: job.dnsSmarters,
+      m3uHost: platform.m3uHost,
+      dnsFallback: platform.dnsSmarters,
+    });
+
+  const activateTestJob = async (job: IptvJob, option: IptvRenewOption) => {
+    if (!job.panelUsername.trim()) {
+      toast.error("Teste sem usuário no painel");
+      return;
+    }
+    if (!bearer.trim()) {
+      toast.error("Conecte sua conta UniPlay antes");
+      return;
+    }
+    setActivatingTest(true);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
+      const remote = await findIptvUserByUsername(
+        creds,
+        job.panelUsername.trim(),
+      );
+      if (!remote?.id) {
+        throw new Error(`Usuário ${job.panelUsername} não encontrado no painel`);
+      }
+      await renewIptvUser(creds, remote.id, option);
+      const issued = getLastIssuedIptvToken();
+      if (issued) persistToken(issued);
+      let panelExp: string | null | undefined;
+      try {
+        const after = await findIptvUserByUsername(
+          creds,
+          job.panelUsername.trim(),
+        );
+        panelExp = after?.exp_date ?? after?.expDate;
+      } catch {
+        panelExp = remote.exp_date ?? remote.expDate;
+      }
+      const dueDate =
+        (panelExp ? parseIptvExpToDateTime(panelExp) : null) || job.dueDate;
+      persistJobs(
+        patchIptvJob(jobs, job.id, {
+          dueDate,
+          months: option.months,
+          note: `Ativado · ${option.label} · vence ${formatBrDate(dueDate)}`,
+        }),
+      );
+      toast.success(
+        `Teste ativado: ${option.label} · vence ${formatBrDate(dueDate)}`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao ativar teste");
+    } finally {
+      setActivatingTest(false);
+    }
   };
 
   return (
@@ -794,6 +1195,33 @@ export default function Automations() {
         </TabsList>
 
         <TabsContent value="painel" className="mt-0 space-y-4">
+          <Tabs
+            value={uniplayConnected ? uniplaySubTab : "conexao"}
+            onValueChange={setUniplaySubTab}
+            className="space-y-4"
+          >
+            <TabsList className="bg-background/80">
+              {uniplayConnected ? (
+                <>
+                  <TabsTrigger value="ativos" className="gap-1.5">
+                    Ativos
+                  </TabsTrigger>
+                  <TabsTrigger value="testes" className="gap-1.5">
+                    <FlaskConical className="h-3.5 w-3.5" />
+                    Testes
+                  </TabsTrigger>
+                  <TabsTrigger value="conexao" className="gap-1.5">
+                    Conexão
+                  </TabsTrigger>
+                </>
+              ) : (
+                <TabsTrigger value="conexao" className="gap-1.5">
+                  Conexão
+                </TabsTrigger>
+              )}
+            </TabsList>
+
+            <TabsContent value="conexao" className="mt-0 space-y-4">
           <section className="ax-surface space-y-3 p-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold tracking-tight">
@@ -813,6 +1241,7 @@ export default function Automations() {
                   <Input
                     id="iptv-user"
                     name="uniplay-user"
+                    type={hideSensitive ? "password" : "text"}
                     value={panelUser}
                     onChange={(e) => setPanelUser(e.target.value)}
                     placeholder="Login do painel"
@@ -820,6 +1249,7 @@ export default function Automations() {
                     autoComplete="off"
                     data-1p-ignore
                     data-lpignore="true"
+                    readOnly={hideSensitive}
                   />
                 </div>
                 <div className="space-y-1">
@@ -830,7 +1260,9 @@ export default function Automations() {
                     <Input
                       id="iptv-pass"
                       name="uniplay-pass"
-                      type={showPass ? "text" : "password"}
+                      type={
+                        hideSensitive || !showPass ? "password" : "text"
+                      }
                       value={panelPass}
                       onChange={(e) => setPanelPass(e.target.value)}
                       placeholder="Senha da UniPlay"
@@ -838,13 +1270,16 @@ export default function Automations() {
                       data-1p-ignore
                       data-lpignore="true"
                       className="h-9 pr-9"
+                      readOnly={hideSensitive}
                     />
                     <button
                       type="button"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
                       onClick={() => setShowPass((v) => !v)}
+                      disabled={hideSensitive}
+                      aria-label={showPass ? "Ocultar senha" : "Mostrar senha"}
                     >
-                      {showPass ? (
+                      {showPass && !hideSensitive ? (
                         <EyeOff className="h-3.5 w-3.5" />
                       ) : (
                         <Eye className="h-3.5 w-3.5" />
@@ -854,77 +1289,39 @@ export default function Automations() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <div className="space-y-1">
-                  <Label className="text-xs" htmlFor="renew-m">
-                    Meses
-                  </Label>
-                  <Input
-                    id="renew-m"
-                    type="number"
-                    min={1}
-                    max={24}
-                    value={renewMonths}
-                    onChange={(e) =>
-                      setRenewMonths(
-                        Math.max(1, Math.min(24, Number(e.target.value) || 1)),
-                      )
-                    }
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs" htmlFor="test-h">
-                    Teste (h)
-                  </Label>
-                  <Input
-                    id="test-h"
-                    type="number"
-                    min={1}
-                    max={6}
-                    value={testHours}
-                    onChange={(e) =>
-                      setTestHours(
-                        Math.max(1, Math.min(6, Number(e.target.value) || 6)),
-                      )
-                    }
-                    className="h-9"
-                  />
-                </div>
-                <div className="col-span-2 flex flex-wrap items-end gap-1.5">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="h-9"
-                    disabled={
-                      refreshingToken || !panelUser.trim() || !panelPass
-                    }
-                    onClick={() => void refreshTokenNow()}
-                  >
-                    {refreshingToken ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    )}
-                    Conectar
-                  </Button>
-                  <Button type="submit" size="sm" className="h-9" disabled={saving}>
-                    <Save className="h-3.5 w-3.5" />
-                    {saving ? "…" : "Salvar"}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-9"
-                    onClick={openPanel}
-                    disabled={!(platform.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL)}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Painel
-                  </Button>
-                </div>
+              <div className="flex flex-wrap items-end gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-9"
+                  disabled={
+                    refreshingToken || !panelUser.trim() || !panelPass
+                  }
+                  onClick={() => void refreshTokenNow()}
+                >
+                  {refreshingToken ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Conectar
+                </Button>
+                <Button type="submit" size="sm" className="h-9" disabled={saving}>
+                  <Save className="h-3.5 w-3.5" />
+                  {saving ? "…" : "Salvar"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9"
+                  onClick={openPanel}
+                  disabled={!(platform.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL)}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Painel
+                </Button>
               </div>
 
               <div className="space-y-1">
@@ -964,16 +1361,13 @@ export default function Automations() {
                   você apertar o botão na pasta.
                 </p>
               </div>
-
-              {lastCreds ? (
-                <p className="rounded-md border border-success/30 bg-success/5 px-2.5 py-1.5 text-xs">
-                  Último teste:{" "}
-                  <code className="font-mono text-foreground">{lastCreds}</code>
-                </p>
-              ) : null}
             </form>
           </section>
+            </TabsContent>
 
+            {uniplayConnected ? (
+              <>
+            <TabsContent value="ativos" className="mt-0 space-y-4">
           <section className="ax-surface space-y-3 p-4">
             <h2 className="text-sm font-semibold tracking-tight">Clientes</h2>
             <div className="relative">
@@ -981,7 +1375,11 @@ export default function Automations() {
               <Input
                 className="h-11 border-primary/35 bg-primary/[0.06] pl-9 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)] placeholder:text-muted-foreground/80 focus-visible:border-primary/50 focus-visible:ring-primary/25"
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setQ(next);
+                  if (next.trim().length < 2) clearActivateApp();
+                }}
                 placeholder="Buscar por nome, usuário ou telefone…"
               />
             </div>
@@ -1006,10 +1404,8 @@ export default function Automations() {
                         {item.name}
                       </p>
                       <p className="truncate text-[11px] text-muted-foreground">
-                        {item.itemId || "—"}
-                        {item.dueDate
-                          ? ` · ${item.dueDate.split("-").reverse().join("/")}`
-                          : ""}
+                        {maskUser(item.itemId)}
+                        {item.dueDate ? ` · ${formatBrDate(item.dueDate)}` : ""}
                       </p>
                     </div>
                     <div className="flex shrink-0 gap-1">
@@ -1019,7 +1415,7 @@ export default function Automations() {
                         variant="secondary"
                         className="h-8 px-2.5"
                         disabled={!bearer.trim() || busyId === item.id}
-                        onClick={() => void runApiRenew(item.id)}
+                        onClick={() => openRenewDialog(item.id)}
                       >
                         {busyId === item.id ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1034,7 +1430,7 @@ export default function Automations() {
                         variant="outline"
                         className="h-8 px-2.5"
                         disabled={!bearer.trim() || Boolean(busyId)}
-                        onClick={() => void runApiTest(item.id)}
+                        onClick={() => openTestDialog(item.name)}
                       >
                         <FlaskConical className="h-3.5 w-3.5" />
                         Teste
@@ -1161,6 +1557,7 @@ export default function Automations() {
                 </Label>
                 <Input
                   id="app-user"
+                  type={hideSensitive ? "password" : "text"}
                   value={appUsername}
                   onChange={(e) => {
                     setAppUsername(e.target.value);
@@ -1175,6 +1572,7 @@ export default function Automations() {
                   placeholder="Login IPTV"
                   className="h-9"
                   autoComplete="off"
+                  readOnly={hideSensitive}
                 />
               </div>
               <div className="space-y-1 sm:col-span-2">
@@ -1184,7 +1582,9 @@ export default function Automations() {
                 <div className="relative">
                   <Input
                     id="app-pass"
-                    type={showAppPass ? "text" : "password"}
+                    type={
+                      hideSensitive || !showAppPass ? "password" : "text"
+                    }
                     value={appPassword}
                     onChange={(e) => setAppPassword(e.target.value)}
                     placeholder={
@@ -1192,16 +1592,18 @@ export default function Automations() {
                     }
                     className="h-9 pr-9"
                     autoComplete="off"
+                    readOnly={hideSensitive}
                   />
                   <button
                     type="button"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
                     onClick={() => setShowAppPass((v) => !v)}
+                    disabled={hideSensitive}
                     aria-label={showAppPass ? "Ocultar senha" : "Mostrar senha"}
                   >
                     {lookingUpPass ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : showAppPass ? (
+                    ) : showAppPass && !hideSensitive ? (
                       <EyeOff className="h-3.5 w-3.5" />
                     ) : (
                       <Eye className="h-3.5 w-3.5" />
@@ -1284,14 +1686,94 @@ export default function Automations() {
               )
             ) : null}
           </section>
+            </TabsContent>
 
-          {openJobs.length > 0 || doneJobs.length > 0 ? (
-            <section className="ax-surface space-y-3 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold tracking-tight">Fila</h2>
-                <p className="text-xs text-muted-foreground">
-                  {openJobs.length} em aberto
+            <TabsContent value="testes" className="mt-0 space-y-4">
+          <section className="ax-surface space-y-3 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold tracking-tight">Testes</h2>
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                className="h-8"
+                disabled={
+                  (!bearer.trim() && !(panelUser.trim() && panelPass)) ||
+                  Boolean(busyId) ||
+                  syncingTests
+                }
+                onClick={() => openTestDialog()}
+              >
+                <FlaskConical className="h-3.5 w-3.5" />
+                Gerar teste
+              </Button>
+            </div>
+            {lastTest ? (
+              <button
+                type="button"
+                className="w-full rounded-md border border-success/30 bg-success/5 px-3 py-2.5 text-left transition hover:bg-success/10"
+                onClick={() => {
+                  const job = jobs.find((j) => j.id === lastTest.jobId);
+                  if (job) openTestDetail(job);
+                  else setDetailJobId(lastTest.jobId);
+                }}
+              >
+                <p className="text-xs font-medium text-foreground">
+                  Teste gerado · {lastTest.clientName} · {lastTest.hours}h
                 </p>
+                <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                  {maskUser(lastTest.username)}
+                  {lastTest.dueDate
+                    ? ` · vence ${formatBrDate(lastTest.dueDate)}`
+                    : ""}
+                </p>
+                <p className="mt-1 text-[11px] text-primary">
+                  Toque para ver usuário, senha, M3U, DNS e ativar
+                </p>
+              </button>
+            ) : null}
+          </section>
+
+          <section className="ax-surface space-y-3 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <h2 className="text-sm font-semibold tracking-tight">Fila</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {openJobs.length} em aberto
+                    {testJobsCount > 0 ? ` · ${testJobsCount} teste(s)` : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-8"
+                    disabled={
+                      (!bearer.trim() && !(panelUser.trim() && panelPass)) ||
+                      syncingTests ||
+                      Boolean(busyId)
+                    }
+                    onClick={() => void refreshPanelTests()}
+                  >
+                    {syncingTests ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Atualizar testes
+                  </Button>
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={jobsQ}
+                  onChange={(e) => setJobsQ(e.target.value)}
+                  placeholder="Buscar teste (nome, usuário…)"
+                  className="h-9 pl-8"
+                />
               </div>
 
               {openJobs.length > 0 ? (
@@ -1307,7 +1789,7 @@ export default function Automations() {
                             {job.clientName}
                           </p>
                           <p className="text-[11px] text-muted-foreground">
-                            {job.panelUsername}
+                            {maskUser(job.panelUsername)}
                             {job.kind === "renew"
                               ? ` · +${job.months}m`
                               : ` · ${job.testHours}h`}
@@ -1360,15 +1842,6 @@ export default function Automations() {
                         >
                           Falhou
                         </Button>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8"
-                          onClick={() => removeJob(job)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
                       </div>
                     </li>
                   ))}
@@ -1384,29 +1857,46 @@ export default function Automations() {
                     {doneJobs.map((job) => (
                       <li
                         key={job.id}
-                        className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground"
+                        className="text-[11px] text-muted-foreground"
                       >
-                        <span className="truncate">
-                          {job.clientName} ·{" "}
-                          {job.kind === "renew" ? "renovação" : "teste"} ·{" "}
-                          {format(new Date(job.updatedAt), "dd/MM HH:mm")}
-                        </span>
-                        <Button
+                        <button
                           type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={() => removeJob(job)}
+                          className="min-w-0 w-full truncate text-left hover:text-foreground"
+                          onClick={() => {
+                            if (job.kind === "test") openTestDetail(job);
+                          }}
                         >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                          {job.clientName} ·{" "}
+                          {job.kind === "renew" ? "renovação" : "teste"}
+                          {job.panelUsername
+                            ? ` · ${maskUser(job.panelUsername)}`
+                            : ""}
+                          {" · "}
+                          {job.dueDate
+                            ? formatBrDate(job.dueDate)
+                            : format(
+                                new Date(job.updatedAt),
+                                "dd/MM/yyyy HH:mm:ss",
+                              )}
+                        </button>
                       </li>
                     ))}
                   </ul>
                 </div>
               ) : null}
+
+              {openJobs.length === 0 && doneJobs.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  {jobsQ.trim()
+                    ? "Nenhum resultado para essa busca."
+                    : "Nenhum teste na fila. Use Atualizar testes para carregar da UniPlay."}
+                </p>
+              ) : null}
             </section>
-          ) : null}
+            </TabsContent>
+              </>
+            ) : null}
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="winbox" className="mt-0 space-y-4">
@@ -1426,6 +1916,292 @@ export default function Automations() {
           </section>
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={!!renewTargetId}
+        onOpenChange={(open) => {
+          if (!open) setRenewTargetId(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Renovação UniPlay</DialogTitle>
+            <DialogDescription>
+              {renewTargetId
+                ? (() => {
+                    const item = clients.find((i) => i.id === renewTargetId);
+                    return item
+                      ? `${item.name} · ${maskUser(item.itemId) === "—" ? "sem usuário" : maskUser(item.itemId)}`
+                      : "Escolha o plano";
+                  })()
+                : "Escolha o plano"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 py-1">
+            {IPTV_RENEW_OPTIONS.map((opt) => {
+              const selected = renewOption.months === opt.months;
+              return (
+                <button
+                  key={opt.months}
+                  type="button"
+                  onClick={() => setRenewOption(opt)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left text-sm transition",
+                    selected
+                      ? "border-primary bg-primary/10 font-medium text-foreground"
+                      : "border-border/70 bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                  )}
+                >
+                  <span>{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRenewTargetId(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={!renewTargetId || busyId === renewTargetId}
+              onClick={() => {
+                if (!renewTargetId) return;
+                void runApiRenew(renewTargetId, renewOption);
+              }}
+            >
+              {busyId && busyId === renewTargetId ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Confirmar renovação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Gerar teste avulso</DialogTitle>
+            <DialogDescription>
+              Cria um usuário novo no painel (1–6 horas). Não vincula a cliente
+              existente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="test-nota" className="text-xs">
+              Nota (nome no painel)
+            </Label>
+            <Input
+              id="test-nota"
+              value={testNota}
+              onChange={(e) => setTestNota(e.target.value)}
+              placeholder="Nome do teste"
+              className="h-9"
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 py-1">
+            {IPTV_TEST_HOURS.map((h) => {
+              const selected = testHoursPick === h;
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => setTestHoursPick(h)}
+                  className={cn(
+                    "rounded-md border px-2 py-2.5 text-sm transition",
+                    selected
+                      ? "border-primary bg-primary/10 font-semibold text-foreground"
+                      : "border-border/70 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                  )}
+                >
+                  {h}h
+                </button>
+              );
+            })}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setTestDialogOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={Boolean(busyId)}
+              onClick={() => void runApiTest(testHoursPick, testNota)}
+            >
+              {busyId ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FlaskConical className="h-4 w-4" />
+              )}
+              Gerar teste
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!detailJob}
+        onOpenChange={(open) => {
+          if (!open) setDetailJobId(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          {detailJob ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Detalhes do teste</DialogTitle>
+                <DialogDescription>
+                  {detailJob.clientName}
+                  {detailJob.dueDate
+                    ? ` · vence ${formatBrDate(detailJob.dueDate)}`
+                    : ""}
+                </DialogDescription>
+              </DialogHeader>
+              {(() => {
+                const links = linksForJob(detailJob);
+                return (
+                  <div className="space-y-3">
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-9 justify-start"
+                        onClick={() =>
+                          void copyField("Usuário", detailJob.panelUsername)
+                        }
+                      >
+                        <ClipboardCopy className="h-3.5 w-3.5" />
+                        Copiar usuário
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-9 justify-start"
+                        onClick={() =>
+                          void copyField(
+                            "Senha",
+                            detailJob.panelPassword || "",
+                          )
+                        }
+                      >
+                        <ClipboardCopy className="h-3.5 w-3.5" />
+                        Copiar senha
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-9 justify-start"
+                        onClick={() => void copyField("Link M3U", links.m3u)}
+                      >
+                        <ClipboardCopy className="h-3.5 w-3.5" />
+                        Copiar link M3U
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-9 justify-start"
+                        onClick={() =>
+                          void copyField("DNS Smarters", links.dnsSmarters)
+                        }
+                      >
+                        <ClipboardCopy className="h-3.5 w-3.5" />
+                        Copiar DNS Smarters
+                      </Button>
+                    </div>
+                    <div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                      <p>Usuário: {maskUser(detailJob.panelUsername)}</p>
+                      <p>
+                        Senha:{" "}
+                        {hideSensitive
+                          ? "••••••••"
+                          : detailJob.panelPassword || "—"}
+                      </p>
+                      <p className="break-all">
+                        M3U:{" "}
+                        {hideSensitive ? "••••••••" : links.m3u || "—"}
+                      </p>
+                      <p>
+                        DNS:{" "}
+                        {hideSensitive
+                          ? "••••••••"
+                          : links.dnsSmarters || "—"}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 border-t pt-3">
+                      <p className="text-sm font-medium">
+                        Ativar com créditos (mensalidade)
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Converte o teste em plano pago no painel, cobrando os
+                        créditos do plano escolhido.
+                      </p>
+                      <div className="space-y-1.5">
+                        {IPTV_RENEW_OPTIONS.map((opt) => {
+                          const selected =
+                            activateOption.months === opt.months;
+                          return (
+                            <button
+                              key={opt.months}
+                              type="button"
+                              onClick={() => setActivateOption(opt)}
+                              className={cn(
+                                "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition",
+                                selected
+                                  ? "border-primary bg-primary/10 font-medium text-foreground"
+                                  : "border-border/70 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                              )}
+                            >
+                              <span>{opt.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDetailJobId(null)}
+                >
+                  Fechar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={activatingTest || !detailJob.panelUsername}
+                  onClick={() =>
+                    void activateTestJob(detailJob, activateOption)
+                  }
+                >
+                  {activatingTest ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Ativar plano
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

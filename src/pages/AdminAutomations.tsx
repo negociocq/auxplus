@@ -149,6 +149,38 @@ export default function AdminAutomations() {
           </p>
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="iptv-dns">DNS Smarters</Label>
+          <Input
+            id="iptv-dns"
+            value={form.dnsSmarters || ""}
+            disabled={loading}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, dnsSmarters: e.target.value }))
+            }
+            placeholder="http://blushes.top"
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="iptv-m3u-host">Host M3U</Label>
+          <Input
+            id="iptv-m3u-host"
+            value={form.m3uHost || ""}
+            disabled={loading}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, m3uHost: e.target.value }))
+            }
+            placeholder="http://ibetsa.top"
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">
+            DNS Smarters e Host M3U são diferentes no UniPlay. Usados ao gerar
+            teste se o painel não devolver os links.
+          </p>
+        </div>
+
         <Button type="submit" disabled={loading || saving}>
           <Save className="h-4 w-4" />
           {saving ? "Salvando…" : "Salvar"}
