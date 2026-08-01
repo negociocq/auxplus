@@ -62,7 +62,18 @@ function shouldUseGesProxy(apiBaseUrl: string) {
   }
 }
 
-/** Edge Function Supabase (produção) — path vai em x-iptv-path */
+/**
+ * Proxy com path em header x-iptv-path (produção):
+ * - /api/ges-api (Vercel)
+ * - Edge Function Supabase (fallback)
+ * Dev Vite (/ges-api) usa path na URL: /ges-api/login
+ */
+function isPathHeaderProxy(base: string) {
+  return (
+    base === "/api/ges-api" || base.includes("/functions/v1/ges-api")
+  );
+}
+
 function isSupabaseGesProxy(base: string) {
   return base.includes("/functions/v1/ges-api");
 }
@@ -74,22 +85,30 @@ function resolveBase(apiBaseUrl: string) {
   );
   if (!shouldUseGesProxy(configured)) return configured;
 
-  // Dev: proxy do Vite (injeta Origin do painel)
+  // Dev: proxy do Vite
   if (typeof window !== "undefined" && import.meta.env.DEV) {
     return "/ges-api";
   }
-  // Produção: Edge Function no Supabase
+  // Produção no Vercel: mesmo domínio (mais confiável)
+  if (typeof window !== "undefined") {
+    return "/api/ges-api";
+  }
   return GES_API_PROXY_URL;
 }
 
 function proxyHeaders(
+  base: string,
   path: string,
   iptvBearer?: string,
 ): Record<string, string> {
   const h: Record<string, string> = {
-    apikey: SUPABASE_ANON_KEY,
     "x-iptv-path": path.startsWith("/") ? path : `/${path}`,
   };
+  // Gateway Supabase exige apikey + Authorization (anon)
+  if (isSupabaseGesProxy(base)) {
+    h.apikey = SUPABASE_ANON_KEY;
+    h.Authorization = `Bearer ${SUPABASE_ANON_KEY}`;
+  }
   if (iptvBearer?.trim()) {
     h["x-iptv-authorization"] = `Bearer ${iptvBearer
       .trim()
@@ -179,9 +198,8 @@ export async function loginIptvPanel(
 
   const base = resolveBase(apiBaseUrl);
   const loginPath = "/login";
-  const loginUrl = isSupabaseGesProxy(base)
-    ? base
-    : `${base}${loginPath}`;
+  // Proxies de path-header usam URL fixa + x-iptv-path
+  const loginUrl = isPathHeaderProxy(base) ? base : `${base}${loginPath}`;
 
   try {
     const res = await fetch(loginUrl, {
@@ -189,7 +207,7 @@ export async function loginIptvPanel(
       headers: {
         accept: "application/json, text/plain, */*",
         "content-type": "application/json",
-        ...(isSupabaseGesProxy(base) ? proxyHeaders(loginPath) : {}),
+        ...(isPathHeaderProxy(base) ? proxyHeaders(base, loginPath) : {}),
       },
       body: JSON.stringify({ username: user, password: pass, code }),
     });
@@ -204,7 +222,7 @@ export async function loginIptvPanel(
       const err = parseApiError(data, text, res.statusText);
       if (/credencias?\s+n[aã]o\s+encontradas/i.test(err)) {
         throw new Error(
-          "API bloqueou o login (Origin). Confira se a Edge Function ges-api está publicada no Supabase, ou usuário/senha do painel.",
+          "API bloqueou o login (Origin). Confira o proxy UniPlay ou usuário/senha do painel.",
         );
       }
       if (/inv[aá]lid/i.test(err)) {
@@ -212,9 +230,12 @@ export async function loginIptvPanel(
           "Usuário ou senha do painel incorretos. Use o mesmo login de https://searchdefense.top (não o do AuxPlus).",
         );
       }
-      if (res.status === 404 && isSupabaseGesProxy(base)) {
+      if (
+        res.status === 404 &&
+        /function|proxy|not found|não encontrado/i.test(`${err} ${text}`)
+      ) {
         throw new Error(
-          "Proxy UniPlay não encontrado. Publique a Edge Function ges-api no Supabase (veja supabase/functions/ges-api).",
+          "Proxy UniPlay não encontrado. Faça deploy na Vercel (pasta api/ges-api) ou publique a Edge Function ges-api.",
         );
       }
       throw new Error(err);
@@ -290,15 +311,15 @@ async function panelFetch(
 
   const base = resolveBase(creds.apiBaseUrl);
   const p = path.startsWith("/") ? path : `/${path}`;
-  const url = isSupabaseGesProxy(base) ? base : `${base}${p}`;
+  const url = isPathHeaderProxy(base) ? base : `${base}${p}`;
   const doFetch = (t: string) =>
     fetch(url, {
       ...init,
       headers: {
         accept: "application/json, text/plain, */*",
         "content-type": "application/json",
-        ...(isSupabaseGesProxy(base)
-          ? proxyHeaders(p, t)
+        ...(isPathHeaderProxy(base)
+          ? proxyHeaders(base, p, t)
           : { authorization: `Bearer ${t}` }),
         ...(init?.headers || {}),
       },

@@ -39,6 +39,7 @@ import {
   type AutomationsConfig,
 } from "@/lib/automationsConfig";
 import {
+  DEFAULT_IPTV_PANEL_URL,
   defaultIptvPlatformConfig,
   loadIptvPlatformConfig,
   type IptvPlatformConfig,
@@ -346,7 +347,7 @@ export default function Automations() {
   };
 
   const openPanel = () => {
-    const url = platform.panelUrl.trim();
+    const url = platform.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL;
     if (!url) {
       toast.error(
         "URL do painel ainda não foi configurada pelo administrador",
@@ -915,7 +916,7 @@ export default function Automations() {
                     variant="outline"
                     className="h-9"
                     onClick={openPanel}
-                    disabled={!platform.panelUrl.trim()}
+                    disabled={!(platform.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL)}
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     Painel

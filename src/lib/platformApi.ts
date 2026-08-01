@@ -123,13 +123,29 @@ export interface IptvPlatformConfig {
 const IPTV_LOCAL_KEY = "auxplus-platform-iptv";
 const IPTV_DB_KEY = "iptv_panel";
 
+/** URL padrão do front do painel (botão Abrir painel). */
+export const DEFAULT_IPTV_PANEL_URL = "https://searchdefense.top/#/login";
+
 export function defaultIptvPlatformConfig(): IptvPlatformConfig {
   return {
     apiBaseUrl: "https://gesapioffice.com/api",
     packageId: "1",
     regPassword: "",
-    panelUrl: "",
+    panelUrl: DEFAULT_IPTV_PANEL_URL,
   };
+}
+
+function pickPanelUrl(raw: Partial<IptvPlatformConfig> & Record<string, unknown>) {
+  const fromKeys = [
+    raw.panelUrl,
+    raw.panel_url,
+    raw.iptvPanelUrl,
+    raw.url,
+  ];
+  for (const v of fromKeys) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
 }
 
 function readIptvLocal(): IptvPlatformConfig {
@@ -137,14 +153,15 @@ function readIptvLocal(): IptvPlatformConfig {
   try {
     const raw = localStorage.getItem(IPTV_LOCAL_KEY);
     if (!raw) return base;
-    const parsed = JSON.parse(raw) as Partial<IptvPlatformConfig>;
+    const parsed = JSON.parse(raw) as Partial<IptvPlatformConfig> &
+      Record<string, unknown>;
     return {
       ...base,
       ...parsed,
       apiBaseUrl: parsed.apiBaseUrl?.trim() || base.apiBaseUrl,
       packageId: parsed.packageId?.trim() || base.packageId,
       regPassword: parsed.regPassword ?? "",
-      panelUrl: parsed.panelUrl?.trim() || "",
+      panelUrl: pickPanelUrl(parsed) || base.panelUrl,
     };
   } catch {
     return base;
@@ -167,15 +184,17 @@ export async function loadIptvPlatformConfig(): Promise<IptvPlatformConfig> {
     if (error || !data?.value) return fallback;
     const value =
       typeof data.value === "string"
-        ? (JSON.parse(data.value) as Partial<IptvPlatformConfig>)
-        : (data.value as Partial<IptvPlatformConfig>);
+        ? (JSON.parse(data.value) as Partial<IptvPlatformConfig> &
+            Record<string, unknown>)
+        : (data.value as Partial<IptvPlatformConfig> & Record<string, unknown>);
     const merged: IptvPlatformConfig = {
       ...fallback,
       ...value,
       apiBaseUrl: value.apiBaseUrl?.trim() || fallback.apiBaseUrl,
       packageId: value.packageId?.trim() || fallback.packageId,
       regPassword: value.regPassword ?? fallback.regPassword,
-      panelUrl: value.panelUrl?.trim() || fallback.panelUrl,
+      panelUrl:
+        pickPanelUrl(value) || fallback.panelUrl || DEFAULT_IPTV_PANEL_URL,
     };
     writeIptvLocal(merged);
     return merged;
@@ -192,7 +211,7 @@ export async function saveIptvPlatformConfig(
       defaultIptvPlatformConfig().apiBaseUrl,
     packageId: config.packageId.trim() || "1",
     regPassword: config.regPassword.trim(),
-    panelUrl: config.panelUrl.trim(),
+    panelUrl: config.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL,
   };
   writeIptvLocal(clean);
   if (!supabase) {

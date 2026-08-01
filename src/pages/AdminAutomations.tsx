@@ -119,12 +119,12 @@ export default function AdminAutomations() {
             onChange={(e) =>
               setForm((f) => ({ ...f, panelUrl: e.target.value }))
             }
-            placeholder="https://…/#/…"
+            placeholder="https://searchdefense.top/#/login"
             autoComplete="off"
           />
           <p className="text-xs text-muted-foreground">
-            Usada no botão “Abrir painel” do cliente (depois do login interno,
-            se possível).
+            Só para o botão “Abrir painel”. A API (acima) é o que renova/teste/
+            sincroniza — pode funcionar mesmo se esta URL estiver vazia.
           </p>
         </div>
 
