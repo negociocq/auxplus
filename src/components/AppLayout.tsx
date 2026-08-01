@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Camera,
@@ -9,6 +8,7 @@ import {
   FolderKanban,
   KeyRound,
   LifeBuoy,
+  Download,
   LogOut,
   Menu,
   MessageCircle,
@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
 import { useHideBalance } from "@/hooks/useHideBalance";
+import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { useWhatsappAutoSend } from "@/hooks/useWhatsappAutoSend";
 import { fileToAvatarDataUrl, saveLocalAvatar } from "@/lib/avatar";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,12 @@ const COLLAPSED_KEY = "auxplus-sidebar-collapsed";
 export function AppLayout() {
   const { user, data, setData, logout, loading } = useApp();
   const { hidden: hideBalance, toggle: toggleHideBalance } = useHideBalance();
+  const {
+    canOfferInstall,
+    ios: isIosInstall,
+    hasNativePrompt,
+    promptInstall,
+  } = usePwaInstall();
   useWhatsappAutoSend(user, data);
   const navigate = useNavigate();
   const location = useLocation();
@@ -76,6 +83,16 @@ export function AppLayout() {
     }
   }, [collapsed]);
 
+  // Fecha menu mobile e limpa lock de pointer-events do Radix ao trocar de rota
+  // (overlay/exit do Framer ou Dialog preso bloqueava toques no celular).
+  useEffect(() => {
+    setMobileOpen(false);
+    document.body.style.removeProperty("pointer-events");
+    document.body.style.removeProperty("overflow");
+    document.documentElement.style.removeProperty("pointer-events");
+    document.documentElement.style.removeProperty("overflow");
+  }, [location.pathname]);
+
   if (loading) return <LoadingScreen />;
   if (!user) return null;
 
@@ -98,6 +115,28 @@ export function AppLayout() {
   const handleLogout = () => {
     logout();
     navigate("/login");
+  };
+
+  const handleInstallApp = async () => {
+    const result = await promptInstall();
+    if (result === "accepted") {
+      toast.success("AuxPlus instalado");
+      setMobileOpen(false);
+      return;
+    }
+    if (result === "dismissed") return;
+    if (isIosInstall) {
+      toast.message("Instalar no iPhone", {
+        description:
+          "Toque em Compartilhar e depois em “Adicionar à Tela de Início”.",
+      });
+    } else if (!hasNativePrompt) {
+      toast.message("Instalar AuxPlus", {
+        description:
+          "No menu do navegador, use “Instalar app” ou “Adicionar à tela inicial”.",
+      });
+    }
+    setMobileOpen(false);
   };
 
   const setAvatar = (avatarUrl: string | null) => {
@@ -144,25 +183,22 @@ export function AppLayout() {
     <div className="min-h-screen ax-gradient-mesh">
       <CommandPalette />
 
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.button
-            type="button"
-            aria-label="Fechar menu"
-            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setMobileOpen(false)}
-          />
-        )}
-      </AnimatePresence>
+      {mobileOpen ? (
+        <button
+          type="button"
+          aria-label="Fechar menu"
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      ) : null}
 
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-300 ease-out",
           sidebarWidth,
-          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+          mobileOpen
+            ? "translate-x-0 pointer-events-auto"
+            : "-translate-x-full pointer-events-none lg:translate-x-0 lg:pointer-events-auto",
         )}
       >
         <div
@@ -345,6 +381,29 @@ export function AppLayout() {
                 <TooltipContent side="right">
                   {isAdminArea ? "Voltar ao painel" : "Painel admin"}
                 </TooltipContent>
+              ) : null}
+            </Tooltip>
+          ) : null}
+          {canOfferInstall ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size={collapsed ? "icon" : "default"}
+                  className={cn(
+                    "mb-1 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                    collapsed ? "mx-auto" : "w-full justify-start gap-2",
+                  )}
+                  onClick={() => void handleInstallApp()}
+                  aria-label="Instalar app"
+                >
+                  <Download className="h-4 w-4" />
+                  {!collapsed && "Instalar app"}
+                </Button>
+              </TooltipTrigger>
+              {collapsed ? (
+                <TooltipContent side="right">Instalar app</TooltipContent>
               ) : null}
             </Tooltip>
           ) : null}

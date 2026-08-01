@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { format } from "date-fns";
+import { differenceInCalendarDays, format } from "date-fns";
 import {
   Link2,
   Loader2,
@@ -30,6 +30,16 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   acquireWhatsappSendLock,
   buildTodayQueue,
   canSendMore,
@@ -38,6 +48,7 @@ import {
   fetchEvolutionStatus,
   loadSendLog,
   loadWhatsappSettings,
+  parseLocalYmd,
   logoutEvolution,
   nextDelayMs,
   releaseWhatsappSendLock,
@@ -89,6 +100,9 @@ export default function WhatsAppPage() {
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [logs, setLogs] = useState<WaSendLog[]>([]);
   const [limitsOpen, setLimitsOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<
+    null | "messageBefore" | "messageOnDay" | "limits"
+  >(null);
   const sendingRef = useRef(false);
   const pollRef = useRef<number | null>(null);
 
@@ -382,6 +396,28 @@ export default function WhatsAppPage() {
     value: WhatsappAutomationSettings[K],
   ) => persist({ ...settings, [key]: value });
 
+  const confirmRestore = () => {
+    if (!restoreTarget) return;
+    const d = defaultWhatsappAutomation();
+    if (restoreTarget === "messageBefore") {
+      persist({ ...settings, messageBefore: d.messageBefore });
+      toast.success("Mensagem (antes) restaurada ao padrão");
+    } else if (restoreTarget === "messageOnDay") {
+      persist({ ...settings, messageOnDay: d.messageOnDay });
+      toast.success("Mensagem (no dia) restaurada ao padrão");
+    } else {
+      persist({
+        ...settings,
+        minIntervalSec: d.minIntervalSec,
+        jitterSec: d.jitterSec,
+        maxPerHour: d.maxPerHour,
+        maxPerDay: d.maxPerDay,
+      });
+      toast.success("Limites restaurados ao padrão");
+    }
+    setRestoreTarget(null);
+  };
+
   const setAutoSend = (on: boolean) => {
     persist({ ...settings, enabled: on });
     toast.message(
@@ -572,7 +608,7 @@ export default function WhatsAppPage() {
               <div>
                 <p className="text-sm font-medium">Antes do vencimento</p>
                 <p className="text-xs text-muted-foreground">
-                  Avisa com alguns dias de antecedência
+                  Inclui quem vence daqui 1 até X dias (e ainda não foi avisado)
                 </p>
               </div>
               <Switch
@@ -657,17 +693,7 @@ export default function WhatsAppPage() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  const d = defaultWhatsappAutomation();
-                  persist({
-                    ...settings,
-                    minIntervalSec: d.minIntervalSec,
-                    jitterSec: d.jitterSec,
-                    maxPerHour: d.maxPerHour,
-                    maxPerDay: d.maxPerDay,
-                  });
-                  toast.success("Limites restaurados ao padrão");
-                }}
+                onClick={() => setRestoreTarget("limits")}
               >
                 Restaurar padrão
               </Button>
@@ -801,12 +827,7 @@ export default function WhatsAppPage() {
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() =>
-                patch(
-                  "messageBefore",
-                  defaultWhatsappAutomation().messageBefore,
-                )
-              }
+              onClick={() => setRestoreTarget("messageBefore")}
             >
               Restaurar padrão
             </Button>
@@ -824,15 +845,37 @@ export default function WhatsAppPage() {
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() =>
-                patch("messageOnDay", defaultWhatsappAutomation().messageOnDay)
-              }
+              onClick={() => setRestoreTarget("messageOnDay")}
             >
               Restaurar padrão
             </Button>
           </div>
         </div>
       </section>
+
+      <AlertDialog
+        open={restoreTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setRestoreTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restaurar padrão?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {restoreTarget === "limits"
+                ? "Os limites anti-ban voltam aos valores padrão. Isso substitui a configuração atual."
+                : "A mensagem volta ao texto padrão. O texto atual será substituído."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRestore}>
+              Salvar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Fila */}
       <section className="ax-surface space-y-4 p-5">
@@ -879,7 +922,7 @@ export default function WhatsAppPage() {
           <p className="text-sm text-muted-foreground">
             {sentTodayCount > 0
               ? "Ninguém pendente agora — os de hoje já foram enviados (ou estão fora da regra). Use “Recolocar enviados na fila” para testar de novo."
-              : "Ninguém para avisar hoje: precisa telefone + vencer hoje (ou daqui X dias, se “antes do vencimento” estiver ligado) em pasta Cliente/Produto. “Perto” na pasta não é a mesma regra da fila."}
+              : "Ninguém para avisar hoje: precisa telefone + vencer hoje ou nos próximos X dias (regra “antes do vencimento”) em pasta Cliente/Produto."}
           </p>
         ) : (
           <ul className="space-y-2">
@@ -894,7 +937,13 @@ export default function WhatsAppPage() {
                     <p className="font-medium">{q.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {q.kind === "before"
-                        ? `${settings.daysBefore} dia(s) antes`
+                        ? `${Math.max(
+                            1,
+                            differenceInCalendarDays(
+                              parseLocalYmd(q.dueDate),
+                              parseLocalYmd(format(new Date(), "yyyy-MM-dd")),
+                            ),
+                          )} dia(s) antes`
                         : "No dia"}{" "}
                       · vence {q.dueDate.split("-").reverse().join("/")} ·{" "}
                       {q.phone}

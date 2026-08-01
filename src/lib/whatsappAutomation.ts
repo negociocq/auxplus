@@ -1,4 +1,4 @@
-import { addDays, format } from "date-fns";
+import { addDays, differenceInCalendarDays, format } from "date-fns";
 import type { Folder, Item } from "@/types";
 import { isRevenueFolderType } from "@/types";
 
@@ -78,7 +78,6 @@ export const DEFAULT_MESSAGE_BEFORE = `{getGreeting}
 
 🔔 Lembrete de vencimento
 
-Cliente: {name}
 Usuário: {item_id}
 
 Vai vencer em: {due_date}
@@ -91,7 +90,6 @@ export const DEFAULT_MESSAGE_ONDAY = `{getGreeting}
 
 🔔 Vencimento hoje
 
-Cliente: {name}
 Usuário: {item_id}
 
 Vence hoje: {due_date}
@@ -294,8 +292,10 @@ export function buildTodayQueue(
     }
 
     if (settings.sendBefore && settings.daysBefore > 0) {
-      const remindDay = addDays(due, -settings.daysBefore);
-      if (format(remindDay, "yyyy-MM-dd") === todayKey) {
+      // Janela 1..daysBefore (não só o dia exato): quem está "Perto"
+      // e ainda não recebeu o aviso entra na fila (inclui atraso/recuperação).
+      const daysLeft = differenceInCalendarDays(due, parseLocalYmd(todayKey));
+      if (daysLeft >= 1 && daysLeft <= settings.daysBefore) {
         const key = `${item.id}:before`;
         if (!sentKeys.has(key)) {
           queue.push({
