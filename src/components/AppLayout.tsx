@@ -57,7 +57,6 @@ export function AppLayout() {
   const {
     canOfferInstall,
     ios: isIosInstall,
-    hasNativePrompt,
     promptInstall,
   } = usePwaInstall();
   useWhatsappAutoSend(user, data);
@@ -124,16 +123,19 @@ export function AppLayout() {
       setMobileOpen(false);
       return;
     }
-    if (result === "dismissed") return;
+    if (result === "dismissed") {
+      setMobileOpen(false);
+      return;
+    }
     if (isIosInstall) {
       toast.message("Instalar no iPhone", {
         description:
           "Toque em Compartilhar e depois em “Adicionar à Tela de Início”.",
       });
-    } else if (!hasNativePrompt) {
-      toast.message("Instalar AuxPlus", {
+    } else {
+      toast.message("Quase lá", {
         description:
-          "No menu do navegador, use “Instalar app” ou “Adicionar à tela inicial”.",
+          "Recarregue a página e toque de novo em Instalar app. Se ainda não abrir, use o menu ⋮ do Chrome → Instalar app.",
       });
     }
     setMobileOpen(false);

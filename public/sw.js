@@ -1,5 +1,5 @@
 /* AuxPlus — service worker mínimo para instalação PWA (rede primeiro). */
-const CACHE = "auxplus-shell-v2";
+const CACHE = "auxplus-shell-v3";
 const SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -11,10 +11,13 @@ const SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(SHELL))
-      .then(() => self.skipWaiting()),
+    (async () => {
+      const cache = await caches.open(CACHE);
+      await Promise.all(
+        SHELL.map((url) => cache.add(url).catch(() => undefined)),
+      );
+      await self.skipWaiting();
+    })(),
   );
 });
 
@@ -23,7 +26,9 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))),
+        Promise.all(
+          keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)),
+        ),
       )
       .then(() => self.clients.claim()),
   );
@@ -41,6 +46,8 @@ self.addEventListener("fetch", (event) => {
         }
         return res;
       })
-      .catch(() => caches.match(event.request).then((hit) => hit || caches.match("/"))),
+      .catch(() =>
+        caches.match(event.request).then((hit) => hit || caches.match("/")),
+      ),
   );
 });
