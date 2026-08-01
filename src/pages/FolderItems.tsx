@@ -1031,98 +1031,100 @@ export default function FolderItems() {
                           {item.name}
                         </h3>
                       </div>
-                      <div className="flex shrink-0 items-center gap-0.5 sm:hidden">
-                        <p className="pr-0.5 text-sm font-bold tabular-nums tracking-tight whitespace-nowrap">
+                      <div className="flex shrink-0 items-start gap-0.5 sm:hidden">
+                        <p className="pr-0.5 pt-1 text-sm font-bold tabular-nums tracking-tight whitespace-nowrap">
                           {money(item.price || 0)}
                         </p>
-                        {stripPaymentMarker(item.notes) ? (
-                          <Popover>
-                            <PopoverTrigger asChild>
+                        <div className="flex flex-col items-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
                               <Button
-                                type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 text-primary"
-                                aria-label="Ver notas"
-                                title="Ver notas"
+                                className="h-7 w-7"
+                                aria-label="Ações"
                               >
-                                <StickyNote className="h-3.5 w-3.5" />
+                                <MoreVertical className="h-3.5 w-3.5" />
                               </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              align="end"
-                              className="w-80 max-w-[min(20rem,calc(100vw-2rem))]"
-                            >
-                              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                                <StickyNote className="h-4 w-4 text-primary" />
-                                Notas
-                              </div>
-                              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                                {stripPaymentMarker(item.notes)}
-                              </p>
-                            </PopoverContent>
-                          </Popover>
-                        ) : null}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              aria-label="Ações"
-                            >
-                              <MoreVertical className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem
-                              className="gap-2"
-                              onClick={() => openEdit(item)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="gap-2"
-                              onClick={() =>
-                                sendReminder(item, reminderTemplate())
-                              }
-                            >
-                              <Bell className="h-4 w-4" />
-                              Lembrar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="gap-2"
-                              onClick={() => {
-                                setMoveItemId(item.id);
-                                setMoveOpen(true);
-                              }}
-                            >
-                              <ArrowLeftRight className="h-4 w-4" />
-                              Mover
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="gap-2 text-destructive focus:text-destructive"
-                              onClick={() => {
-                                if (confirm(`Excluir "${item.name}"?`)) {
-                                  if (user && item.itemId) {
-                                    excludeFromSync(
-                                      user.id,
-                                      folder.id,
-                                      item.itemId,
-                                    );
-                                  }
-                                  setData((prev) => deleteItem(prev, item.id));
-                                  toast.success("Item excluído");
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() => openEdit(item)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() =>
+                                  sendReminder(item, reminderTemplate())
                                 }
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              >
+                                <Bell className="h-4 w-4" />
+                                Lembrar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() => {
+                                  setMoveItemId(item.id);
+                                  setMoveOpen(true);
+                                }}
+                              >
+                                <ArrowLeftRight className="h-4 w-4" />
+                                Mover
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="gap-2 text-destructive focus:text-destructive"
+                                onClick={() => {
+                                  if (confirm(`Excluir "${item.name}"?`)) {
+                                    if (user && item.itemId) {
+                                      excludeFromSync(
+                                        user.id,
+                                        folder.id,
+                                        item.itemId,
+                                      );
+                                    }
+                                    setData((prev) => deleteItem(prev, item.id));
+                                    toast.success("Item excluído");
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          {stripPaymentMarker(item.notes) ? (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-primary"
+                                  aria-label="Ver notas"
+                                  title="Ver notas"
+                                >
+                                  <StickyNote className="h-3.5 w-3.5" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                align="end"
+                                className="w-80 max-w-[min(20rem,calc(100vw-2rem))]"
+                              >
+                                <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                                  <StickyNote className="h-4 w-4 text-primary" />
+                                  Notas
+                                </div>
+                                <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                                  {stripPaymentMarker(item.notes)}
+                                </p>
+                              </PopoverContent>
+                            </Popover>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-x-2.5 gap-y-0 text-[11px] leading-snug text-muted-foreground sm:gap-x-4 sm:gap-y-1 sm:text-sm sm:leading-normal">
