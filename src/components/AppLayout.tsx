@@ -67,6 +67,7 @@ export function AppLayout() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileOpenRef = useRef(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSED_KEY) === "true";
@@ -74,6 +75,10 @@ export function AppLayout() {
       return false;
     }
   });
+
+  useEffect(() => {
+    mobileOpenRef.current = mobileOpen;
+  }, [mobileOpen]);
 
   useEffect(() => {
     try {
@@ -92,6 +97,61 @@ export function AppLayout() {
     document.documentElement.style.removeProperty("pointer-events");
     document.documentElement.style.removeProperty("overflow");
   }, [location.pathname]);
+
+  // Mobile: arrastar ←→ abre/fecha o menu lateral
+  useEffect(() => {
+    const THRESHOLD = 56;
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+
+    const isMobileViewport = () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 1023px)").matches;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (!isMobileViewport() || e.touches.length !== 1) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "input, textarea, select, [contenteditable=true], [data-no-swipe-menu]",
+        )
+      ) {
+        return;
+      }
+      const t = e.touches[0];
+      startX = t.clientX;
+      startY = t.clientY;
+      tracking = true;
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!tracking || !isMobileViewport()) return;
+      tracking = false;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      if (Math.abs(dx) < THRESHOLD || Math.abs(dx) < Math.abs(dy) * 1.25) {
+        return;
+      }
+
+      if (dx > 0 && !mobileOpenRef.current) {
+        // Esquerda → direita: abrir
+        setMobileOpen(true);
+      } else if (dx < 0 && mobileOpenRef.current) {
+        // Direita → esquerda: fechar / minimizar
+        setMobileOpen(false);
+      }
+    };
+
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
 
   if (loading) return <LoadingScreen />;
   if (!user) return null;
