@@ -31,7 +31,10 @@ module.exports = async function handler(req, res) {
 
   const rawPath = header(req, "x-iptv-path").trim();
   if (!rawPath) {
-    return res.status(400).json({ error: "Informe x-iptv-path (ex.: /login)" });
+    return res.status(400).json({
+      error:
+        "Informe x-iptv-path (ex.: /login ou /users-iptv/123). Sem isso a UniPlay responde 405 no POST.",
+    });
   }
 
   const apiPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;

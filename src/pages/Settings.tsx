@@ -9,6 +9,11 @@ import {
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { emailTakenByOther } from "@/lib/storage";
 import {
+  isUniplayConnected,
+  loadAutomationsConfig,
+  loadAutomationsConfigRemote,
+} from "@/lib/automationsConfig";
+import {
   defaultNotificationSettings,
   loadNotificationSettings,
   loadNotificationSettingsRemote,
@@ -44,10 +49,23 @@ export default function Settings() {
   const [perm, setPerm] = useState<NotificationPermission | "unsupported">(
     () => notificationPermission(),
   );
+  const [uniplayLinked, setUniplayLinked] = useState(false);
 
   useEffect(() => {
     setEmail(user?.email?.trim() || user?.pendingEmail?.trim() || "");
   }, [user?.email, user?.pendingEmail]);
+
+  useEffect(() => {
+    if (!user) {
+      setUniplayLinked(false);
+      return;
+    }
+    const local = loadAutomationsConfig(user.id);
+    setUniplayLinked(isUniplayConnected(local));
+    void loadAutomationsConfigRemote(user.id).then((cfg) => {
+      setUniplayLinked(isUniplayConnected(cfg));
+    });
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -397,6 +415,24 @@ export default function Settings() {
               />
             </div>
 
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 p-3">
+              <div>
+                <p className="text-sm font-medium">Atendimento WhatsApp</p>
+                <p className="text-xs text-muted-foreground">
+                  Avisa no celular quando alguém digitar 2 (atendentes), com o
+                  número do contato. Também manda um aviso no WhatsApp da
+                  conta conectada.
+                </p>
+              </div>
+              <Switch
+                checked={notif.whatsappHumanEnabled !== false}
+                disabled={!notif.enabled}
+                onCheckedChange={(v) =>
+                  setNotif((p) => ({ ...p, whatsappHumanEnabled: v }))
+                }
+              />
+            </div>
+
             <div className="space-y-3 rounded-lg border border-border/60 p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -435,79 +471,90 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="space-y-3 rounded-lg border border-border/60 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">Meus créditos UniPlay</p>
-                  <p className="text-xs text-muted-foreground">
-                    Lembra quando o saldo ficar abaixo do limite.
-                  </p>
+            {uniplayLinked ? (
+              <>
+                <div className="space-y-3 rounded-lg border border-border/60 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Meus créditos UniPlay
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Lembra quando o saldo ficar abaixo do limite.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={notif.userCreditsEnabled}
+                      disabled={!notif.enabled}
+                      onCheckedChange={(v) =>
+                        setNotif((p) => ({ ...p, userCreditsEnabled: v }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="notif-user-credits">Avisar abaixo de</Label>
+                    <Input
+                      id="notif-user-credits"
+                      type="number"
+                      min={0}
+                      step={1}
+                      disabled={!notif.enabled || !notif.userCreditsEnabled}
+                      value={notif.userCreditsThreshold}
+                      onChange={(e) =>
+                        setNotif((p) => ({
+                          ...p,
+                          userCreditsThreshold: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
-                <Switch
-                  checked={notif.userCreditsEnabled}
-                  disabled={!notif.enabled}
-                  onCheckedChange={(v) =>
-                    setNotif((p) => ({ ...p, userCreditsEnabled: v }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notif-user-credits">Avisar abaixo de</Label>
-                <Input
-                  id="notif-user-credits"
-                  type="number"
-                  min={0}
-                  step={1}
-                  disabled={!notif.enabled || !notif.userCreditsEnabled}
-                  value={notif.userCreditsThreshold}
-                  onChange={(e) =>
-                    setNotif((p) => ({
-                      ...p,
-                      userCreditsThreshold: Number(e.target.value),
-                    }))
-                  }
-                />
-              </div>
-            </div>
 
-            <div className="space-y-3 rounded-lg border border-border/60 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">
-                    Créditos dos revendedores
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Lembra quando um revendedor estiver com poucos créditos.
-                  </p>
+                <div className="space-y-3 rounded-lg border border-border/60 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Créditos dos revendedores
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Lembra quando um revendedor estiver com poucos créditos.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={notif.resellerCreditsEnabled}
+                      disabled={!notif.enabled}
+                      onCheckedChange={(v) =>
+                        setNotif((p) => ({
+                          ...p,
+                          resellerCreditsEnabled: v,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="notif-reseller-credits">
+                      Avisar com até (≤)
+                    </Label>
+                    <Input
+                      id="notif-reseller-credits"
+                      type="number"
+                      min={0}
+                      step={1}
+                      disabled={
+                        !notif.enabled || !notif.resellerCreditsEnabled
+                      }
+                      value={notif.resellerCreditsThreshold}
+                      onChange={(e) =>
+                        setNotif((p) => ({
+                          ...p,
+                          resellerCreditsThreshold: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
-                <Switch
-                  checked={notif.resellerCreditsEnabled}
-                  disabled={!notif.enabled}
-                  onCheckedChange={(v) =>
-                    setNotif((p) => ({ ...p, resellerCreditsEnabled: v }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notif-reseller-credits">
-                  Avisar com até (≤)
-                </Label>
-                <Input
-                  id="notif-reseller-credits"
-                  type="number"
-                  min={0}
-                  step={1}
-                  disabled={!notif.enabled || !notif.resellerCreditsEnabled}
-                  value={notif.resellerCreditsThreshold}
-                  onChange={(e) =>
-                    setNotif((p) => ({
-                      ...p,
-                      resellerCreditsThreshold: Number(e.target.value),
-                    }))
-                  }
-                />
-              </div>
-            </div>
+              </>
+            ) : null}
 
             <Button type="submit" disabled={savingNotif}>
               {savingNotif ? (

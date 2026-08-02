@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { tokenExpiresInSec } from "@/lib/iptvPanelApi";
 
 export interface AutomationsConfig {
   /** URL do painel IPTV (privada, por conta) */
@@ -36,6 +37,11 @@ export interface AutomationsConfig {
   mpAccessToken: string;
   /** E-mail do pagador usado na criação do PIX (exigido pela API MP) */
   mpPayerEmail: string;
+  /**
+   * Valor cobrado por crédito ao revendedor (WhatsApp / PIX).
+   * Ex.: 8.5 → pacote de 10 créditos = R$ 85,00
+   */
+  resellerCreditPriceBrl: number;
 }
 
 const KEY = "auxplus-automations";
@@ -58,6 +64,7 @@ export function defaultAutomationsConfig(): AutomationsConfig {
     syncResellersFolderId: "",
     mpAccessToken: "",
     mpPayerEmail: "",
+    resellerCreditPriceBrl: 8.5,
   };
 }
 
@@ -93,6 +100,12 @@ function normalizeConfig(
         ? String(parsed.mpAccessToken).trim()
         : (base.mpAccessToken ?? ""),
     mpPayerEmail: parsed.mpPayerEmail?.trim() || base.mpPayerEmail || "",
+    resellerCreditPriceBrl: Math.max(
+      0.01,
+      Number(parsed.resellerCreditPriceBrl) ||
+        base.resellerCreditPriceBrl ||
+        8.5,
+    ),
   };
 }
 
@@ -220,4 +233,39 @@ export async function saveAutomationsConfigRemote(
   const clean = normalizeConfig(defaultAutomationsConfig(), config);
   writeLocal(userId, clean);
   return persistRemote(userId, clean);
+}
+
+/** Sessão UniPlay com Bearer ainda válido (ou sem prazo legível). */
+export function isUniplaySessionAlive(
+  config: Pick<AutomationsConfig, "iptvBearerToken">,
+): boolean {
+  const bearer = config.iptvBearerToken?.trim() || "";
+  if (!bearer) return false;
+  const left = tokenExpiresInSec(bearer);
+  return left == null || left > 0;
+}
+
+/** Login/senha salvos para reconectar. */
+export function hasUniplayCredentials(
+  config: Pick<AutomationsConfig, "iptvUsername" | "iptvPassword">,
+): boolean {
+  return Boolean(config.iptvUsername?.trim() && config.iptvPassword);
+}
+
+/**
+ * Conta UniPlay ligada o suficiente para mostrar UI (créditos, sync, abas…).
+ * - Sessão viva → conectado
+ * - Token já existiu e expirou, mas ainda há login/senha → pode reconectar
+ * Digitar usuário/senha sem nunca ter conectado NÃO libera a UI.
+ */
+export function isUniplayConnected(
+  config: Pick<
+    AutomationsConfig,
+    "iptvBearerToken" | "iptvUsername" | "iptvPassword"
+  >,
+): boolean {
+  if (isUniplaySessionAlive(config)) return true;
+  const bearer = config.iptvBearerToken?.trim() || "";
+  if (!bearer) return false;
+  return hasUniplayCredentials(config);
 }

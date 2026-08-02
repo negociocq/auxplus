@@ -15,6 +15,7 @@ import {
   Clock3,
   CheckCircle2,
   Wallet,
+  Headset,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBrDate } from "@/lib/format";
@@ -49,6 +50,7 @@ import {
   buildTodayQueue,
   canSendMore,
   defaultWhatsappAutomation,
+  fetchEvolutionConnectedProfile,
   fetchEvolutionQr,
   fetchEvolutionStatus,
   loadSendLog,
@@ -60,7 +62,10 @@ import {
   saveSendLog,
   saveWhatsappSettings,
   sendEvolutionText,
+  findEvolutionWebhook,
+  setEvolutionWebhook,
   syncWhatsappAccountData,
+  type EvolutionConnectedProfile,
   type EvolutionRuntimeConfig,
   type WaConnectionStatus,
   type WhatsappAutomationSettings,
@@ -74,6 +79,12 @@ import {
   type EvolutionPlatformConfig,
 } from "@/lib/platformApi";
 import { PixRenewPanel } from "@/components/whatsapp/PixRenewPanel";
+import { WhatsappBotPanel } from "@/components/whatsapp/WhatsappBotPanel";
+import {
+  loadWhatsappBotConfigRemote,
+  registerWaInstanceMapping,
+} from "@/lib/whatsappBotConfig";
+import { SUPABASE_URL } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
 function statusLabel(status: WaConnectionStatus) {
@@ -111,6 +122,9 @@ export default function WhatsAppPage() {
   const [restoreTarget, setRestoreTarget] = useState<
     null | "messageBefore" | "messageOnDay" | "limits"
   >(null);
+  const [botEnabled, setBotEnabled] = useState(false);
+  const [connectedProfile, setConnectedProfile] =
+    useState<EvolutionConnectedProfile | null>(null);
   const sendingRef = useRef(false);
   const pollRef = useRef<number | null>(null);
 
@@ -124,6 +138,9 @@ export default function WhatsAppPage() {
       setSettings(s);
       setLogs(l);
     });
+    void loadWhatsappBotConfigRemote(user.id).then((c) =>
+      setBotEnabled(c.enabled),
+    );
   }, [user]);
 
   // Mantém a fila alinhada com envios automáticos / outra aba / outros PCs
@@ -203,10 +220,65 @@ export default function WhatsAppPage() {
     }
   };
 
+  const ensureBotInbound = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!runtime || !user) return false;
+      const webhookUrl = `${SUPABASE_URL}/functions/v1/evolution-webhook`;
+      try {
+        await registerWaInstanceMapping(runtime.instanceName, user.id);
+        await setEvolutionWebhook(runtime, webhookUrl);
+        const found = await findEvolutionWebhook(runtime);
+        const okUrl =
+          !found?.url ||
+          found.url.includes("evolution-webhook") ||
+          found.url.includes(webhookUrl);
+        if (!opts?.silent) {
+          if (okUrl) {
+            toast.success("Recebimento do bot ativo", {
+              description:
+                "Mande mensagem do celular do revendedor/cliente para este WhatsApp.",
+            });
+          } else {
+            toast.message("Webhook registrado, confira a Evolution", {
+              description: found?.url || webhookUrl,
+            });
+          }
+        }
+        return true;
+      } catch (e) {
+        console.warn("[whatsapp] webhook/bot inbound", e);
+        if (!opts?.silent) {
+          toast.error("Não deu para ativar o recebimento do bot", {
+            description:
+              e instanceof Error
+                ? e.message
+                : "A Evolution (ngrok/Docker) precisa estar no ar.",
+          });
+        }
+        return false;
+      }
+    },
+    [runtime, user],
+  );
+
+  const loadConnectedProfile = useCallback(async () => {
+    if (!runtime) {
+      setConnectedProfile(null);
+      return;
+    }
+    try {
+      const profile = await fetchEvolutionConnectedProfile(runtime);
+      setConnectedProfile(profile);
+    } catch {
+      setConnectedProfile(null);
+    }
+  }, [runtime]);
+
   const refreshQr = useCallback(async () => {
     if (!runtime) {
       setStatus("disconnected");
       setQrBase64(null);
+      setConnectedProfile(null);
       toast.error(
         "WhatsApp ainda não foi liberado. Peça ao administrador para configurar em Admin → API.",
       );
@@ -221,15 +293,20 @@ export default function WhatsAppPage() {
       if (res.status === "open") {
         toast.success("WhatsApp vinculado");
         stopPoll();
+        void loadConnectedProfile();
+        void ensureBotInbound({ silent: true });
+      } else {
+        setConnectedProfile(null);
       }
     } catch (e) {
       setStatus("error");
       setQrBase64(null);
+      setConnectedProfile(null);
       toast.error(e instanceof Error ? e.message : "Falha ao obter QR Code");
     } finally {
       setBusy(false);
     }
-  }, [runtime]);
+  }, [runtime, loadConnectedProfile, ensureBotInbound]);
 
   const checkStatus = useCallback(async () => {
     if (!runtime) return;
@@ -239,11 +316,15 @@ export default function WhatsAppPage() {
       if (st === "open") {
         setQrBase64(null);
         stopPoll();
+        void loadConnectedProfile();
+        void ensureBotInbound({ silent: true });
+      } else {
+        setConnectedProfile(null);
       }
     } catch {
       /* ignore polling errors */
     }
-  }, [runtime]);
+  }, [runtime, loadConnectedProfile, ensureBotInbound]);
 
   useEffect(() => {
     if (status !== "qr" && status !== "connecting") {
@@ -269,6 +350,7 @@ export default function WhatsAppPage() {
       await logoutEvolution(runtime);
       setStatus("disconnected");
       setQrBase64(null);
+      setConnectedProfile(null);
       toast.message("WhatsApp desvinculado");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao desconectar");
@@ -449,7 +531,7 @@ export default function WhatsAppPage() {
     <div className="space-y-6">
       <PageHeader
         title="WhatsApp"
-        description="Vincule o número, lembretes de vencimento, PIX de renovação e envio com intervalos seguros."
+        description="Vincule o número, lembretes, PIX, autoatendimento e envio com intervalos seguros."
       />
 
       <Tabs defaultValue="fila" className="space-y-4">
@@ -478,6 +560,19 @@ export default function WhatsAppPage() {
           <TabsTrigger value="pix" className="gap-1.5">
             <Wallet className="h-3.5 w-3.5" />
             PIX
+          </TabsTrigger>
+          <TabsTrigger value="atendimento" className="gap-1.5">
+            <Headset className="h-3.5 w-3.5" />
+            Atendimento
+            <Badge
+              variant="outline"
+              className={cn(
+                "ml-0.5 h-5 px-1.5 text-[10px]",
+                botEnabled && "border-success/40 bg-success/15 text-success",
+              )}
+            >
+              {botEnabled ? "Auto" : "Off"}
+            </Badge>
           </TabsTrigger>
           <TabsTrigger value="lembretes" className="gap-1.5">
             <MessageSquareText className="h-3.5 w-3.5" />
@@ -543,6 +638,20 @@ export default function WhatsAppPage() {
                 <CheckCircle2 className="h-8 w-8 shrink-0 text-success" />
                 <div className="min-w-0">
                   <p className="font-medium">WhatsApp conectado</p>
+                  {connectedProfile?.phone ? (
+                    <p className="mt-0.5 text-base font-semibold tabular-nums tracking-tight text-foreground">
+                      {maskPhone(connectedProfile.phone)}
+                      {connectedProfile.profileName ? (
+                        <span className="ml-2 text-sm font-normal text-muted-foreground">
+                          · {connectedProfile.profileName}
+                        </span>
+                      ) : null}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Número ainda não identificado…
+                    </p>
+                  )}
                   <p className="text-sm text-muted-foreground">
                     Pronto para enviar lembretes e PIX com intervalo seguro.
                   </p>
@@ -589,17 +698,44 @@ export default function WhatsAppPage() {
                 Gerar / atualizar QR
               </Button>
               {status === "open" ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void onDisconnect()}
-                  disabled={busy}
-                >
-                  <Unplug className="h-4 w-4" />
-                  Desconectar
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy || !runtime}
+                    onClick={() => {
+                      setBusy(true);
+                      void ensureBotInbound()
+                        .finally(() => setBusy(false));
+                    }}
+                  >
+                    {busy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Headset className="h-4 w-4" />
+                    )}
+                    Ativar recebimento do bot
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void onDisconnect()}
+                    disabled={busy}
+                  >
+                    <Unplug className="h-4 w-4" />
+                    Desconectar
+                  </Button>
+                </>
               ) : null}
             </div>
+            {status === "open" ? (
+              <p className="text-[11px] text-muted-foreground">
+                O bot não depende do localhost: a Evolution avisa o Supabase.
+                Confira se o Docker/ngrok da Evolution está no ar e se o WhatsApp
+                do revendedor no AuxPlus é exatamente o número que está mandando
+                a mensagem.
+              </p>
+            ) : null}
           </section>
         </TabsContent>
 
@@ -1029,6 +1165,10 @@ export default function WhatsAppPage() {
 
         <TabsContent value="pix" className="mt-0 space-y-4">
           <PixRenewPanel />
+        </TabsContent>
+
+        <TabsContent value="atendimento" className="mt-0 space-y-4">
+          <WhatsappBotPanel onEnabledChange={setBotEnabled} />
         </TabsContent>
       </Tabs>
 

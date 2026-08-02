@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { format } from "date-fns";
 import {
   CheckCircle2,
   ClipboardCopy,
@@ -32,6 +33,7 @@ import {
 import {
   applyPanelDueToItem,
   applyRenewalToItem,
+  applyResellerRechargeToItem,
   copyText,
   createIptvJob,
   loadIptvJobs,
@@ -39,14 +41,20 @@ import {
   saveIptvJobs,
 } from "@/lib/iptvAutomation";
 import {
+  addIptvResellerCredits,
   ensureIptvToken,
   findIptvUserByUsername,
   getLastIssuedIptvToken,
   IPTV_RENEW_OPTIONS,
+  listIptvResellers,
   renewIptvUser,
   type IptvPanelCreds,
   type IptvRenewOption,
 } from "@/lib/iptvPanelApi";
+import {
+  loadWaBotStateRemote,
+  saveWaBotStateRemote,
+} from "@/lib/whatsappBotConfig";
 import {
   createMercadoPagoPix,
   fetchMercadoPagoPaymentStatus,
@@ -56,9 +64,12 @@ import {
   buildPixWhatsappCodeOnly,
   buildPixWhatsappIntro,
   createMpOrder,
+  findPendingMpOrderForClient,
+  getMpOrderExpiresAt,
   loadMpOrders,
   loadMpOrdersRemote,
   patchMpOrder,
+  pruneStaleMpOrders,
   saveMpOrders,
   type MpRenewOrder,
 } from "@/lib/mercadoPagoOrders";
@@ -75,14 +86,13 @@ import {
 } from "@/lib/whatsappAutomation";
 import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
+import { getPlanMonths, planPixAmount } from "@/lib/planMonths";
 
 function pixAmountFromFolderPrice(
   price: number | null | undefined,
   months: number,
 ): number {
-  const base = Number(price) || 0;
-  if (base <= 0) return 0;
-  return Math.round(base * Math.max(1, months) * 100) / 100;
+  return planPixAmount(Number(price) || 0, months);
 }
 
 export function PixRenewPanel() {
@@ -103,14 +113,25 @@ export function PixRenewPanel() {
     IPTV_RENEW_OPTIONS[0],
   );
   const [pixBusy, setPixBusy] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [pixActiveOrderId, setPixActiveOrderId] = useState<string | null>(null);
   const releasingRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
-    setMpOrders(loadMpOrders(user.id));
-    void loadMpOrdersRemote(user.id).then(setMpOrders);
+    const apply = (list: MpRenewOrder[]) => {
+      const pruned = pruneStaleMpOrders(list);
+      setMpOrders(pruned);
+      if (pruned.length !== list.length) saveMpOrders(user.id, pruned);
+    };
+    apply(loadMpOrders(user.id));
+    void loadMpOrdersRemote(user.id).then(apply);
     void loadAutomationsConfigRemote(user.id).then(setConfig);
+    // Some sozinho quando o PIX do MP deixa de valer (sem clicar Verificar)
+    const id = window.setInterval(() => {
+      apply(loadMpOrders(user.id));
+    }, 30_000);
+    return () => window.clearInterval(id);
   }, [user]);
 
   const clients = useMemo(() => {
@@ -140,9 +161,15 @@ export function PixRenewPanel() {
 
   const persistMpOrders = (next: MpRenewOrder[]) => {
     if (!user) return;
-    setMpOrders(next);
-    saveMpOrders(user.id, next);
+    const pruned = pruneStaleMpOrders(next);
+    setMpOrders(pruned);
+    saveMpOrders(user.id, pruned);
   };
+
+  const clientById = useMemo(() => {
+    const map = new Map(clients.map((c) => [c.id, c]));
+    return map;
+  }, [clients]);
 
   const persistToken = (token: string) => {
     if (!user || !token) return;
@@ -183,7 +210,36 @@ export function PixRenewPanel() {
       toast.error("Cliente sem preço na pasta — preencha o preço antes do PIX");
       return;
     }
-    setPixOption(IPTV_RENEW_OPTIONS[0]);
+
+    // Já existe PIX pendente deste usuário → só reabre o existente
+    if (user) {
+      const pruned = pruneStaleMpOrders(loadMpOrders(user.id));
+      if (pruned.length !== loadMpOrders(user.id).length) {
+        persistMpOrders(pruned);
+      }
+      const existing = findPendingMpOrderForClient(pruned, {
+        itemRefId: item.id,
+        panelUsername: item.itemId,
+      });
+      if (existing) {
+        const opt =
+          IPTV_RENEW_OPTIONS.find((o) => o.months === existing.months) ||
+          IPTV_RENEW_OPTIONS[0];
+        setPixOption(opt);
+        setPixActiveOrderId(existing.id);
+        setPixTargetId(itemId);
+        toast.message(
+          "Já existe um PIX aguardando para este usuário. Use o código abaixo ou aguarde expirar.",
+        );
+        return;
+      }
+    }
+
+    const planM = getPlanMonths(item, config.renewMonths || 1);
+    const preferred =
+      IPTV_RENEW_OPTIONS.find((o) => o.months === planM) ||
+      IPTV_RENEW_OPTIONS[0];
+    setPixOption(preferred);
     setPixActiveOrderId(null);
     setPixTargetId(itemId);
   };
@@ -192,24 +248,231 @@ export function PixRenewPanel() {
     if (!user || releasingRef.current.has(order.id)) return;
     const latest = loadMpOrders(user.id).find((o) => o.id === order.id) || order;
     if (latest.status === "released") return;
+    // Trava de crédito: nunca Extend Line sem PIX confirmado no MP
+    if (latest.status !== "approved") {
+      toast.error(
+        "Pagamento ainda não confirmado — nenhum crédito será gasto no painel",
+      );
+      return;
+    }
     releasingRef.current.add(order.id);
     try {
       const item = clients.find((i) => i.id === order.itemRefId);
+      const username = (
+        order.panelUsername ||
+        item?.itemId ||
+        ""
+      ).trim();
+      if (!username && !item) {
+        throw new Error("Pedido sem usuário vinculado");
+      }
+
+      const credsBase = await panelCreds();
+      const ensured = await ensureIptvToken(credsBase);
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...credsBase, bearerToken: ensured.token };
+
+      // Teste WhatsApp → plano: só libera no UniPlay depois do PIX
+      if (order.kind === "test_activate") {
+        if (!creds.bearerToken.trim()) {
+          throw new Error("Conecte a UniPlay para liberar o plano");
+        }
+        if (!username) {
+          throw new Error("Pedido sem usuário do teste");
+        }
+        let remoteId = order.testRemoteId;
+        if (remoteId == null || remoteId === "") {
+          const remote = await findIptvUserByUsername(creds, username);
+          if (!remote?.id) {
+            throw new Error(`Usuário ${username} não encontrado no UniPlay`);
+          }
+          remoteId = remote.id;
+        }
+        const months = Math.max(1, Number(order.months) || 1);
+        await renewIptvUser(creds, remoteId, {
+          months,
+          credits: Math.max(1, Number(order.credits) || 1),
+        });
+        const issued = getLastIssuedIptvToken();
+        if (issued) persistToken(issued);
+
+        {
+          const currentJobs = loadIptvJobs(user.id);
+          const job = createIptvJob({
+            kind: "renew",
+            status: "done",
+            itemRefId: order.itemRefId || "",
+            clientName: order.clientName || username,
+            panelUsername: username,
+            panelRemoteId: remoteId,
+            phone: order.phone || "",
+            dueDate: order.dueDate ?? null,
+            months,
+            testHours: config.testHours,
+            note: `WhatsApp · teste→plano · ${months}m · MP ${order.mpPaymentId}`,
+          });
+          saveIptvJobs(user.id, [job, ...currentJobs]);
+        }
+
+        persistMpOrders(
+          patchMpOrder(loadMpOrders(user.id), order.id, {
+            status: "released",
+            paidAt: latest.paidAt || new Date().toISOString(),
+            releasedAt: new Date().toISOString(),
+            error: undefined,
+          }),
+        );
+
+        const screens = Math.max(1, Math.floor(Number(order.screens) || 1));
+        const testApp =
+          order.testApp === "prime"
+            ? "prime"
+            : order.testApp === "fun"
+              ? "fun"
+              : "";
+        const phone = String(order.phone || "").replace(/\D/g, "");
+
+        try {
+          const evo = await loadEvolutionPlatformConfig();
+          if (isEvolutionConfigured(evo) && phone.length >= 10) {
+            const runtime = {
+              apiBaseUrl: evo.apiBaseUrl,
+              apiKey: evo.apiKey,
+              instanceName: instanceNameForUser(
+                evo.instancePrefix,
+                user.id,
+                user.username,
+              ),
+            };
+            if ((await fetchEvolutionStatus(runtime)) === "open") {
+              await sendEvolutionText(
+                runtime,
+                phone,
+                `✅ *Pagamento confirmado!*\n\n` +
+                  `Plano liberado no usuário *${username}*.\n` +
+                  `Bom proveito!`,
+              );
+              if (
+                screens > 1 &&
+                (testApp === "fun" || testApp === "prime") &&
+                order.testPassword
+              ) {
+                const state = await loadWaBotStateRemote(user.id);
+                state.sessions[phone] = {
+                  ...(state.sessions[phone] || {
+                    state: "idle",
+                    updatedAt: new Date().toISOString(),
+                  }),
+                  state: "test_plan_await_mac",
+                  role: "unknown",
+                  testUsername: username,
+                  testPassword: order.testPassword,
+                  testRemoteId: remoteId,
+                  testApp,
+                  activationsTotal: screens,
+                  activationsDone: 1,
+                  updatedAt: new Date().toISOString(),
+                };
+                await saveWaBotStateRemote(user.id, state);
+                await new Promise((r) => window.setTimeout(r, 1400));
+                const appName =
+                  testApp === "prime" ? "Prime IPTV" : "FunPlay";
+                await sendEvolutionText(
+                  runtime,
+                  phone,
+                  `Seu plano inclui *${screens} telas*. A *1ª* já foi no teste.\n\n` +
+                    `Envie o *MAC* da *2ª tela* no *${appName}*.\n\n` +
+                    `_Formatos: aa:bb:cc:dd:ee:ff ou aabbccddeeff.\n` +
+                    `Digite *pular* para encerrar, ou *atendente*._`,
+                );
+              }
+            }
+          }
+        } catch {
+          /* WhatsApp opcional */
+        }
+
+        toast.success(`Pagamento confirmado · plano liberado (${username})`);
+        return;
+      }
+
+      // Revendedor: PIX pago → passa créditos no UniPlay
+      if (order.kind === "reseller_credits") {
+        if (!creds.bearerToken.trim()) {
+          throw new Error("Conecte a UniPlay para liberar créditos");
+        }
+        const credits = Math.max(10, Math.floor(Number(order.credits) || 10));
+        const resellers = await listIptvResellers(creds, {
+          search: username,
+          perPage: 100,
+        });
+        const remote =
+          resellers.find(
+            (r) =>
+              String(r.username || "").toLowerCase() === username.toLowerCase(),
+          ) || resellers[0];
+        if (!remote?.id) {
+          throw new Error(`Revendedor ${username || "?"} não encontrado no UniPlay`);
+        }
+        await addIptvResellerCredits(creds, {
+          resellerId: remote.id,
+          credits,
+        });
+        const issued = getLastIssuedIptvToken();
+        if (issued) persistToken(issued);
+
+        const paidAt = (
+          latest.paidAt ||
+          new Date().toISOString()
+        ).slice(0, 10);
+        if (item) {
+          const updated = applyResellerRechargeToItem(item, {
+            credits,
+            amountBrl: Number(order.amount) || 0,
+            paidAt,
+          });
+          setData((prev) => ({
+            ...prev,
+            items: prev.items.map((i) => (i.id === item.id ? updated : i)),
+          }));
+        }
+
+        persistMpOrders(
+          patchMpOrder(loadMpOrders(user.id), order.id, {
+            status: "released",
+            paidAt: latest.paidAt || new Date().toISOString(),
+            releasedAt: new Date().toISOString(),
+            error: undefined,
+          }),
+        );
+        toast.success(
+          `Pagamento confirmado · ${credits} créditos liberados para ${username}`,
+        );
+        return;
+      }
+
       if (!item) throw new Error("Cliente do pedido não encontrado");
+      // Meses do plano do cliente → créditos UniPlay (1/2/3/4/6→5/12→10)
       const option =
         IPTV_RENEW_OPTIONS.find((o) => o.months === order.months) || {
-          months: order.months,
-          credits: order.credits,
+          months: Math.max(1, Number(order.months) || 1),
+          credits: Math.max(
+            1,
+            Number(order.credits) || Number(order.months) || 1,
+          ),
           label: `${order.months} mês(es)`,
         };
 
-      const credsBase = await panelCreds();
       const canRenewUniplay =
-        Boolean(item.itemId.trim()) && Boolean(credsBase.bearerToken.trim());
+        Boolean(item.itemId.trim()) && Boolean(creds.bearerToken.trim());
       let updated = applyRenewalToItem(item, option.months);
 
       if (canRenewUniplay) {
         const currentJobs = loadIptvJobs(user.id);
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const dueKey = String(item.dueDate || "").slice(0, 10);
+        const isExtend = Boolean(dueKey && dueKey >= todayKey);
+        const verb = isExtend ? "Estendido" : "Renovado";
         const job = createIptvJob({
           kind: "renew",
           status: "doing",
@@ -220,14 +483,11 @@ export function PixRenewPanel() {
           dueDate: item.dueDate,
           months: option.months,
           testHours: config.testHours,
-          note: `PIX pago · MP ${order.mpPaymentId}`,
+          note: `WhatsApp · PIX · MP ${order.mpPaymentId}`,
         });
         let nextJobs = [job, ...currentJobs];
         saveIptvJobs(user.id, nextJobs);
 
-        const ensured = await ensureIptvToken(credsBase);
-        if (ensured.renewed) persistToken(ensured.token);
-        const creds = { ...credsBase, bearerToken: ensured.token };
         const remote = await findIptvUserByUsername(creds, item.itemId.trim());
         if (!remote?.id) {
           throw new Error(`Usuário ${item.itemId} não encontrado no painel`);
@@ -250,9 +510,28 @@ export function PixRenewPanel() {
         nextJobs = patchIptvJob(nextJobs, job.id, {
           status: "done",
           dueDate: updated.dueDate,
-          note: `PIX liberado · ${option.label} · vence ${formatBrDate(updated.dueDate)}`,
+          note: `WhatsApp · ${verb} · ${option.label} · vence ${formatBrDate(updated.dueDate)} · MP ${order.mpPaymentId}`,
         });
         saveIptvJobs(user.id, nextJobs);
+      } else {
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const dueKey = String(item.dueDate || "").slice(0, 10);
+        const isExtend = Boolean(dueKey && dueKey >= todayKey);
+        const verb = isExtend ? "Estendido" : "Renovado";
+        const currentJobs = loadIptvJobs(user.id);
+        const job = createIptvJob({
+          kind: "renew",
+          status: "done",
+          itemRefId: item.id,
+          clientName: item.name,
+          panelUsername: item.itemId.trim() || username,
+          phone: item.phone || order.phone || "",
+          dueDate: updated.dueDate,
+          months: option.months,
+          testHours: config.testHours,
+          note: `WhatsApp · ${verb} · AuxPlus · ${option.label} · MP ${order.mpPaymentId}`,
+        });
+        saveIptvJobs(user.id, [job, ...currentJobs]);
       }
 
       setData((prev) => ({
@@ -285,45 +564,151 @@ export function PixRenewPanel() {
     }
   };
 
-  const pollPendingMpOrders = async () => {
-    if (!user || !config.mpAccessToken.trim()) return;
-    const current = loadMpOrders(user.id);
-    const pending = current.filter((o) => o.status === "pending");
-    const stuckApproved = current.filter(
-      (o) => o.status === "approved" && !o.releasedAt,
-    );
-    if (!pending.length && !stuckApproved.length) return;
-    let next = current;
-    let changed = false;
-    const approved: MpRenewOrder[] = [...stuckApproved];
-    for (const order of pending) {
-      try {
-        const st = await fetchMercadoPagoPaymentStatus({
-          accessToken: config.mpAccessToken,
-          paymentId: order.mpPaymentId,
-        });
-        const mapped = mapMpStatusToOrder(st.status);
-        if (mapped === "pending") continue;
-        changed = true;
-        next = patchMpOrder(next, order.id, {
-          status: mapped === "approved" ? "approved" : mapped,
-          paidAt:
-            mapped === "approved" ? new Date().toISOString() : order.paidAt,
-        });
-        const updated = next.find((o) => o.id === order.id);
-        if (updated && mapped === "approved") approved.push(updated);
-      } catch {
-        /* próxima rodada */
+  const pollPendingMpOrders = async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!user) return;
+    if (!config.mpAccessToken.trim()) {
+      if (!silent) {
+        toast.error("Configure o Access Token do Mercado Pago em Automações");
       }
+      return;
     }
-    if (changed) persistMpOrders(next);
-    for (const order of approved) void releasePaidOrder(order);
+    if (!silent) setVerifying(true);
+    try {
+      const loaded = loadMpOrders(user.id);
+      let next = pruneStaleMpOrders(loaded);
+      let changed = next.length !== loaded.length;
+      let removedExpired = loaded.length - next.length;
+      const pending = next.filter((o) => o.status === "pending");
+      const stuckApproved = next.filter(
+        (o) => o.status === "approved" && !o.releasedAt,
+      );
+      if (!pending.length && !stuckApproved.length) {
+        if (changed) persistMpOrders(next);
+        if (!silent) {
+          if (removedExpired > 0) {
+            toast.message(
+              `${removedExpired} PIX expirado(s) removido(s) da lista`,
+            );
+          } else {
+            toast.message("Nenhum PIX pendente para verificar");
+          }
+        }
+        return;
+      }
+      const approved: MpRenewOrder[] = [...stuckApproved];
+      const errors: string[] = [];
+      let stillWaiting = 0;
+      const now = Date.now();
+      for (const order of pending) {
+        if (now >= getMpOrderExpiresAt(order)) {
+          changed = true;
+          removedExpired += 1;
+          next = next.filter((o) => o.id !== order.id);
+          continue;
+        }
+        try {
+          const st = await fetchMercadoPagoPaymentStatus({
+            accessToken: config.mpAccessToken,
+            paymentId: order.mpPaymentId,
+          });
+          // Sincroniza validade real do MP (quando o QR deixa de valer)
+          if (
+            st.date_of_expiration &&
+            st.date_of_expiration !== order.expiresAt
+          ) {
+            changed = true;
+            next = patchMpOrder(next, order.id, {
+              expiresAt: st.date_of_expiration,
+            });
+          }
+          const expAt = st.date_of_expiration
+            ? Date.parse(st.date_of_expiration)
+            : getMpOrderExpiresAt(
+                next.find((o) => o.id === order.id) || order,
+              );
+          if (Number.isFinite(expAt) && now >= expAt) {
+            changed = true;
+            removedExpired += 1;
+            next = next.filter((o) => o.id !== order.id);
+            continue;
+          }
+          const mapped = mapMpStatusToOrder(st.status, st.status_detail);
+          if (mapped === "pending") {
+            stillWaiting += 1;
+            continue;
+          }
+          changed = true;
+          if (
+            mapped === "expired" ||
+            mapped === "cancelled" ||
+            mapped === "rejected"
+          ) {
+            removedExpired += 1;
+            next = next.filter((o) => o.id !== order.id);
+            continue;
+          }
+          next = patchMpOrder(next, order.id, {
+            status: mapped === "approved" ? "approved" : mapped,
+            paidAt:
+              mapped === "approved" ? new Date().toISOString() : order.paidAt,
+            expiresAt: st.date_of_expiration || order.expiresAt,
+          });
+          const updated = next.find((o) => o.id === order.id);
+          if (updated && mapped === "approved") approved.push(updated);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Falha ao consultar MP";
+          errors.push(`${order.panelUsername || order.id}: ${msg}`);
+        }
+      }
+      if (changed) persistMpOrders(next);
+      for (const order of approved) void releasePaidOrder(order);
+
+      if (!silent) {
+        if (approved.length > 0) {
+          toast.success(
+            approved.length === 1
+              ? "Pagamento confirmado — liberando renovação"
+              : `${approved.length} pagamentos confirmados`,
+          );
+        } else if (errors.length > 0) {
+          toast.error(errors[0]!);
+        } else if (removedExpired > 0 && stillWaiting === 0) {
+          toast.message(
+            `${removedExpired} PIX expirado(s)/cancelado(s) removido(s)`,
+          );
+        } else if (stillWaiting > 0) {
+          toast.message(
+            stillWaiting === 1
+              ? "Ainda aguardando o pagamento deste PIX"
+              : `Ainda aguardando pagamento de ${stillWaiting} PIX`,
+          );
+        } else {
+          toast.message("Verificação concluída");
+        }
+      }
+    } finally {
+      if (!silent) setVerifying(false);
+    }
   };
 
   const createAndSendPix = async () => {
     if (!user || !pixTargetId) return;
     const item = clients.find((i) => i.id === pixTargetId);
     if (!item) return;
+
+    const existing = findPendingMpOrderForClient(loadMpOrders(user.id), {
+      itemRefId: item.id,
+      panelUsername: item.itemId,
+    });
+    if (existing) {
+      setPixActiveOrderId(existing.id);
+      toast.message(
+        "Já existe um PIX aguardando para este usuário. Não foi gerado outro.",
+      );
+      return;
+    }
+
     const amount = pixAmountFromFolderPrice(item.price, pixOption.months);
     if (!(amount >= 1)) {
       toast.error(
@@ -333,6 +718,17 @@ export function PixRenewPanel() {
     }
     setPixBusy(true);
     try {
+      // Checagem de novo (evita clique duplo / race)
+      const again = findPendingMpOrderForClient(loadMpOrders(user.id), {
+        itemRefId: item.id,
+        panelUsername: item.itemId,
+      });
+      if (again) {
+        setPixActiveOrderId(again.id);
+        toast.message("Já existe um PIX aguardando para este usuário.");
+        return;
+      }
+
       const pix = await createMercadoPagoPix({
         accessToken: config.mpAccessToken,
         amount,
@@ -345,6 +741,7 @@ export function PixRenewPanel() {
         itemRefId: item.id,
         clientName: item.name,
         panelUsername: item.itemId.trim(),
+        dueDate: item.dueDate,
         phone: item.phone || "",
         months: pixOption.months,
         credits: pixOption.credits,
@@ -352,6 +749,8 @@ export function PixRenewPanel() {
         pixCopyPaste: pix.qr_code,
         ticketUrl: pix.ticket_url,
         status: "pending",
+        // Mesma validade do QR no Mercado Pago
+        expiresAt: pix.date_of_expiration,
       });
       persistMpOrders([order, ...loadMpOrders(user.id)]);
       setPixActiveOrderId(order.id);
@@ -385,12 +784,12 @@ export function PixRenewPanel() {
           dueDate: item.dueDate,
         }),
       );
-      await new Promise((r) => window.setTimeout(r, 900));
+      await new Promise((r) => window.setTimeout(r, 1400));
       await sendEvolutionText(
         runtime,
         item.phone || "",
         buildPixWhatsappCodeOnly(order),
-        600,
+        1200,
       );
       toast.success("PIX enviado no WhatsApp. Aguardando pagamento…");
     } catch (e) {
@@ -404,7 +803,7 @@ export function PixRenewPanel() {
     /* preenchido abaixo */
   });
   pollMpRef.current = () => {
-    void pollPendingMpOrders();
+    void pollPendingMpOrders({ silent: true });
   };
 
   useEffect(() => {
@@ -456,7 +855,12 @@ export function PixRenewPanel() {
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {filtered.map((item) => (
+            {filtered.map((item) => {
+              const pendingPix = findPendingMpOrderForClient(mpOrders, {
+                itemRefId: item.id,
+                panelUsername: item.itemId,
+              });
+              return (
               <li
                 key={item.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2 text-sm"
@@ -473,37 +877,49 @@ export function PixRenewPanel() {
                       : "sem preço"}
                     {item.dueDate ? ` · ${formatBrDate(item.dueDate)}` : ""}
                     {item.phone ? ` · ${maskPhone(item.phone)}` : ""}
+                    {pendingPix ? " · PIX aguardando" : ""}
                   </p>
                 </div>
                 <Button
                   type="button"
                   size="sm"
-                  variant="secondary"
+                  variant={pendingPix ? "outline" : "secondary"}
                   className="h-8 px-2.5"
                   disabled={pixBusy}
                   onClick={() => openPixDialog(item.id)}
                 >
                   <QrCode className="h-3.5 w-3.5" />
-                  PIX
+                  {pendingPix ? "Ver PIX" : "PIX"}
                 </Button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>
 
       <section className="ax-surface space-y-3 p-5">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="font-semibold tracking-tight">Pedidos PIX</h2>
+          <div>
+            <h2 className="font-semibold tracking-tight">Pedidos PIX</h2>
+            <p className="text-[11px] text-muted-foreground">
+              Validade = Mercado Pago · some quando o QR não puder mais ser pago
+            </p>
+          </div>
           <Button
             type="button"
             size="sm"
             variant="ghost"
             className="h-8 text-xs"
-            onClick={() => void pollPendingMpOrders()}
+            disabled={verifying}
+            onClick={() => void pollPendingMpOrders({ silent: false })}
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Verificar
+            {verifying ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {verifying ? "Verificando…" : "Verificar"}
           </Button>
         </div>
         {mpOrders.length === 0 ? (
@@ -512,72 +928,95 @@ export function PixRenewPanel() {
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {mpOrders.slice(0, 30).map((order) => (
-              <li
-                key={order.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-sm"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium leading-tight">
-                    {maskUser(order.panelUsername)}
-                  </p>
-                  <p className="truncate text-[11px] text-muted-foreground">
-                    {maskMoney(order.amount)} · {order.months}{" "}
-                    {order.months === 1 ? "mês" : "meses"}
-                    {order.error ? ` · ${order.error}` : ""}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px]",
-                      order.status === "pending" &&
-                        "border-primary/40 bg-primary/10 text-primary",
-                      order.status === "released" &&
-                        "border-success/40 bg-success/10 text-success",
-                      (order.status === "rejected" ||
-                        order.status === "cancelled" ||
-                        order.status === "expired") &&
-                        "border-destructive/40 bg-destructive/10 text-destructive",
-                    )}
-                  >
-                    {order.status === "pending"
-                      ? "Aguardando PIX"
-                      : order.status === "approved"
-                        ? "Pago · liberando"
-                        : order.status === "released"
-                          ? "Liberado"
-                          : order.status}
-                  </Badge>
-                  {order.pixCopyPaste ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 px-2"
-                      onClick={() => {
-                        void copyText(order.pixCopyPaste);
-                        toast.message("PIX copiado");
-                      }}
+            {mpOrders.slice(0, 30).map((order) => {
+              const live = clientById.get(order.itemRefId);
+              const note =
+                (live?.name || order.clientName || "").trim() || "—";
+              const due = live?.dueDate || order.dueDate || null;
+              return (
+                <li
+                  key={order.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium leading-tight">{note}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      Usuário: {maskUser(order.panelUsername)}
+                      {due ? ` · Plano: ${formatBrDate(due)}` : ""}
+                    </p>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      Gerado:{" "}
+                      {order.createdAt
+                        ? format(
+                            new Date(order.createdAt),
+                            "dd/MM/yyyy HH:mm",
+                          )
+                        : "—"}
+                      {" · "}
+                      PIX até:{" "}
+                      {format(
+                        new Date(getMpOrderExpiresAt(order)),
+                        "dd/MM/yyyy HH:mm",
+                      )}
+                    </p>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {maskMoney(order.amount)} · {order.months}{" "}
+                      {order.months === 1 ? "mês" : "meses"}
+                      {order.error ? ` · ${order.error}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px]",
+                        order.status === "pending" &&
+                          "border-primary/40 bg-primary/10 text-primary",
+                        order.status === "released" &&
+                          "border-success/40 bg-success/10 text-success",
+                        (order.status === "rejected" ||
+                          order.status === "cancelled" ||
+                          order.status === "expired") &&
+                          "border-destructive/40 bg-destructive/10 text-destructive",
+                      )}
                     >
-                      <ClipboardCopy className="h-3.5 w-3.5" />
-                    </Button>
-                  ) : null}
-                  {order.status === "approved" ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="h-8"
-                      onClick={() => void releasePaidOrder(order)}
-                    >
-                      Liberar
-                    </Button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
+                      {order.status === "pending"
+                        ? "Aguardando PIX"
+                        : order.status === "approved"
+                          ? "Pago · liberando"
+                          : order.status === "released"
+                            ? "Liberado"
+                            : order.status}
+                    </Badge>
+                    {order.pixCopyPaste ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-2"
+                        onClick={() => {
+                          void copyText(order.pixCopyPaste);
+                          toast.message("PIX copiado");
+                        }}
+                      >
+                        <ClipboardCopy className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : null}
+                    {order.status === "approved" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-8"
+                        onClick={() => void releasePaidOrder(order)}
+                      >
+                        Liberar
+                      </Button>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -596,8 +1035,11 @@ export function PixRenewPanel() {
             <DialogTitle>PIX para renovação</DialogTitle>
             <DialogDescription>
               {pixItem
-                ? `${maskUser(pixItem.itemId)} · vence ${pixItem.dueDate ? formatBrDate(pixItem.dueDate) : "—"}`
+                ? `${(pixItem.name || "").trim() || "—"} · ${maskUser(pixItem.itemId)} · vence ${pixItem.dueDate ? formatBrDate(pixItem.dueDate) : "—"}`
                 : "Gere o PIX e envie no WhatsApp"}
+              {active?.status === "pending"
+                ? " · PIX já existente (não gera outro)"
+                : ""}
             </DialogDescription>
           </DialogHeader>
           {active ? (
@@ -639,10 +1081,15 @@ export function PixRenewPanel() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => void pollPendingMpOrders()}
+                  disabled={verifying}
+                  onClick={() => void pollPendingMpOrders({ silent: false })}
                 >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Verificar pagamento
+                  {verifying ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  {verifying ? "Verificando…" : "Verificar pagamento"}
                 </Button>
               </div>
             </div>

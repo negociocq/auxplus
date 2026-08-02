@@ -1,18 +1,24 @@
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/integrations/supabase/client";
 import { supabase } from "@/integrations/supabase/client";
+import { PIX_EXPIRATION_ISO } from "@/lib/mercadoPagoOrders";
 
 export type CreatePixResult = {
   id: string;
+  /** Id do payment interno (PAY…), se o MP devolver */
+  paymentId?: string;
   status: string;
   qr_code: string;
   qr_code_base64?: string;
   ticket_url?: string;
+  /** Expiração real do QR PIX no Mercado Pago (ISO) */
+  date_of_expiration?: string;
 };
 
 export type PixStatusResult = {
   id: string;
   status: string;
   status_detail?: string;
+  date_of_expiration?: string;
 };
 
 function mpProxyUrl() {
@@ -118,6 +124,7 @@ export async function createMercadoPagoPix(opts: {
       description: opts.description.trim() || "Renovação IPTV",
       payerEmail: email,
       externalReference: opts.externalReference,
+      expirationTime: PIX_EXPIRATION_ISO,
     }),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -131,14 +138,20 @@ export async function createMercadoPagoPix(opts: {
   }
   const qr = String(data.qr_code || "").trim();
   if (!qr) throw new Error("Mercado Pago não retornou o código PIX");
+  const expRaw = String(data.date_of_expiration || "").trim();
+  const expMs = expRaw ? Date.parse(expRaw) : NaN;
   return {
     id: String(data.id),
+    paymentId: data.paymentId ? String(data.paymentId) : undefined,
     status: String(data.status || "pending"),
     qr_code: qr,
     qr_code_base64: data.qr_code_base64
       ? String(data.qr_code_base64)
       : undefined,
     ticket_url: data.ticket_url ? String(data.ticket_url) : undefined,
+    date_of_expiration: Number.isFinite(expMs)
+      ? new Date(expMs).toISOString()
+      : undefined,
   };
 }
 
@@ -166,19 +179,26 @@ export async function fetchMercadoPagoPaymentStatus(opts: {
       ),
     );
   }
+  const expRaw = String(data.date_of_expiration || "").trim();
+  const expMs = expRaw ? Date.parse(expRaw) : NaN;
   return {
     id: String(data.id || opts.paymentId),
     status: String(data.status || "unknown"),
     status_detail: data.status_detail
       ? String(data.status_detail)
       : undefined,
+    date_of_expiration: Number.isFinite(expMs)
+      ? new Date(expMs).toISOString()
+      : undefined,
   };
 }
 
 export function mapMpStatusToOrder(
   status: string,
+  statusDetail?: string,
 ): "pending" | "approved" | "cancelled" | "rejected" | "expired" {
   const s = status.toLowerCase();
+  const detail = String(statusDetail || "").toLowerCase();
   // Orders API + Payments API
   if (
     s === "approved" ||
@@ -190,7 +210,13 @@ export function mapMpStatusToOrder(
   }
   if (s === "cancelled" || s === "canceled") return "cancelled";
   if (s === "rejected" || s === "failed") return "rejected";
-  if (s === "expired") return "expired";
+  if (
+    s === "expired" ||
+    detail.includes("expired") ||
+    detail.includes("deadline")
+  ) {
+    return "expired";
+  }
   // action_required / waiting_transfer / pending / created
   return "pending";
 }

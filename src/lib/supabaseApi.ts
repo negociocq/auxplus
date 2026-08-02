@@ -13,6 +13,9 @@ import type {
 import { verifyPassword } from "@/lib/password";
 import { extractDebtFromNotes } from "@/lib/debts";
 import { extractPaymentsFromNotes } from "@/lib/payments";
+import { extractPlanMonths, getPlanSegments } from "@/lib/planMonths";
+import { extractScreens } from "@/lib/itemScreens";
+import { extractResellerCreditsBought } from "@/lib/resellerCredits";
 import { computeItemStatus, refreshItemStatuses } from "@/lib/storage";
 
 const VALID_STATUS: ItemStatus[] = [
@@ -95,7 +98,10 @@ function mapItem(row: Record<string, unknown>): Item {
   const notes = String(row.notes ?? "");
   const payments = extractPaymentsFromNotes(notes);
   const debt = extractDebtFromNotes(notes);
-  return {
+  const resellerCreditsBought = extractResellerCreditsBought(notes);
+  const planMonths = extractPlanMonths(notes);
+  const screens = extractScreens(notes);
+  const base = {
     id: String(row.id),
     folderId: String(row.folder_id),
     itemId: String(row.item_id ?? ""),
@@ -110,8 +116,13 @@ function mapItem(row: Record<string, unknown>): Item {
     createdAt: row.created_at ? String(row.created_at) : null,
     isActive: row.is_active !== false,
     payments: payments.length ? payments : undefined,
+    planMonths: planMonths ?? 1,
+    screens: screens ?? null,
+    resellerCreditsBought: resellerCreditsBought ?? null,
     debt: debt ?? undefined,
   };
+  const planHistory = getPlanSegments(base);
+  return { ...base, planHistory };
 }
 
 function mapTicket(row: Record<string, unknown>): Ticket {

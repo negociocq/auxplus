@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { format } from "date-fns";
 import {
   Cable,
+  CalendarPlus,
   CheckCircle2,
   ClipboardCopy,
   Coins,
@@ -47,6 +48,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  isUniplayConnected,
   loadAutomationsConfig,
   loadAutomationsConfigRemote,
   saveAutomationsConfig,
@@ -70,12 +72,18 @@ import {
   loadIptvJobs,
   loadIptvJobsRemote,
   mergePanelTestsIntoJobs,
+  mergeWhatsAppLogSources,
   nextDueAfterRenew,
   patchIptvJob,
   saveIptvJobs,
+  applyResellerRechargeToItem,
   syncIptvResellersToFolder,
   type IptvJob,
 } from "@/lib/iptvAutomation";
+import {
+  loadMpOrdersRemote,
+} from "@/lib/mercadoPagoOrders";
+import { loadWaBotStateRemote } from "@/lib/whatsappBotConfig";
 import {
   activatePartnerApp,
   addIptvResellerCredits,
@@ -183,7 +191,9 @@ export default function Automations() {
   const [syncingTests, setSyncingTests] = useState(false);
   const [jobsQ, setJobsQ] = useState("");
   const [renewQ, setRenewQ] = useState("");
+  const [testLogQ, setTestLogQ] = useState("");
   const [uniplaySubTab, setUniplaySubTab] = useState("conexao");
+  const [logsSubTab, setLogsSubTab] = useState("renovacoes");
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const [activateOption, setActivateOption] = useState<IptvRenewOption>(
     IPTV_RENEW_OPTIONS[0],
@@ -199,21 +209,54 @@ export default function Automations() {
     hours: number;
     dueDate: string | null;
   } | null>(null);
-  const [appId, setAppId] = useState<PartnerAppId>("prime");
-  const [appUsername, setAppUsername] = useState("");
-  const [appPassword, setAppPassword] = useState("");
-  const [appDevice, setAppDevice] = useState("");
-  const [appNickname, setAppNickname] = useState("");
-  const [showAppPass, setShowAppPass] = useState(false);
-  const [activatingApp, setActivatingApp] = useState(false);
-  const [lookingUpPass, setLookingUpPass] = useState(false);
-  const [registeredApps, setRegisteredApps] = useState<SmartAppEntry[]>([]);
-  const [loadingApps, setLoadingApps] = useState(false);
+  type ActivateAppScope = "clientes" | "testes";
+  type ActivateAppForm = {
+    appId: PartnerAppId;
+    username: string;
+    password: string;
+    device: string;
+    nickname: string;
+    showPass: boolean;
+    registered: SmartAppEntry[];
+  };
+  const emptyActivateForm = (): ActivateAppForm => ({
+    appId: "prime",
+    username: "",
+    password: "",
+    device: "",
+    nickname: "",
+    showPass: false,
+    registered: [],
+  });
+  const [activateForms, setActivateForms] = useState<
+    Record<ActivateAppScope, ActivateAppForm>
+  >({
+    clientes: emptyActivateForm(),
+    testes: emptyActivateForm(),
+  });
+  const [activatingAppScope, setActivatingAppScope] =
+    useState<ActivateAppScope | null>(null);
+  const [lookingUpPassScope, setLookingUpPassScope] =
+    useState<ActivateAppScope | null>(null);
+  const [loadingAppsScope, setLoadingAppsScope] =
+    useState<ActivateAppScope | null>(null);
   const [deletingAppId, setDeletingAppId] = useState<string | number | null>(
     null,
   );
+  const patchActivateForm = (
+    scope: ActivateAppScope,
+    patch: Partial<ActivateAppForm>,
+  ) => {
+    setActivateForms((prev) => ({
+      ...prev,
+      [scope]: { ...prev[scope], ...patch },
+    }));
+  };
   const [mpAccessToken, setMpAccessToken] = useState(config.mpAccessToken);
   const [mpPayerEmail, setMpPayerEmail] = useState(config.mpPayerEmail);
+  const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(
+    config.resellerCreditPriceBrl,
+  );
   const [showMpToken, setShowMpToken] = useState(false);
   const [savingMp, setSavingMp] = useState(false);
   const [testingMp, setTestingMp] = useState(false);
@@ -223,7 +266,23 @@ export default function Automations() {
   useEffect(() => {
     if (!user) return;
     setJobs(loadIptvJobs(user.id));
-    void loadIptvJobsRemote(user.id).then(setJobs);
+    void (async () => {
+      const [remoteJobs, waState, mpOrders, autoCfg] = await Promise.all([
+        loadIptvJobsRemote(user.id),
+        loadWaBotStateRemote(user.id),
+        loadMpOrdersRemote(user.id),
+        loadAutomationsConfigRemote(user.id),
+      ]);
+      const merged = mergeWhatsAppLogSources(remoteJobs, {
+        testConsumed: waState.testConsumed,
+        mpOrders,
+        testHours: autoCfg.testHours || testHours,
+      });
+      setJobs(merged);
+      if (merged.length !== remoteJobs.length) {
+        saveIptvJobs(user.id, merged);
+      }
+    })();
     void loadIptvPlatformConfig().then(setPlatform);
     // Conta UniPlay vem da nuvem (todos os PCs) + cache local
     void loadAutomationsConfigRemote(user.id).then((next) => {
@@ -237,15 +296,19 @@ export default function Automations() {
       setSyncResellersFolderId(next.syncResellersFolderId);
       setMpAccessToken(next.mpAccessToken);
       setMpPayerEmail(next.mpPayerEmail);
+      setResellerCreditPriceBrl(next.resellerCreditPriceBrl);
     });
   }, [user]);
 
-  const uniplayConnected = useMemo(() => {
-    if (!bearer.trim()) return false;
-    const left = tokenExpiresInSec(bearer);
-    if (left == null) return true;
-    return left > 0;
-  }, [bearer]);
+  const uniplayConnected = useMemo(
+    () =>
+      isUniplayConnected({
+        iptvBearerToken: bearer,
+        iptvUsername: panelUser,
+        iptvPassword: panelPass,
+      }),
+    [bearer, panelUser, panelPass],
+  );
 
   useEffect(() => {
     const left = bearer ? tokenExpiresInSec(bearer) : null;
@@ -271,46 +334,80 @@ export default function Automations() {
     setUniplaySubTab((tab) => (tab === "conexao" ? "ativos" : tab));
   }, [uniplayConnected]);
 
+  const uniplayPrefetchKey = useRef("");
+  // Prefetch contagens ao abrir UniPlay (não precisa entrar em cada aba)
   useEffect(() => {
-    if (!uniplayConnected || uniplaySubTab !== "revendedores") return;
-    if (resellers.length > 0 || loadingResellers) return;
+    if (!uniplayConnected || !user) {
+      uniplayPrefetchKey.current = "";
+      return;
+    }
+    const canReach =
+      Boolean(bearer.trim()) || Boolean(panelUser.trim() && panelPass);
+    if (!canReach) return;
+
+    // Uma vez por sessão conectada (evita rebuscar a cada refresh de token)
+    const key = `${user.id}|${panelUser.trim()}|${platform.apiBaseUrl || config.iptvApiBaseUrl}`;
+    if (uniplayPrefetchKey.current === key) return;
+
+    let cancelled = false;
+
+    const credsBase = (): IptvPanelCreds => ({
+      apiBaseUrl: platform.apiBaseUrl || config.iptvApiBaseUrl,
+      bearerToken: bearer.trim(),
+      regPassword: platform.regPassword.trim() || undefined,
+      defaultPackage: platform.packageId.trim() || "1",
+      username: panelUser.trim() || undefined,
+      password: panelPass || undefined,
+      apiProxyUrl: platform.apiProxyUrl?.trim() || undefined,
+    });
+
     void (async () => {
       setLoadingResellers(true);
       try {
-        const creds: IptvPanelCreds = {
-          apiBaseUrl: platform.apiBaseUrl || config.iptvApiBaseUrl,
-          bearerToken: bearer.trim(),
-          regPassword: platform.regPassword.trim() || undefined,
-          defaultPackage: platform.packageId.trim() || "1",
-          username: panelUser.trim() || undefined,
-          password: panelPass || undefined,
-          apiProxyUrl: platform.apiProxyUrl?.trim() || undefined,
-        };
-        const ensured = await ensureIptvToken(creds);
-        const rows = await listIptvResellers({
-          ...creds,
+        const ensured = await ensureIptvToken(credsBase());
+        const tokenCreds = {
+          ...credsBase(),
           bearerToken: ensured.token,
-        });
+        };
+
+        const [rows, users] = await Promise.all([
+          listIptvResellers(tokenCreds),
+          listIptvUsers(tokenCreds),
+        ]);
+        if (cancelled) return;
+
         setResellers(rows);
+
+        const result = mergePanelTestsIntoJobs(loadIptvJobs(user.id), users, {
+          m3uHost: platform.m3uHost,
+          dnsFallback: platform.dnsSmarters,
+        });
+        setJobs(result.jobs);
+        saveIptvJobs(user.id, result.jobs);
+        uniplayPrefetchKey.current = key;
       } catch {
-        /* silencioso na abertura da aba */
+        /* silencioso — tenta de novo se credenciais mudarem */
       } finally {
-        setLoadingResellers(false);
+        if (!cancelled) setLoadingResellers(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     uniplayConnected,
-    uniplaySubTab,
-    resellers.length,
-    loadingResellers,
+    user,
+    panelUser,
+    panelPass,
     bearer,
     platform.apiBaseUrl,
     platform.apiProxyUrl,
     platform.regPassword,
     platform.packageId,
+    platform.m3uHost,
+    platform.dnsSmarters,
     config.iptvApiBaseUrl,
-    panelUser,
-    panelPass,
   ]);
 
   // Renova o Bearer sozinho a cada 15 min (se usuário/senha salvos)
@@ -380,17 +477,26 @@ export default function Automations() {
       });
   }, [data.items, myFolders]);
 
+  /** Ativos: Longe / Perto de vencer (vencidos ficam de fora) */
+  const activeClients = useMemo(
+    () =>
+      clients.filter(
+        (c) =>
+          c.status === "Longe de Vencer" || c.status === "Perto de Vencer",
+      ),
+    [clients],
+  );
+
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     // Só lista após busca — evita poluir a tela com todos os clientes
     if (term.length < 2) return [];
     const rank = (status?: string | null) => {
-      if (status === "Já Vencido") return 0;
-      if (status === "Perto de Vencer") return 1;
-      if (!status) return 2;
-      return 3;
+      if (status === "Perto de Vencer") return 0;
+      if (status === "Longe de Vencer") return 1;
+      return 2;
     };
-    return clients
+    return activeClients
       .filter(
         (i) =>
           i.name.toLowerCase().includes(term) ||
@@ -405,7 +511,7 @@ export default function Automations() {
         return da.localeCompare(db);
       })
       .slice(0, 50);
-  }, [clients, q]);
+  }, [activeClients, q]);
 
   const jobMatchesQuery = (job: IptvJob, query: string) => {
     const qn = query.trim().toLowerCase();
@@ -422,24 +528,15 @@ export default function Automations() {
     return hay.includes(qn);
   };
 
-  const openTestJobs = useMemo(
-    () =>
-      jobs.filter(
-        (j) =>
-          j.kind === "test" &&
-          (j.status === "pending" || j.status === "doing") &&
-          jobMatchesQuery(j, jobsQ),
-      ),
-    [jobs, jobsQ],
-  );
-  const recentTestJobs = useMemo(() => {
-    const list = jobs.filter(
-      (j) =>
-        j.kind === "test" &&
-        (j.status === "done" || j.status === "failed") &&
-        jobMatchesQuery(j, jobsQ),
-    );
-    return list.slice(0, jobsQ.trim() ? 100 : 30);
+  /** Testes só após busca (igual Clientes) */
+  const filteredTests = useMemo(() => {
+    const term = jobsQ.trim().toLowerCase();
+    if (term.length < 2) return [];
+    return jobs
+      .filter((j) => j.kind === "test" && jobMatchesQuery(j, jobsQ))
+      .slice()
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, 50);
   }, [jobs, jobsQ]);
   const openRenewJobs = useMemo(
     () =>
@@ -460,6 +557,17 @@ export default function Automations() {
     );
     return list.slice(0, renewQ.trim() ? 150 : 80);
   }, [jobs, renewQ]);
+  const testLog = useMemo(() => {
+    const list = jobs
+      .filter((j) => j.kind === "test" && jobMatchesQuery(j, testLogQ))
+      .slice()
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return list.slice(0, testLogQ.trim() ? 300 : 200);
+  }, [jobs, testLogQ]);
+  const testLogCount = useMemo(
+    () => jobs.filter((j) => j.kind === "test").length,
+    [jobs],
+  );
   const testJobsCount = useMemo(
     () => jobs.filter((j) => j.kind === "test").length,
     [jobs],
@@ -703,6 +811,34 @@ export default function Automations() {
         resellerId: creditTarget.id,
         credits: amount,
       });
+      const username = String(creditTarget.username || "").trim().toLowerCase();
+      const folderId =
+        syncResellersFolderId ||
+        loadAutomationsConfig(user?.id || "0").syncResellersFolderId;
+      const unit = Math.max(
+        0.01,
+        Number(
+          loadAutomationsConfig(user?.id || "0").resellerCreditPriceBrl,
+        ) || 8.5,
+      );
+      if (username && folderId) {
+        const item = data.items.find(
+          (i) =>
+            i.folderId === folderId &&
+            i.isActive !== false &&
+            i.itemId.trim().toLowerCase() === username,
+        );
+        if (item) {
+          const updated = applyResellerRechargeToItem(item, {
+            credits: amount,
+            amountBrl: Math.round(unit * amount * 100) / 100,
+          });
+          setData((prev) => ({
+            ...prev,
+            items: prev.items.map((i) => (i.id === item.id ? updated : i)),
+          }));
+        }
+      }
       toast.success(
         `${amount} crédito(s) enviados para ${creditTarget.username || creditTarget.name || "revendedor"}`,
       );
@@ -769,6 +905,7 @@ export default function Automations() {
       iptvAutoRefreshToken: true,
       mpAccessToken: mpAccessToken.trim(),
       mpPayerEmail: mpPayerEmail.trim(),
+      resellerCreditPriceBrl,
     };
     setConfig(next);
     const saved = await saveAutomationsConfigRemote(user.id, next);
@@ -796,6 +933,14 @@ export default function Automations() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao abrir painel");
     }
+  };
+
+  /** Ainda não venceu (hoje ou futuro) → Estender; já passou → Renovar */
+  const isClientStillActive = (dueDate?: string | null) => {
+    const due = String(dueDate || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return false;
+    const today = format(new Date(), "yyyy-MM-dd");
+    return due >= today;
   };
 
   const openRenewDialog = (itemId: string) => {
@@ -921,6 +1066,8 @@ export default function Automations() {
     const months = option.months;
     setRenewMonths(months);
     setRenewTargetId(null);
+    const isExtend = isClientStillActive(item.dueDate);
+    const verb = isExtend ? "Estendido" : "Renovado";
     const job = createIptvJob({
       kind: "renew",
       status: "doing",
@@ -931,7 +1078,7 @@ export default function Automations() {
       dueDate: item.dueDate,
       months,
       testHours,
-      note: `API · ${option.label}`,
+      note: `API · ${isExtend ? "estender" : "renovar"} · ${option.label}`,
     });
     let nextJobs = [job, ...jobs];
     persistJobs(nextJobs);
@@ -968,11 +1115,11 @@ export default function Automations() {
       nextJobs = patchIptvJob(nextJobs, job.id, {
         status: "done",
         dueDate: updated.dueDate,
-        note: `Renovado via API · ${option.label} · vence ${formatBrDate(updated.dueDate)}`,
+        note: `${verb} via API · ${option.label} · vence ${formatBrDate(updated.dueDate)}`,
       });
       persistJobs(nextJobs);
       toast.success(
-        `Renovado: ${item.name} · vence ${formatBrDate(updated.dueDate)}`,
+        `${verb}: ${item.name} · vence ${formatBrDate(updated.dueDate)}`,
       );
       await sendRenewalReceipt(
         updated.phone || item.phone || "",
@@ -992,10 +1139,11 @@ export default function Automations() {
   };
 
   const lookupIptvPassword = async (
+    scope: ActivateAppScope,
     username?: string,
     opts?: { silent?: boolean },
   ) => {
-    const want = (username ?? appUsername).trim();
+    const want = (username ?? activateForms[scope].username).trim();
     if (!want) {
       if (!opts?.silent) toast.error("Informe o usuário IPTV");
       return false;
@@ -1006,7 +1154,7 @@ export default function Automations() {
       }
       return false;
     }
-    setLookingUpPass(true);
+    setLookingUpPassScope(scope);
     try {
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
@@ -1026,7 +1174,7 @@ export default function Automations() {
         }
         return false;
       }
-      setAppPassword(String(remote.password));
+      patchActivateForm(scope, { password: String(remote.password) });
       if (!opts?.silent) toast.success("Senha preenchida do painel");
       return true;
     } catch (e) {
@@ -1035,45 +1183,49 @@ export default function Automations() {
       }
       return false;
     } finally {
-      setLookingUpPass(false);
+      setLookingUpPassScope((cur) => (cur === scope ? null : cur));
     }
   };
 
   const loadRegisteredApps = async (
+    scope: ActivateAppScope,
     username: string,
     opts?: { silent?: boolean },
   ) => {
     const want = username.trim();
     if (!want) {
-      setRegisteredApps([]);
+      patchActivateForm(scope, { registered: [] });
       return;
     }
     if (!bearer.trim() && !(panelUser.trim() && panelPass)) {
       if (!opts?.silent) toast.error("Conecte sua conta UniPlay antes");
       return;
     }
-    setLoadingApps(true);
+    setLoadingAppsScope(scope);
     try {
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
       const creds = { ...panelCreds(), bearerToken: ensured.token };
       const rows = await listSmartAppsForUsername(creds, want);
-      setRegisteredApps(rows);
+      patchActivateForm(scope, { registered: rows });
       const issued = getLastIssuedIptvToken();
       if (issued) persistToken(issued);
     } catch (e) {
-      setRegisteredApps([]);
+      patchActivateForm(scope, { registered: [] });
       if (!opts?.silent) {
         toast.error(
           e instanceof Error ? e.message : "Falha ao listar apps cadastrados",
         );
       }
     } finally {
-      setLoadingApps(false);
+      setLoadingAppsScope((cur) => (cur === scope ? null : cur));
     }
   };
 
-  const runDeleteSmartApp = async (entry: SmartAppEntry) => {
+  const runDeleteSmartApp = async (
+    scope: ActivateAppScope,
+    entry: SmartAppEntry,
+  ) => {
     const device = entry.mac || entry.idDevice || String(entry.id);
     const isLocal = entry.localOnly || String(entry.id).startsWith("local:");
     if (
@@ -1089,7 +1241,13 @@ export default function Automations() {
     try {
       if (isLocal) {
         removeLocalPartnerApp(entry.id);
-        setRegisteredApps((prev) => prev.filter((r) => r.id !== entry.id));
+        setActivateForms((prev) => ({
+          ...prev,
+          [scope]: {
+            ...prev[scope],
+            registered: prev[scope].registered.filter((r) => r.id !== entry.id),
+          },
+        }));
         toast.success("Removido da lista");
         return;
       }
@@ -1099,7 +1257,13 @@ export default function Automations() {
       await deleteSmartApp(creds, entry.id);
       const issued = getLastIssuedIptvToken();
       if (issued) persistToken(issued);
-      setRegisteredApps((prev) => prev.filter((r) => r.id !== entry.id));
+      setActivateForms((prev) => ({
+        ...prev,
+        [scope]: {
+          ...prev[scope],
+          registered: prev[scope].registered.filter((r) => r.id !== entry.id),
+        },
+      }));
       toast.success("App/MAC removido do painel");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao excluir");
@@ -1108,100 +1272,150 @@ export default function Automations() {
     }
   };
 
-  const clearActivateApp = () => {
-    setAppUsername("");
-    setAppPassword("");
-    setAppNickname("");
-    setAppDevice("");
-    setRegisteredApps([]);
-    setShowAppPass(false);
+  const clearActivateApp = (scope: ActivateAppScope) => {
+    patchActivateForm(scope, emptyActivateForm());
+  };
+
+  const fillActivateFromLogin = (
+    scope: ActivateAppScope,
+    username: string,
+    password?: string,
+    opts?: { emptyMessage?: string; silentToast?: boolean },
+  ) => {
+    const userLogin = username.trim();
+    patchActivateForm(scope, {
+      username: userLogin,
+      password: password?.trim() || "",
+      nickname: "",
+      device: "",
+    });
+    if (!userLogin) {
+      patchActivateForm(scope, { registered: [] });
+      toast.error(opts?.emptyMessage || "Sem usuário IPTV");
+      return;
+    }
+    void loadRegisteredApps(scope, userLogin, { silent: true });
+    if (!password?.trim()) {
+      void lookupIptvPassword(scope, userLogin, { silent: true });
+    } else if (!opts?.silentToast) {
+      toast.message("Usuário carregado em Ativar app — informe o MAC e ative");
+    }
   };
 
   const fillActivateFromClient = (itemId: string) => {
     const item = clients.find((i) => i.id === itemId);
     if (!item) return;
-    const userLogin = item.itemId?.trim() || "";
-    setAppUsername(userLogin);
-    setAppPassword("");
-    setAppNickname("");
-    setAppDevice("");
-    if (userLogin) {
-      void loadRegisteredApps(userLogin, { silent: true });
-      void lookupIptvPassword(userLogin, { silent: true });
-    } else {
-      setRegisteredApps([]);
-      toast.error("Cliente sem usuário IPTV cadastrado");
-    }
+    fillActivateFromLogin("clientes", item.itemId || "", undefined, {
+      emptyMessage: "Cliente sem usuário IPTV cadastrado",
+      silentToast: true,
+    });
   };
 
-  // Ao digitar/colar o usuário IPTV, busca a senha sozinho
+  const fillActivateFromTest = (job: IptvJob) => {
+    if (job.kind !== "test") return;
+    fillActivateFromLogin("testes", job.panelUsername, job.panelPassword, {
+      emptyMessage: "Teste sem usuário IPTV",
+    });
+  };
+
+  // Busca senha ao carregar usuário em cada formulário (clientes / testes)
   useEffect(() => {
-    const want = appUsername.trim();
+    const want = activateForms.clientes.username.trim();
     if (want.length < 3) return;
     if (!bearer.trim() && !(panelUser.trim() && panelPass)) return;
+    if (activateForms.clientes.password.trim()) return;
     const t = window.setTimeout(() => {
-      void lookupIptvPassword(want, { silent: true });
+      void lookupIptvPassword("clientes", want, { silent: true });
     }, 700);
     return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage ao usuário digitado
-  }, [appUsername]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activateForms.clientes.username]);
 
-  const runActivateApp = async () => {
-    if (!appUsername.trim() || !appPassword || !appDevice.trim()) {
+  useEffect(() => {
+    const want = activateForms.testes.username.trim();
+    if (want.length < 3) return;
+    if (!bearer.trim() && !(panelUser.trim() && panelPass)) return;
+    if (activateForms.testes.password.trim()) return;
+    const t = window.setTimeout(() => {
+      void lookupIptvPassword("testes", want, { silent: true });
+    }, 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activateForms.testes.username]);
+
+  const runActivateApp = async (scope: ActivateAppScope) => {
+    const form = activateForms[scope];
+    if (!form.username.trim() || !form.password || !form.device.trim()) {
       toast.error("Preencha usuário IPTV, senha e MAC/Device ID");
       return;
     }
-    setActivatingApp(true);
+    setActivatingAppScope(scope);
     try {
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
       const creds = { ...panelCreds(), bearerToken: ensured.token };
       await activatePartnerApp(creds, {
-        app: appId,
-        username: appUsername,
-        password: appPassword,
-        device: appDevice,
+        app: form.appId,
+        username: form.username,
+        password: form.password,
+        device: form.device,
       });
       const issued = getLastIssuedIptvToken();
       if (issued) persistToken(issued);
       const remembered = rememberPartnerAppActivation({
-        app: appId,
-        username: appUsername,
-        device: appDevice,
-        nickname: appNickname,
+        app: form.appId,
+        username: form.username,
+        device: form.device,
+        nickname: form.nickname,
       });
-      const label = PARTNER_APPS.find((a) => a.id === appId)?.label || appId;
+      const label =
+        PARTNER_APPS.find((a) => a.id === form.appId)?.label || form.appId;
       const nick = remembered.nickname?.trim();
       toast.success(
         nick
           ? `${label} ativado · ${nick}`
-          : `${label} ativado para ${appUsername.trim()}`,
+          : `${label} ativado para ${form.username.trim()}`,
       );
-      setRegisteredApps((prev) => {
-        const rest = prev.filter((r) => r.id !== remembered.id);
-        return [remembered, ...rest];
+      setActivateForms((prev) => {
+        const cur = prev[scope];
+        const rest = cur.registered.filter((r) => r.id !== remembered.id);
+        return {
+          ...prev,
+          [scope]: {
+            ...cur,
+            nickname: "",
+            registered: [remembered, ...rest],
+          },
+        };
       });
-      setAppNickname("");
-      void loadRegisteredApps(appUsername, { silent: true });
+      void loadRegisteredApps(scope, form.username, { silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao ativar app");
     } finally {
-      setActivatingApp(false);
+      setActivatingAppScope((cur) => (cur === scope ? null : cur));
     }
   };
 
-  const saveEntryNickname = (entry: SmartAppEntry, nickname: string) => {
+  const saveEntryNickname = (
+    scope: ActivateAppScope,
+    entry: SmartAppEntry,
+    nickname: string,
+  ) => {
     const clean = setDeviceNickname(
-      entry.username || appUsername,
+      entry.username || activateForms[scope].username,
       entry.mac,
       entry.idDevice,
       nickname,
     );
-    setRegisteredApps((prev) =>
-      prev.map((r) =>
-        r.id === entry.id ? { ...r, nickname: clean } : r,
-      ),
-    );
+    setActivateForms((prev) => ({
+      ...prev,
+      [scope]: {
+        ...prev[scope],
+        registered: prev[scope].registered.map((r) =>
+          r.id === entry.id ? { ...r, nickname: clean } : r,
+        ),
+      },
+    }));
   };
 
   const openTestDialog = (prefillNota?: string) => {
@@ -1240,15 +1454,17 @@ export default function Automations() {
         dnsFallback: platform.dnsSmarters,
       });
       persistJobs(result.jobs);
+      const totalTests = result.jobs.filter((j) => j.kind === "test").length;
       const parts = [
         result.created ? `${result.created} novo(s)` : "",
         result.updated ? `${result.updated} atualizado(s)` : "",
         result.removed ? `${result.removed} removido(s)` : "",
+        totalTests ? `${totalTests} no total` : "",
       ].filter(Boolean);
       toast.success(
         parts.length
           ? `Testes UniPlay: ${parts.join(" · ")}`
-          : "Nenhum teste na lista da UniPlay",
+          : "Nenhum teste encontrado na UniPlay",
       );
     } catch (e) {
       toast.error(
@@ -1360,6 +1576,9 @@ export default function Automations() {
         hours: hoursSafe,
         dueDate: testDue,
       });
+      if (createdUser) {
+        fillActivateFromLogin("testes", createdUser, password, { silentToast: true });
+      }
       let remoteId = access.remoteId;
       if ((remoteId == null || remoteId === "") && createdUser) {
         try {
@@ -1387,8 +1606,8 @@ export default function Automations() {
       setDetailJobId(job.id);
       toast.success(
         createdUser
-          ? `Teste avulso de ${hoursSafe}h criado: ${createdUser}`
-          : `Teste avulso de ${hoursSafe}h criado`,
+          ? `Teste de ${hoursSafe}h criado: ${createdUser}. Preencha o MAC e ative o app.`
+          : `Teste de ${hoursSafe}h criado. Ative o app abaixo.`,
       );
     } catch (e) {
       nextJobs = patchIptvJob(nextJobs, job.id, {
@@ -1562,6 +1781,311 @@ export default function Automations() {
     }
   };
 
+  const renderActivateAppSection = (
+    scope: ActivateAppScope,
+    hint?: string,
+  ) => {
+    const form = activateForms[scope];
+    const lookingUpPass = lookingUpPassScope === scope;
+    const loadingApps = loadingAppsScope === scope;
+    const activatingApp = activatingAppScope === scope;
+    const userPlaceholder =
+      scope === "clientes"
+        ? "Botão App no cliente"
+        : "Botão App no teste";
+    return (
+            <section className="ax-surface space-y-3 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold tracking-tight">
+                    Ativar app
+                  </h2>
+                  {hint ? (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {hint}
+                    </p>
+                  ) : null}
+                </div>
+                {form.username.trim() ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs"
+                    disabled={loadingApps || !bearer.trim()}
+                    onClick={() => void loadRegisteredApps(scope, form.username)}
+                  >
+                    {loadingApps ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Search className="h-3.5 w-3.5" />
+                    )}
+                    Atualizar
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">App</Label>
+                  <Select
+                    value={form.appId}
+                    onValueChange={(v) => {
+                      const next = v as PartnerAppId;
+                      const meta = PARTNER_APPS.find((a) => a.id === next);
+                      const device =
+                        meta?.deviceField === "mac" && form.device
+                          ? formatMacInput(form.device)
+                          : form.device;
+                      patchActivateForm(scope, { appId: next, device });
+                    }}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="App" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PARTNER_APPS.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor={`app-nick-${scope}`}>
+                    Apelido
+                  </Label>
+                  <Input
+                    id={`app-nick-${scope}`}
+                    value={form.nickname}
+                    onChange={(e) =>
+                      patchActivateForm(scope, {
+                        nickname: e.target.value.toUpperCase().slice(0, 32),
+                      })
+                    }
+                    placeholder="SALA, QUARTO…"
+                    className="h-9"
+                    autoComplete="off"
+                    maxLength={32}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor={`app-device-${scope}`}>
+                    {PARTNER_APPS.find((a) => a.id === form.appId)?.deviceField ===
+                    "deviceId"
+                      ? "Device ID"
+                      : "MAC"}
+                  </Label>
+                  <Input
+                    id={`app-device-${scope}`}
+                    value={form.device}
+                    onChange={(e) => {
+                      const el = e.target;
+                      const raw = el.value;
+                      const isMac =
+                        PARTNER_APPS.find((a) => a.id === form.appId)
+                          ?.deviceField === "mac";
+                      if (!isMac) {
+                        patchActivateForm(scope, { device: raw });
+                        return;
+                      }
+                      const caret = el.selectionStart ?? raw.length;
+                      const hexBefore = macHexDigits(raw.slice(0, caret)).length;
+                      const next = formatMacInput(raw);
+                      const nextCaret = macCaretAfterHex(next, hexBefore);
+                      if (next !== form.device) {
+                        patchActivateForm(scope, { device: next });
+                        requestAnimationFrame(() => {
+                          el.setSelectionRange(nextCaret, nextCaret);
+                        });
+                      } else if (raw !== next) {
+                        el.value = next;
+                        el.setSelectionRange(nextCaret, nextCaret);
+                      }
+                    }}
+                    placeholder={
+                      PARTNER_APPS.find((a) => a.id === form.appId)
+                        ?.deviceField === "mac"
+                        ? "aa:bb:cc:dd:ee:ff"
+                        : "Device ID"
+                    }
+                    className="h-9 font-mono text-xs"
+                    autoComplete="off"
+                    spellCheck={false}
+                    inputMode="text"
+                    maxLength={
+                      PARTNER_APPS.find((a) => a.id === form.appId)
+                        ?.deviceField === "mac"
+                        ? 17
+                        : undefined
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor={`app-user-${scope}`}>
+                    Usuário
+                  </Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      id={`app-user-${scope}`}
+                      type={hideSensitive ? "password" : "text"}
+                      value={form.username}
+                      placeholder={userPlaceholder}
+                      className="h-9 bg-muted/40"
+                      autoComplete="off"
+                      readOnly
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-9 w-9 shrink-0"
+                      disabled={!form.username.trim() || hideSensitive}
+                      aria-label="Copiar usuário"
+                      title="Copiar usuário"
+                      onClick={() => void copyField("Usuário", form.username)}
+                    >
+                      <ClipboardCopy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs" htmlFor={`app-pass-${scope}`}>
+                    Senha
+                  </Label>
+                  <div className="flex gap-1.5">
+                    <div className="relative min-w-0 flex-1">
+                      <Input
+                        id={`app-pass-${scope}`}
+                        type={
+                          hideSensitive || !form.showPass ? "password" : "text"
+                        }
+                        value={form.password}
+                        placeholder={
+                          lookingUpPass
+                            ? "Buscando…"
+                            : "Preenche sozinha pelo App"
+                        }
+                        className="h-9 bg-muted/40 pr-9"
+                        autoComplete="off"
+                        readOnly
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
+                        onClick={() =>
+                          patchActivateForm(scope, {
+                            showPass: !form.showPass,
+                          })
+                        }
+                        disabled={hideSensitive || lookingUpPass}
+                        aria-label={
+                          form.showPass ? "Ocultar senha" : "Mostrar senha"
+                        }
+                      >
+                        {lookingUpPass ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : form.showPass && !hideSensitive ? (
+                          <EyeOff className="h-3.5 w-3.5" />
+                        ) : (
+                          <Eye className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-9 w-9 shrink-0"
+                      disabled={!form.password.trim() || hideSensitive}
+                      aria-label="Copiar senha"
+                      title="Copiar senha"
+                      onClick={() => void copyField("Senha", form.password)}
+                    >
+                      <ClipboardCopy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                className="w-full sm:w-auto"
+                disabled={activatingApp || lookingUpPass || !bearer.trim()}
+                onClick={() => void runActivateApp(scope)}
+              >
+                {activatingApp ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Smartphone className="h-4 w-4" />
+                )}
+                Ativar
+              </Button>
+
+              {form.username.trim() ? (
+                loadingApps ? (
+                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Carregando aparelhos…
+                  </p>
+                ) : form.registered.length > 0 ? (
+                  <ul className="divide-y rounded-md border">
+                    {form.registered.map((entry) => (
+                      <li
+                        key={String(entry.id)}
+                        className="flex items-center gap-2 px-2.5 py-1.5 text-sm"
+                      >
+                        <Input
+                          value={entry.nickname || ""}
+                          onChange={(e) =>
+                            saveEntryNickname(
+                              scope,
+                              entry,
+                              e.target.value.toUpperCase().slice(0, 32),
+                            )
+                          }
+                          placeholder="Apelido"
+                          className="h-8 w-[7.5rem] shrink-0 text-xs font-medium"
+                          maxLength={32}
+                        />
+                        <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                          <span className="text-foreground/80">
+                            {entry.appLabel}
+                          </span>
+                          <span className="mx-1.5">·</span>
+                          <span className="font-mono">
+                            {entry.mac || entry.idDevice || "—"}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                          disabled={deletingAppId === entry.id}
+                          onClick={() => void runDeleteSmartApp(scope, entry)}
+                          aria-label="Excluir"
+                        >
+                          {deletingAppId === entry.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Nenhum aparelho cadastrado neste usuário.
+                  </p>
+                )
+              ) : null}
+            </section>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -1582,6 +2106,16 @@ export default function Automations() {
               <span className="flex items-center gap-1.5 text-sm font-medium">
                 <MonitorPlay className="h-3.5 w-3.5" />
                 UniPlay
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "ml-0.5 h-5 px-1.5 text-[10px]",
+                    uniplayConnected &&
+                      "border-success/40 bg-success/15 text-success",
+                  )}
+                >
+                  {uniplayConnected ? "OK" : "Off"}
+                </Badge>
               </span>
               <span className="text-[11px] font-normal text-muted-foreground">
                 IPTV, testes e créditos
@@ -1594,6 +2128,16 @@ export default function Automations() {
               <span className="flex items-center gap-1.5 text-sm font-medium">
                 <QrCode className="h-3.5 w-3.5" />
                 Mercado Pago
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "ml-0.5 h-5 px-1.5 text-[10px]",
+                    mpAccessToken.trim() &&
+                      "border-success/40 bg-success/15 text-success",
+                  )}
+                >
+                  {mpAccessToken.trim() ? "OK" : "Off"}
+                </Badge>
               </span>
               <span className="text-[11px] font-normal text-muted-foreground">
                 Token para PIX
@@ -1606,6 +2150,12 @@ export default function Automations() {
               <span className="flex items-center gap-1.5 text-sm font-medium">
                 <Cable className="h-3.5 w-3.5" />
                 Winbox
+                <Badge
+                  variant="outline"
+                  className="ml-0.5 h-5 px-1.5 text-[10px]"
+                >
+                  Off
+                </Badge>
               </span>
               <span className="text-[11px] font-normal text-muted-foreground">
                 Em breve
@@ -1619,7 +2169,7 @@ export default function Automations() {
             <p className="text-sm font-medium">UniPlay</p>
             <p className="text-xs text-muted-foreground">
               {uniplayConnected
-                ? "Conta conectada. Use as abas abaixo para clientes, revendedores, testes e renovações."
+                ? "Conta conectada. Use as abas abaixo para clientes, revendedores, testes e logs."
                 : "Primeiro conecte sua conta UniPlay na aba Conta. Depois liberam as outras funções."}
             </p>
           </div>
@@ -1660,8 +2210,16 @@ export default function Automations() {
           ) : null}
 
           <Tabs
-            value={uniplayConnected ? uniplaySubTab : "conexao"}
-            onValueChange={setUniplaySubTab}
+            value={
+              uniplayConnected
+                ? uniplaySubTab === "renovacoes"
+                  ? "logs"
+                  : uniplaySubTab
+                : "conexao"
+            }
+            onValueChange={(v) =>
+              setUniplaySubTab(v === "renovacoes" ? "logs" : v)
+            }
             className="space-y-4"
           >
             <TabsList className="h-auto flex-wrap bg-background/80">
@@ -1669,6 +2227,14 @@ export default function Automations() {
                 <>
                   <TabsTrigger value="ativos" className="gap-1.5">
                     Clientes
+                    {activeClients.length > 0 ? (
+                      <Badge
+                        variant="secondary"
+                        className="ml-0.5 h-5 px-1.5 text-[10px]"
+                      >
+                        {activeClients.length}
+                      </Badge>
+                    ) : null}
                   </TabsTrigger>
                   <TabsTrigger value="revendedores" className="gap-1.5">
                     <Users className="h-3.5 w-3.5" />
@@ -1685,18 +2251,38 @@ export default function Automations() {
                   <TabsTrigger value="testes" className="gap-1.5">
                     <FlaskConical className="h-3.5 w-3.5" />
                     Testes
+                    {testJobsCount > 0 ? (
+                      <Badge
+                        variant="secondary"
+                        className="ml-0.5 h-5 px-1.5 text-[10px]"
+                      >
+                        {testJobsCount}
+                      </Badge>
+                    ) : null}
                   </TabsTrigger>
-                  <TabsTrigger value="renovacoes" className="gap-1.5">
+                  <TabsTrigger value="logs" className="gap-1.5">
                     <History className="h-3.5 w-3.5" />
-                    Renovações
+                    Logs
                   </TabsTrigger>
                   <TabsTrigger value="conexao" className="gap-1.5">
                     Conta
+                    <Badge
+                      variant="outline"
+                      className="ml-0.5 h-5 px-1.5 text-[10px] border-success/40 bg-success/15 text-success"
+                    >
+                      OK
+                    </Badge>
                   </TabsTrigger>
                 </>
               ) : (
                 <TabsTrigger value="conexao" className="gap-1.5">
                   Conta
+                  <Badge
+                    variant="outline"
+                    className="ml-0.5 h-5 px-1.5 text-[10px]"
+                  >
+                    Off
+                  </Badge>
                 </TabsTrigger>
               )}
             </TabsList>
@@ -1812,96 +2398,152 @@ export default function Automations() {
             </form>
           </section>
 
-          <section className="ax-surface space-y-3 p-4">
-            <div>
-              <h2 className="text-sm font-semibold tracking-tight">
-                Pastas de sincronização
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Onde o AuxPlus grava clientes e revendedores vindos da UniPlay.
-              </p>
-            </div>
+          {uniplayConnected ? (
+            <section className="ax-surface space-y-3 p-4">
+              <div>
+                <h2 className="text-sm font-semibold tracking-tight">
+                  Pastas de sincronização
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Onde o AuxPlus grava clientes e revendedores vindos da UniPlay.
+                </p>
+              </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">Pasta de clientes IPTV</Label>
-              <Select
-                value={syncFolderId || "__none__"}
-                onValueChange={(v) => {
-                  const nextId = v === "__none__" ? "" : v;
-                  setSyncFolderId(nextId);
-                  if (!user) return;
-                  const cur = loadAutomationsConfig(user.id);
-                  const next = { ...cur, syncFolderId: nextId };
-                  saveAutomationsConfig(user.id, next);
-                  setConfig(next);
-                  toast.message(
-                    nextId
-                      ? "Botão Sincronizar UniPlay liberado nessa pasta"
-                      : "Botão de sincronizar clientes removido",
-                  );
-                }}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Escolha a pasta de clientes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nenhuma</SelectItem>
-                  {clientFolders.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">
-                Libera o botão “Sincronizar UniPlay” dentro da pasta.
-              </p>
-            </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Pasta de clientes IPTV</Label>
+                <Select
+                  value={syncFolderId || "__none__"}
+                  onValueChange={(v) => {
+                    const nextId = v === "__none__" ? "" : v;
+                    setSyncFolderId(nextId);
+                    if (!user) return;
+                    const cur = loadAutomationsConfig(user.id);
+                    const next = { ...cur, syncFolderId: nextId };
+                    saveAutomationsConfig(user.id, next);
+                    setConfig(next);
+                    toast.message(
+                      nextId
+                        ? "Botão Sincronizar UniPlay liberado nessa pasta"
+                        : "Botão de sincronizar clientes removido",
+                    );
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Escolha a pasta de clientes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhuma</SelectItem>
+                    {clientFolders.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Libera o botão “Sincronizar UniPlay” dentro da pasta.
+                </p>
+              </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">Pasta de revendedores</Label>
-              <Select
-                value={syncResellersFolderId || "__none__"}
-                onValueChange={(v) => {
-                  const nextId = v === "__none__" ? "" : v;
-                  setSyncResellersFolderId(nextId);
-                  if (!user) return;
-                  const cur = loadAutomationsConfig(user.id);
-                  const next = { ...cur, syncResellersFolderId: nextId };
-                  saveAutomationsConfig(user.id, next);
-                  void saveAutomationsConfigRemote(user.id, next);
-                  setConfig(next);
-                  toast.message(
-                    nextId
-                      ? "Pasta de revendedores vinculada"
-                      : "Pasta de revendedores desvinculada",
-                  );
-                }}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Escolha a pasta de revendedores" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nenhuma</SelectItem>
-                  {clientFolders.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">
-                Crie uma pasta Cliente (ex.: Revendedores) e vincule aqui.
-              </p>
-            </div>
-          </section>
+              <div className="space-y-1">
+                <Label className="text-xs">Pasta de revendedores</Label>
+                <Select
+                  value={syncResellersFolderId || "__none__"}
+                  onValueChange={(v) => {
+                    const nextId = v === "__none__" ? "" : v;
+                    setSyncResellersFolderId(nextId);
+                    if (!user) return;
+                    const cur = loadAutomationsConfig(user.id);
+                    const next = { ...cur, syncResellersFolderId: nextId };
+                    saveAutomationsConfig(user.id, next);
+                    void saveAutomationsConfigRemote(user.id, next);
+                    setConfig(next);
+                    toast.message(
+                      nextId
+                        ? "Pasta de revendedores vinculada"
+                        : "Pasta de revendedores desvinculada",
+                    );
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Escolha a pasta de revendedores" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhuma</SelectItem>
+                    {clientFolders.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Crie uma pasta Cliente (ex.: Revendedores) e vincule aqui.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="reseller-credit-price">
+                  Valor do crédito (R$)
+                </Label>
+                <Input
+                  id="reseller-credit-price"
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  className="h-9 max-w-[12rem]"
+                  value={resellerCreditPriceBrl}
+                  onChange={(e) =>
+                    setResellerCreditPriceBrl(Number(e.target.value))
+                  }
+                  onBlur={() => {
+                    if (!user) return;
+                    const price = Math.max(
+                      0.01,
+                      Number(resellerCreditPriceBrl) || 8.5,
+                    );
+                    setResellerCreditPriceBrl(price);
+                    const cur = loadAutomationsConfig(user.id);
+                    const next = { ...cur, resellerCreditPriceBrl: price };
+                    saveAutomationsConfig(user.id, next);
+                    void saveAutomationsConfigRemote(user.id, next);
+                    setConfig(next);
+                  }}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Usado no WhatsApp para revendedores. Ex.: R${" "}
+                  {Number(resellerCreditPriceBrl || 8.5).toLocaleString(
+                    "pt-BR",
+                    { minimumFractionDigits: 2 },
+                  )}{" "}
+                  × 10 créditos ={" "}
+                  {(
+                    Math.max(0.01, Number(resellerCreditPriceBrl) || 8.5) * 10
+                  ).toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  })}
+                  .
+                </p>
+              </div>
+            </section>
+          ) : null}
             </TabsContent>
 
             {uniplayConnected ? (
               <>
             <TabsContent value="ativos" className="mt-0 space-y-4">
           <section className="ax-surface space-y-3 p-4">
-            <h2 className="text-sm font-semibold tracking-tight">Clientes</h2>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold tracking-tight">
+                Clientes
+              </h2>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Longe e perto de vencer
+                {activeClients.length > 0 ? ` · ${activeClients.length}` : ""}
+                {" · vencidos ficam de fora"}
+              </p>
+            </div>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
               <Input
@@ -1910,7 +2552,7 @@ export default function Automations() {
                 onChange={(e) => {
                   const next = e.target.value;
                   setQ(next);
-                  if (next.trim().length < 2) clearActivateApp();
+                  if (next.trim().length < 2) clearActivateApp("clientes");
                 }}
                 placeholder="Buscar por nome, usuário ou telefone…"
               />
@@ -1922,7 +2564,7 @@ export default function Automations() {
               </p>
             ) : filtered.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Nenhum cliente encontrado.
+                Nenhum cliente ativo (longe/perto) para essa busca.
               </p>
             ) : (
               <ul className="space-y-1.5">
@@ -1941,32 +2583,28 @@ export default function Automations() {
                       </p>
                     </div>
                     <div className="flex shrink-0 gap-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 px-2.5"
-                        disabled={!bearer.trim() || busyId === item.id}
-                        onClick={() => openRenewDialog(item.id)}
-                      >
-                        {busyId === item.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        )}
-                        Renovar
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8 px-2.5"
-                        disabled={!bearer.trim() || Boolean(busyId)}
-                        onClick={() => openTestDialog(item.name)}
-                      >
-                        <FlaskConical className="h-3.5 w-3.5" />
-                        Teste
-                      </Button>
+                      {(() => {
+                        const extend = isClientStillActive(item.dueDate);
+                        return (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="h-8 px-2.5"
+                            disabled={!bearer.trim() || busyId === item.id}
+                            onClick={() => openRenewDialog(item.id)}
+                          >
+                            {busyId === item.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : extend ? (
+                              <CalendarPlus className="h-3.5 w-3.5" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                            {extend ? "Estender" : "Renovar"}
+                          </Button>
+                        );
+                      })()}
                       <Button
                         type="button"
                         size="sm"
@@ -1984,260 +2622,9 @@ export default function Automations() {
             )}
           </section>
 
-          <section className="ax-surface space-y-3 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold tracking-tight">
-                Ativar app
-              </h2>
-              {appUsername.trim() ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 text-xs"
-                  disabled={loadingApps || !bearer.trim()}
-                  onClick={() => void loadRegisteredApps(appUsername)}
-                >
-                  {loadingApps ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Search className="h-3.5 w-3.5" />
-                  )}
-                  Atualizar
-                </Button>
-              ) : null}
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-3">
-              <div className="space-y-1">
-                <Label className="text-xs">App</Label>
-                <Select
-                  value={appId}
-                  onValueChange={(v) => {
-                    const next = v as PartnerAppId;
-                    setAppId(next);
-                    const meta = PARTNER_APPS.find((a) => a.id === next);
-                    if (meta?.deviceField === "mac" && appDevice) {
-                      setAppDevice(formatMacInput(appDevice));
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="App" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PARTNER_APPS.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs" htmlFor="app-nick">
-                  Apelido
-                </Label>
-                <Input
-                  id="app-nick"
-                  value={appNickname}
-                  onChange={(e) =>
-                    setAppNickname(e.target.value.toUpperCase().slice(0, 32))
-                  }
-                  placeholder="SALA, QUARTO…"
-                  className="h-9"
-                  autoComplete="off"
-                  maxLength={32}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs" htmlFor="app-device">
-                  {PARTNER_APPS.find((a) => a.id === appId)?.deviceField ===
-                  "deviceId"
-                    ? "Device ID"
-                    : "MAC"}
-                </Label>
-                <Input
-                  id="app-device"
-                  value={appDevice}
-                  onChange={(e) => {
-                    const el = e.target;
-                    const raw = el.value;
-                    const isMac =
-                      PARTNER_APPS.find((a) => a.id === appId)?.deviceField ===
-                      "mac";
-                    if (!isMac) {
-                      setAppDevice(raw);
-                      return;
-                    }
-                    const caret = el.selectionStart ?? raw.length;
-                    const hexBefore = macHexDigits(raw.slice(0, caret)).length;
-                    const next = formatMacInput(raw);
-                    const nextCaret = macCaretAfterHex(next, hexBefore);
-                    if (next !== appDevice) {
-                      setAppDevice(next);
-                      requestAnimationFrame(() => {
-                        el.setSelectionRange(nextCaret, nextCaret);
-                      });
-                    } else if (raw !== next) {
-                      // `:` digitado: estado igual, mas o DOM ficou sujo — sincroniza
-                      el.value = next;
-                      el.setSelectionRange(nextCaret, nextCaret);
-                    }
-                  }}
-                  placeholder={
-                    PARTNER_APPS.find((a) => a.id === appId)?.deviceField ===
-                    "mac"
-                      ? "aa:bb:cc:dd:ee:ff"
-                      : "Device ID"
-                  }
-                  className="h-9 font-mono text-xs"
-                  autoComplete="off"
-                  spellCheck={false}
-                  inputMode="text"
-                  maxLength={
-                    PARTNER_APPS.find((a) => a.id === appId)?.deviceField ===
-                    "mac"
-                      ? 17
-                      : undefined
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs" htmlFor="app-user">
-                  Usuário
-                </Label>
-                <Input
-                  id="app-user"
-                  type={hideSensitive ? "password" : "text"}
-                  value={appUsername}
-                  onChange={(e) => {
-                    setAppUsername(e.target.value);
-                    setAppPassword("");
-                    setRegisteredApps([]);
-                  }}
-                  onBlur={() => {
-                    if (appUsername.trim().length >= 3) {
-                      void lookupIptvPassword(appUsername, { silent: true });
-                    }
-                  }}
-                  placeholder="Login IPTV"
-                  className="h-9"
-                  autoComplete="off"
-                  readOnly={hideSensitive}
-                />
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label className="text-xs" htmlFor="app-pass">
-                  Senha
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="app-pass"
-                    type={
-                      hideSensitive || !showAppPass ? "password" : "text"
-                    }
-                    value={appPassword}
-                    onChange={(e) => setAppPassword(e.target.value)}
-                    placeholder={
-                      lookingUpPass ? "Buscando…" : "Preenche sozinha"
-                    }
-                    className="h-9 pr-9"
-                    autoComplete="off"
-                    readOnly={hideSensitive}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
-                    onClick={() => setShowAppPass((v) => !v)}
-                    disabled={hideSensitive}
-                    aria-label={showAppPass ? "Ocultar senha" : "Mostrar senha"}
-                  >
-                    {lookingUpPass ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : showAppPass && !hideSensitive ? (
-                      <EyeOff className="h-3.5 w-3.5" />
-                    ) : (
-                      <Eye className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <Button
-              type="button"
-              className="w-full sm:w-auto"
-              disabled={activatingApp || lookingUpPass || !bearer.trim()}
-              onClick={() => void runActivateApp()}
-            >
-              {activatingApp ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Smartphone className="h-4 w-4" />
-              )}
-              Ativar
-            </Button>
-
-            {appUsername.trim() ? (
-              loadingApps ? (
-                <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Carregando aparelhos…
-                </p>
-              ) : registeredApps.length > 0 ? (
-                <ul className="divide-y rounded-md border">
-                  {registeredApps.map((entry) => (
-                    <li
-                      key={String(entry.id)}
-                      className="flex items-center gap-2 px-2.5 py-1.5 text-sm"
-                    >
-                      <Input
-                        value={entry.nickname || ""}
-                        onChange={(e) =>
-                          saveEntryNickname(
-                            entry,
-                            e.target.value.toUpperCase().slice(0, 32),
-                          )
-                        }
-                        placeholder="Apelido"
-                        className="h-8 w-[7.5rem] shrink-0 text-xs font-medium"
-                        maxLength={32}
-                      />
-                      <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                        <span className="text-foreground/80">
-                          {entry.appLabel}
-                        </span>
-                        <span className="mx-1.5">·</span>
-                        <span className="font-mono">
-                          {entry.mac || entry.idDevice || "—"}
-                        </span>
-                      </div>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
-                        disabled={deletingAppId === entry.id}
-                        onClick={() => void runDeleteSmartApp(entry)}
-                        aria-label="Excluir"
-                      >
-                        {deletingAppId === entry.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Nenhum aparelho cadastrado neste usuário.
-                </p>
-              )
-            ) : null}
-          </section>
+          {activateForms.clientes.username.trim()
+            ? renderActivateAppSection("clientes")
+            : null}
             </TabsContent>
 
             <TabsContent value="revendedores" className="mt-0 space-y-4">
@@ -2368,33 +2755,51 @@ export default function Automations() {
             <TabsContent value="testes" className="mt-0 space-y-4">
           <section className="ax-surface space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold tracking-tight">Testes</h2>
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                className="h-8"
-                disabled={
-                  (!bearer.trim() && !(panelUser.trim() && panelPass)) ||
-                  Boolean(busyId) ||
-                  syncingTests
-                }
-                onClick={() => openTestDialog()}
-              >
-                <FlaskConical className="h-3.5 w-3.5" />
-                Gerar teste
-              </Button>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold tracking-tight">Testes</h2>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Busque para achar · toque em App para ativar o MAC
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-8"
+                  disabled={
+                    (!bearer.trim() && !(panelUser.trim() && panelPass)) ||
+                    syncingTests ||
+                    Boolean(busyId)
+                  }
+                  onClick={() => void refreshPanelTests()}
+                >
+                  {syncingTests ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Atualizar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  className="h-8"
+                  disabled={
+                    (!bearer.trim() && !(panelUser.trim() && panelPass)) ||
+                    Boolean(busyId) ||
+                    syncingTests
+                  }
+                  onClick={() => openTestDialog()}
+                >
+                  <FlaskConical className="h-3.5 w-3.5" />
+                  Gerar teste
+                </Button>
+              </div>
             </div>
             {lastTest ? (
-              <button
-                type="button"
-                className="w-full rounded-md border border-success/30 bg-success/5 px-3 py-2.5 text-left transition hover:bg-success/10"
-                onClick={() => {
-                  const job = jobs.find((j) => j.id === lastTest.jobId);
-                  if (job) openTestDetail(job);
-                  else setDetailJobId(lastTest.jobId);
-                }}
-              >
+              <div className="rounded-md border border-success/30 bg-success/5 px-3 py-2.5">
                 <p className="text-xs font-medium text-foreground">
                   Teste gerado · {lastTest.clientName} · {lastTest.hours}h
                 </p>
@@ -2404,348 +2809,520 @@ export default function Automations() {
                     ? ` · vence ${formatBrDate(lastTest.dueDate)}`
                     : ""}
                 </p>
-                <p className="mt-1 text-[11px] text-primary">
-                  Toque para ver usuário, senha, M3U, DNS e ativar
-                </p>
-              </button>
-            ) : null}
-          </section>
-
-          <section className="ax-surface space-y-3 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <h2 className="text-sm font-semibold tracking-tight">Fila</h2>
-                  <p className="text-xs text-muted-foreground">
-                    {openTestJobs.length} em aberto
-                    {testJobsCount > 0 ? ` · ${testJobsCount} teste(s)` : ""}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="mt-2 flex flex-wrap gap-1">
                   <Button
                     type="button"
                     size="sm"
                     variant="secondary"
                     className="h-8"
-                    disabled={
-                      (!bearer.trim() && !(panelUser.trim() && panelPass)) ||
-                      syncingTests ||
-                      Boolean(busyId)
-                    }
-                    onClick={() => void refreshPanelTests()}
+                    onClick={() => {
+                      const job = jobs.find((j) => j.id === lastTest.jobId);
+                      if (job) openTestDetail(job);
+                      else setDetailJobId(lastTest.jobId);
+                    }}
                   >
-                    {syncingTests ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    )}
-                    Atualizar testes
+                    Detalhes
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8"
+                    onClick={() => {
+                      const job = jobs.find((j) => j.id === lastTest.jobId);
+                      if (job) fillActivateFromTest(job);
+                      else
+                        fillActivateFromLogin(
+                          "testes",
+                          lastTest.username,
+                          lastTest.password,
+                        );
+                    }}
+                  >
+                    <Smartphone className="h-3.5 w-3.5" />
+                    App
                   </Button>
                 </div>
               </div>
+            ) : null}
 
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={jobsQ}
-                  onChange={(e) => setJobsQ(e.target.value)}
-                  placeholder="Buscar teste (nome, usuário…)"
-                  className="h-9 pl-8"
-                />
-              </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+              <Input
+                className="h-11 border-primary/35 bg-primary/[0.06] pl-9 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)] placeholder:text-muted-foreground/80 focus-visible:border-primary/50 focus-visible:ring-primary/25"
+                value={jobsQ}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setJobsQ(next);
+                  if (next.trim().length < 2) clearActivateApp("testes");
+                }}
+                placeholder="Buscar por nome ou usuário…"
+              />
+            </div>
 
-              {openTestJobs.length > 0 ? (
-                <ul className="space-y-1.5">
-                  {openTestJobs.map((job) => (
+            {jobsQ.trim().length < 2 ? (
+              <p className="text-xs text-muted-foreground">
+                Digite ao menos 2 caracteres.
+              </p>
+            ) : filteredTests.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Nenhum teste encontrado.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {filteredTests.map((job) => {
+                  const isOpen =
+                    job.status === "pending" || job.status === "doing";
+                  return (
                     <li
                       key={job.id}
-                      className="space-y-2 rounded-md border px-2.5 py-2 text-sm"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2 text-sm"
                     >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-medium leading-tight">
-                            {job.clientName}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {maskUser(job.panelUsername)}
-                            {` · ${job.testHours}h`}
-                          </p>
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[10px]",
-                            job.status === "doing" &&
-                              "border-primary/40 bg-primary/10 text-primary",
-                          )}
-                        >
-                          Teste · {statusLabel(job.status)}
-                        </Badge>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium leading-tight">
+                          {job.clientName}
+                        </p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {maskUser(job.panelUsername)}
+                          {job.testHours ? ` · ${job.testHours}h` : ""}
+                          {job.dueDate
+                            ? ` · ${formatBrDate(job.dueDate)}`
+                            : ""}
+                        </p>
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="h-8"
-                          onClick={() => void startInPanel(job)}
-                          disabled={busyId === job.id}
-                        >
-                          {busyId === job.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <ClipboardCopy className="h-3.5 w-3.5" />
-                          )}
-                          Abrir painel
-                        </Button>
+                      <div className="flex shrink-0 gap-1">
                         <Button
                           type="button"
                           size="sm"
                           variant="secondary"
-                          className="h-8"
-                          onClick={() => completeJob(job)}
-                          disabled={busyId === job.id}
+                          className="h-8 px-2.5"
+                          onClick={() => openTestDetail(job)}
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Concluí
+                          Detalhes
                         </Button>
                         <Button
                           type="button"
                           size="sm"
                           variant="ghost"
-                          className="h-8"
-                          onClick={() => failJob(job)}
+                          className="h-8 px-2.5"
+                          onClick={() => fillActivateFromTest(job)}
+                          disabled={!job.panelUsername?.trim()}
                         >
-                          Falhou
+                          <Smartphone className="h-3.5 w-3.5" />
+                          App
                         </Button>
+                        {isOpen ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 px-2.5"
+                            onClick={() => completeJob(job)}
+                            disabled={busyId === job.id}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Concluí
+                          </Button>
+                        ) : null}
                       </div>
                     </li>
-                  ))}
-                </ul>
-              ) : null}
+                  );
+                })}
+              </ul>
+            )}
+          </section>
 
-              {recentTestJobs.length > 0 ? (
-                <div className="space-y-1.5 border-t pt-3">
-                  <p className="text-[11px] font-medium text-muted-foreground">
-                    Recentes
-                  </p>
-                  <ul className="space-y-1">
-                    {recentTestJobs.map((job) => (
-                      <li
-                        key={job.id}
-                        className="text-[11px] text-muted-foreground"
-                      >
-                        <button
-                          type="button"
-                          className="min-w-0 w-full truncate text-left hover:text-foreground"
-                          onClick={() => openTestDetail(job)}
-                        >
-                          {job.clientName} · teste
-                          {job.panelUsername
-                            ? ` · ${maskUser(job.panelUsername)}`
-                            : ""}
-                          {" · "}
-                          {job.dueDate
-                            ? formatBrDate(job.dueDate)
-                            : format(
-                                new Date(job.updatedAt),
-                                "dd/MM/yyyy HH:mm:ss",
-                              )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {openTestJobs.length === 0 && recentTestJobs.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  {jobsQ.trim()
-                    ? "Nenhum resultado para essa busca."
-                    : "Nenhum teste na fila. Use Atualizar testes para carregar da UniPlay."}
-                </p>
-              ) : null}
-            </section>
+          {activateForms.testes.username.trim()
+            ? renderActivateAppSection(
+                "testes",
+                "Informe o MAC e ative o app.",
+              )
+            : null}
             </TabsContent>
 
-            <TabsContent value="renovacoes" className="mt-0 space-y-4">
-              <section className="ax-surface space-y-3 p-4">
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold tracking-tight">
-                    Log de renovações
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Vinculado à sua conta · sincroniza em todos os dispositivos
-                    {renewLogCount > 0 ? ` · ${renewLogCount} registro(s)` : ""}
-                  </p>
-                </div>
+            <TabsContent value="logs" className="mt-0 space-y-4">
+              <Tabs
+                value={logsSubTab}
+                onValueChange={setLogsSubTab}
+                className="space-y-4"
+              >
+                <TabsList className="h-auto flex-wrap bg-background/80">
+                  <TabsTrigger value="renovacoes" className="gap-1.5">
+                    <CalendarPlus className="h-3.5 w-3.5" />
+                    Renovações
+                    {renewLogCount > 0 ? (
+                      <Badge
+                        variant="secondary"
+                        className="ml-0.5 h-5 px-1.5 text-[10px]"
+                      >
+                        {renewLogCount}
+                      </Badge>
+                    ) : null}
+                  </TabsTrigger>
+                  <TabsTrigger value="teste" className="gap-1.5">
+                    <FlaskConical className="h-3.5 w-3.5" />
+                    Teste
+                    {testLogCount > 0 ? (
+                      <Badge
+                        variant="secondary"
+                        className="ml-0.5 h-5 px-1.5 text-[10px]"
+                      >
+                        {testLogCount}
+                      </Badge>
+                    ) : null}
+                  </TabsTrigger>
+                </TabsList>
 
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={renewQ}
-                    onChange={(e) => setRenewQ(e.target.value)}
-                    placeholder="Buscar renovação (nome, usuário…)"
-                    className="h-9 pl-8"
-                  />
-                </div>
+                <TabsContent value="renovacoes" className="mt-0 space-y-4">
+                  <section className="ax-surface space-y-3 p-4">
+                    <div className="min-w-0">
+                      <h2 className="text-sm font-semibold tracking-tight">
+                        Renovações e extensões
+                      </h2>
+                      <p className="text-xs text-muted-foreground">
+                        Planos renovados ou estendidos · sincroniza na conta
+                        {renewLogCount > 0
+                          ? ` · ${renewLogCount} registro(s)`
+                          : ""}
+                      </p>
+                    </div>
 
-                {openRenewJobs.length > 0 ? (
-                  <div className="space-y-1.5">
-                    <p className="text-[11px] font-medium text-muted-foreground">
-                      Em andamento
-                    </p>
-                    <ul className="space-y-1.5">
-                      {openRenewJobs.map((job) => (
-                        <li
-                          key={job.id}
-                          className="space-y-2 rounded-md border px-2.5 py-2 text-sm"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="font-medium leading-tight">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={renewQ}
+                        onChange={(e) => setRenewQ(e.target.value)}
+                        placeholder="Buscar renovação (nome, usuário…)"
+                        className="h-9 pl-8"
+                      />
+                    </div>
+
+                    {openRenewJobs.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-medium text-muted-foreground">
+                          Em andamento
+                        </p>
+                        <ul className="space-y-1.5">
+                          {openRenewJobs.map((job) => (
+                            <li
+                              key={job.id}
+                              className="space-y-2 rounded-md border px-2.5 py-2 text-sm"
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="font-medium leading-tight">
+                                    {job.clientName}
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {maskUser(job.panelUsername)} · +
+                                    {job.months}{" "}
+                                    {job.months === 1 ? "mês" : "meses"}
+                                  </p>
+                                </div>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px]",
+                                    job.status === "doing" &&
+                                      "border-primary/40 bg-primary/10 text-primary",
+                                  )}
+                                >
+                                  {statusLabel(job.status)}
+                                </Badge>
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-8"
+                                  onClick={() => void startInPanel(job)}
+                                  disabled={busyId === job.id}
+                                >
+                                  {busyId === job.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <ClipboardCopy className="h-3.5 w-3.5" />
+                                  )}
+                                  Abrir painel
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  className="h-8"
+                                  onClick={() => completeJob(job)}
+                                  disabled={busyId === job.id}
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                  Concluí
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8"
+                                  onClick={() => failJob(job)}
+                                >
+                                  Falhou
+                                </Button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {renewLog.length > 0 ? (
+                      <ul className="space-y-2">
+                        {renewLog.map((job) => {
+                          const extend =
+                            /estend/i.test(job.note || "") ||
+                            /estend/i.test(job.clientName || "");
+                          return (
+                            <li
+                              key={job.id}
+                              className="rounded-md border px-3 py-2.5 text-sm"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="min-w-0 truncate font-medium leading-tight">
+                                  {job.clientName}
+                                </p>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "shrink-0 text-[10px]",
+                                    job.status === "done" &&
+                                      "border-success/40 bg-success/10 text-success",
+                                    job.status === "failed" &&
+                                      "border-destructive/40 bg-destructive/10 text-destructive",
+                                  )}
+                                >
+                                  {job.status === "done"
+                                    ? extend
+                                      ? "Estendido"
+                                      : "Renovado"
+                                    : statusLabel(job.status)}
+                                </Badge>
+                              </div>
+                              <dl className="mt-2 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
+                                <div>
+                                  <dt className="inline text-muted-foreground/80">
+                                    Usuário:{" "}
+                                  </dt>
+                                  <dd className="inline font-mono text-foreground/80">
+                                    {maskUser(job.panelUsername)}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="inline text-muted-foreground/80">
+                                    Plano:{" "}
+                                  </dt>
+                                  <dd className="inline text-foreground/80">
+                                    +{job.months}{" "}
+                                    {job.months === 1 ? "mês" : "meses"}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="inline text-muted-foreground/80">
+                                    Novo vencimento:{" "}
+                                  </dt>
+                                  <dd className="inline text-foreground/80">
+                                    {job.dueDate
+                                      ? formatBrDate(job.dueDate)
+                                      : "—"}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="inline text-muted-foreground/80">
+                                    {extend ? "Estendido em: " : "Renovado em: "}
+                                  </dt>
+                                  <dd className="inline text-foreground/80">
+                                    {format(
+                                      new Date(job.updatedAt),
+                                      "dd/MM/yyyy HH:mm",
+                                    )}
+                                  </dd>
+                                </div>
+                              </dl>
+                              {job.note ? (
+                                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                                  {job.note}
+                                </p>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+
+                    {openRenewJobs.length === 0 && renewLog.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        {renewQ.trim()
+                          ? "Nenhum resultado para essa busca."
+                          : "Nenhuma renovação ou extensão registrada ainda."}
+                      </p>
+                    ) : null}
+                  </section>
+                </TabsContent>
+
+                <TabsContent value="teste" className="mt-0 space-y-4">
+                  <section className="ax-surface space-y-3 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <h2 className="text-sm font-semibold tracking-tight">
+                          Testes gerados
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          Painel + WhatsApp + AuxPlus
+                          {testLogCount > 0
+                            ? ` · ${testLogCount} registro(s)`
+                            : ""}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-8"
+                        disabled={
+                          (!bearer.trim() &&
+                            !(panelUser.trim() && panelPass)) ||
+                          syncingTests ||
+                          Boolean(busyId)
+                        }
+                        onClick={() => void refreshPanelTests()}
+                      >
+                        {syncingTests ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                        Atualizar do painel
+                      </Button>
+                    </div>
+
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={testLogQ}
+                        onChange={(e) => setTestLogQ(e.target.value)}
+                        placeholder="Buscar teste (nome, usuário…)"
+                        className="h-9 pl-8"
+                      />
+                    </div>
+
+                    {testLog.length > 0 ? (
+                      <ul className="space-y-2">
+                        {testLog.map((job) => (
+                          <li
+                            key={job.id}
+                            className="rounded-md border px-3 py-2.5 text-sm"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="min-w-0 truncate font-medium leading-tight">
                                 {job.clientName}
                               </p>
-                              <p className="text-[11px] text-muted-foreground">
-                                {maskUser(job.panelUsername)} · +{job.months}{" "}
-                                {job.months === 1 ? "mês" : "meses"}
-                              </p>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "shrink-0 text-[10px]",
+                                  job.status === "done" &&
+                                    "border-success/40 bg-success/10 text-success",
+                                  job.status === "failed" &&
+                                    "border-destructive/40 bg-destructive/10 text-destructive",
+                                )}
+                              >
+                                {job.status === "done"
+                                  ? "Gerado"
+                                  : statusLabel(job.status)}
+                              </Badge>
                             </div>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-[10px]",
-                                job.status === "doing" &&
-                                  "border-primary/40 bg-primary/10 text-primary",
-                              )}
-                            >
-                              {statusLabel(job.status)}
-                            </Badge>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-8"
-                              onClick={() => void startInPanel(job)}
-                              disabled={busyId === job.id}
-                            >
-                              {busyId === job.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <ClipboardCopy className="h-3.5 w-3.5" />
-                              )}
-                              Abrir painel
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              className="h-8"
-                              onClick={() => completeJob(job)}
-                              disabled={busyId === job.id}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              Concluí
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="h-8"
-                              onClick={() => failJob(job)}
-                            >
-                              Falhou
-                            </Button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {renewLog.length > 0 ? (
-                  <ul className="space-y-2">
-                    {renewLog.map((job) => (
-                      <li
-                        key={job.id}
-                        className="rounded-md border px-3 py-2.5 text-sm"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="min-w-0 truncate font-medium leading-tight">
-                            {job.clientName}
-                          </p>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "shrink-0 text-[10px]",
-                              job.status === "done" &&
-                                "border-success/40 bg-success/10 text-success",
-                              job.status === "failed" &&
-                                "border-destructive/40 bg-destructive/10 text-destructive",
-                            )}
-                          >
-                            {job.status === "done"
-                              ? "Concluído"
-                              : statusLabel(job.status)}
-                          </Badge>
-                        </div>
-                        <dl className="mt-2 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
-                          <div>
-                            <dt className="inline text-muted-foreground/80">
-                              Usuário:{" "}
-                            </dt>
-                            <dd className="inline font-mono text-foreground/80">
-                              {maskUser(job.panelUsername)}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="inline text-muted-foreground/80">
-                              Plano:{" "}
-                            </dt>
-                            <dd className="inline text-foreground/80">
-                              +{job.months}{" "}
-                              {job.months === 1 ? "mês" : "meses"}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="inline text-muted-foreground/80">
-                              Novo vencimento:{" "}
-                            </dt>
-                            <dd className="inline text-foreground/80">
-                              {job.dueDate
-                                ? formatBrDate(job.dueDate)
-                                : "—"}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="inline text-muted-foreground/80">
-                              Renovado em:{" "}
-                            </dt>
-                            <dd className="inline text-foreground/80">
-                              {format(
-                                new Date(job.updatedAt),
-                                "dd/MM/yyyy HH:mm",
-                              )}
-                            </dd>
-                          </div>
-                        </dl>
-                        {job.status === "failed" && job.note ? (
-                          <p className="mt-1.5 text-[11px] text-destructive">
-                            {job.note}
-                          </p>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-
-                {openRenewJobs.length === 0 && renewLog.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    {renewQ.trim()
-                      ? "Nenhum resultado para essa busca."
-                      : "Nenhuma renovação registrada ainda. Use Renovar em Ativos."}
-                  </p>
-                ) : null}
-              </section>
+                            <dl className="mt-2 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
+                              <div>
+                                <dt className="inline text-muted-foreground/80">
+                                  Usuário:{" "}
+                                </dt>
+                                <dd className="inline font-mono text-foreground/80">
+                                  {maskUser(job.panelUsername)}
+                                </dd>
+                              </div>
+                              <div>
+                                <dt className="inline text-muted-foreground/80">
+                                  Duração:{" "}
+                                </dt>
+                                <dd className="inline text-foreground/80">
+                                  {job.testHours}h
+                                </dd>
+                              </div>
+                              <div>
+                                <dt className="inline text-muted-foreground/80">
+                                  Vencimento:{" "}
+                                </dt>
+                                <dd className="inline text-foreground/80">
+                                  {job.dueDate
+                                    ? formatBrDate(job.dueDate)
+                                    : "—"}
+                                </dd>
+                              </div>
+                              <div>
+                                <dt className="inline text-muted-foreground/80">
+                                  Gerado em:{" "}
+                                </dt>
+                                <dd className="inline text-foreground/80">
+                                  {format(
+                                    new Date(job.updatedAt),
+                                    "dd/MM/yyyy HH:mm",
+                                  )}
+                                </dd>
+                              </div>
+                            </dl>
+                            {job.note ? (
+                              <p
+                                className={cn(
+                                  "mt-1.5 text-[11px]",
+                                  job.status === "failed"
+                                    ? "text-destructive"
+                                    : "text-muted-foreground",
+                                )}
+                              >
+                                {job.note}
+                              </p>
+                            ) : null}
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="h-8"
+                                onClick={() => openTestDetail(job)}
+                              >
+                                Detalhes
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-8"
+                                disabled={!job.panelUsername?.trim()}
+                                onClick={() => fillActivateFromTest(job)}
+                              >
+                                <Smartphone className="h-3.5 w-3.5" />
+                                App
+                              </Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {testLogQ.trim()
+                          ? "Nenhum resultado para essa busca."
+                          : "Nenhum teste ainda. Clique em Atualizar do painel."}
+                      </p>
+                    )}
+                  </section>
+                </TabsContent>
+              </Tabs>
             </TabsContent>
               </>
             ) : null}
@@ -2974,63 +3551,78 @@ export default function Automations() {
         }}
       >
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Renovação UniPlay</DialogTitle>
-            <DialogDescription>
-              {renewTargetId
-                ? (() => {
-                    const item = clients.find((i) => i.id === renewTargetId);
-                    return item
-                      ? `${item.name} · ${maskUser(item.itemId) === "—" ? "sem usuário" : maskUser(item.itemId)}`
-                      : "Escolha o plano";
-                  })()
-                : "Escolha o plano"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5 py-1">
-            {IPTV_RENEW_OPTIONS.map((opt) => {
-              const selected = renewOption.months === opt.months;
-              return (
-                <button
-                  key={opt.months}
-                  type="button"
-                  onClick={() => setRenewOption(opt)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left text-sm transition",
-                    selected
-                      ? "border-primary bg-primary/10 font-medium text-foreground"
-                      : "border-border/70 bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                  )}
-                >
-                  <span>{opt.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setRenewTargetId(null)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              disabled={!renewTargetId || busyId === renewTargetId}
-              onClick={() => {
-                if (!renewTargetId) return;
-                void runApiRenew(renewTargetId, renewOption);
-              }}
-            >
-              {busyId && busyId === renewTargetId ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              Confirmar renovação
-            </Button>
-          </DialogFooter>
+          {(() => {
+            const renewItem = renewTargetId
+              ? clients.find((i) => i.id === renewTargetId)
+              : undefined;
+            const isExtend = renewItem
+              ? isClientStillActive(renewItem.dueDate)
+              : false;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>
+                    {isExtend ? "Estender UniPlay" : "Renovação UniPlay"}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {renewItem
+                      ? `${renewItem.name} · ${maskUser(renewItem.itemId) === "—" ? "sem usuário" : maskUser(renewItem.itemId)}${
+                          renewItem.dueDate
+                            ? ` · vence ${formatBrDate(renewItem.dueDate)}`
+                            : ""
+                        }`
+                      : "Escolha o plano"}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-1.5 py-1">
+                  {IPTV_RENEW_OPTIONS.map((opt) => {
+                    const selected = renewOption.months === opt.months;
+                    return (
+                      <button
+                        key={opt.months}
+                        type="button"
+                        onClick={() => setRenewOption(opt)}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left text-sm transition",
+                          selected
+                            ? "border-primary bg-primary/10 font-medium text-foreground"
+                            : "border-border/70 bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                        )}
+                      >
+                        <span>{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setRenewTargetId(null)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={!renewTargetId || busyId === renewTargetId}
+                    onClick={() => {
+                      if (!renewTargetId) return;
+                      void runApiRenew(renewTargetId, renewOption);
+                    }}
+                  >
+                    {busyId && busyId === renewTargetId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isExtend ? (
+                      <CalendarPlus className="h-4 w-4" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    {isExtend ? "Confirmar extensão" : "Confirmar renovação"}
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -3193,8 +3785,29 @@ export default function Automations() {
                     </div>
 
                     <div className="space-y-2 border-t pt-3">
+                      <p className="text-sm font-medium">Ativar app (MAC)</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Carrega usuário e senha do teste em Ativar app para
+                        cadastrar o aparelho.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 w-full sm:w-auto"
+                        disabled={!detailJob.panelUsername?.trim()}
+                        onClick={() => {
+                          fillActivateFromTest(detailJob);
+                          setDetailJobId(null);
+                        }}
+                      >
+                        <Smartphone className="h-3.5 w-3.5" />
+                        Ir para Ativar app
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2 border-t pt-3">
                       <p className="text-sm font-medium">
-                        Ativar com créditos (mensalidade)
+                        Ativar plano (créditos)
                       </p>
                       <p className="text-[11px] text-muted-foreground">
                         Converte o teste em plano pago no painel, cobrando os

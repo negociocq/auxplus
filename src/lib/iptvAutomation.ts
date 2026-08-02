@@ -2,10 +2,22 @@ import { addMonths, format } from "date-fns";
 import type { AppData, Item } from "@/types";
 import { createItem, updateItem } from "@/lib/storage";
 import {
+  appendItemPayment,
+  embedPaymentsInNotes,
+  extractPaymentsFromNotes,
+  getRecordedPayments,
   paymentsAfterDueChange,
   stripPaymentMarker,
   withEmbeddedPayments,
 } from "@/lib/payments";
+import {
+  embedResellerCreditsBought,
+  extractResellerCreditsBought,
+  getResellerCreditsBought,
+  stripResellerMarker,
+  withResellerCreditsBoughtDelta,
+} from "@/lib/resellerCredits";
+import type { ItemPayment } from "@/types";
 import {
   fixUtf8Mojibake,
   isIptvTestOrTrialUser,
@@ -78,6 +90,169 @@ export function mergeIptvJobs(a: IptvJob[], b: IptvJob[]): IptvJob[] {
     if (!prev || job.updatedAt > prev.updatedAt) map.set(job.id, job);
   }
   return trimJobs([...map.values()]);
+}
+
+type WaConsumedRow = {
+  at?: string;
+  username?: string;
+  name?: string;
+  remoteId?: string | number;
+};
+
+type MpLogOrder = {
+  id: string;
+  mpPaymentId?: string;
+  status?: string;
+  kind?: string;
+  itemRefId?: string;
+  clientName?: string;
+  panelUsername?: string;
+  dueDate?: string | null;
+  phone?: string;
+  months?: number;
+  releasedAt?: string;
+  paidAt?: string;
+  updatedAt?: string;
+  createdAt?: string;
+};
+
+function hasTestUsername(jobs: IptvJob[], username: string) {
+  const u = username.trim().toLowerCase();
+  if (!u) return false;
+  return jobs.some(
+    (j) =>
+      j.kind === "test" && j.panelUsername.trim().toLowerCase() === u,
+  );
+}
+
+function hasRenewForMp(jobs: IptvJob[], order: MpLogOrder) {
+  const id = `wa_mp_${order.id}`;
+  if (jobs.some((j) => j.id === id)) return true;
+  const mp = String(order.mpPaymentId || "").trim();
+  if (mp && jobs.some((j) => j.note?.includes(mp))) return true;
+  const user = String(order.panelUsername || "").trim().toLowerCase();
+  const when = order.releasedAt || order.paidAt || order.updatedAt || "";
+  if (!user || !when) return false;
+  const t = new Date(when).getTime();
+  if (!Number.isFinite(t)) return false;
+  return jobs.some((j) => {
+    if (j.kind !== "renew") return false;
+    if (j.panelUsername.trim().toLowerCase() !== user) return false;
+    const jt = new Date(j.updatedAt).getTime();
+    return Number.isFinite(jt) && Math.abs(jt - t) < 2 * 60 * 60 * 1000;
+  });
+}
+
+/** Testes gerados no WhatsApp (wa_bot_state.testConsumed) → entradas de log. */
+export function jobsFromWaTestConsumed(
+  testConsumed: Record<string, WaConsumedRow> | null | undefined,
+  opts?: { testHours?: number },
+): IptvJob[] {
+  if (!testConsumed) return [];
+  const hours = Math.max(1, Number(opts?.testHours) || 6);
+  const out: IptvJob[] = [];
+  for (const [phone, info] of Object.entries(testConsumed)) {
+    if (!info || typeof info !== "object") continue;
+    const username = String(info.username || "").trim();
+    const at = String(info.at || "").trim() || new Date().toISOString();
+    if (!username && !info.name) continue;
+    const phoneKey = String(phone || "").replace(/\D/g, "") || phone;
+    out.push({
+      id: `wa_test_${phoneKey}_${username || at}`,
+      kind: "test",
+      status: "done",
+      itemRefId: "",
+      clientName: String(info.name || "").trim() || username || phoneKey,
+      panelUsername: username,
+      panelRemoteId: info.remoteId,
+      phone: phoneKey,
+      dueDate: null,
+      months: 0,
+      testHours: hours,
+      note: "WhatsApp · teste gerado",
+      createdAt: at,
+      updatedAt: at,
+    });
+  }
+  return out;
+}
+
+/** PIX liberados (WhatsApp/bot) → log de renovação/extensão. */
+export function jobsFromReleasedMpOrders(
+  orders: MpLogOrder[] | null | undefined,
+): IptvJob[] {
+  if (!Array.isArray(orders)) return [];
+  const out: IptvJob[] = [];
+  for (const order of orders) {
+    if (!order?.id) continue;
+    const kind = order.kind || "renew";
+    if (kind === "reseller_credits") continue;
+    const released =
+      order.status === "released" ||
+      Boolean(order.releasedAt) ||
+      (order.status === "approved" && Boolean(order.paidAt));
+    if (!released) continue;
+    if (kind !== "renew" && kind !== "test_activate") continue;
+    const at =
+      order.releasedAt ||
+      order.paidAt ||
+      order.updatedAt ||
+      order.createdAt ||
+      new Date().toISOString();
+    const months = Math.max(1, Math.floor(Number(order.months) || 1));
+    const username = String(order.panelUsername || "").trim();
+    const isTestPlan = kind === "test_activate";
+    out.push({
+      id: `wa_mp_${order.id}`,
+      kind: "renew",
+      status: "done",
+      itemRefId: String(order.itemRefId || ""),
+      clientName:
+        String(order.clientName || "").trim() || username || "WhatsApp",
+      panelUsername: username,
+      phone: String(order.phone || "").replace(/\D/g, ""),
+      dueDate: order.dueDate ?? null,
+      months,
+      testHours: 0,
+      note: isTestPlan
+        ? `WhatsApp · teste→plano · ${months}m · MP ${order.mpPaymentId || ""}`.trim()
+        : `WhatsApp · PIX · ${months}m · MP ${order.mpPaymentId || ""}`.trim(),
+      createdAt: order.createdAt || at,
+      updatedAt: at,
+    });
+  }
+  return out;
+}
+
+/**
+ * Une fila local com testes/renovações vindos do WhatsApp
+ * (testConsumed + pedidos PIX liberados), sem duplicar.
+ */
+export function mergeWhatsAppLogSources(
+  jobs: IptvJob[],
+  opts: {
+    testConsumed?: Record<string, WaConsumedRow> | null;
+    mpOrders?: MpLogOrder[] | null;
+    testHours?: number;
+  },
+): IptvJob[] {
+  let next = [...jobs];
+  for (const job of jobsFromWaTestConsumed(opts.testConsumed, {
+    testHours: opts.testHours,
+  })) {
+    if (hasTestUsername(next, job.panelUsername)) continue;
+    if (next.some((j) => j.id === job.id)) continue;
+    next.push(job);
+  }
+  for (const job of jobsFromReleasedMpOrders(opts.mpOrders)) {
+    const order = (opts.mpOrders || []).find(
+      (o) => `wa_mp_${o.id}` === job.id,
+    );
+    if (order && hasRenewForMp(next, order)) continue;
+    if (next.some((j) => j.id === job.id)) continue;
+    next.push(job);
+  }
+  return trimJobs(next);
 }
 
 export function loadIptvJobs(userId: string): IptvJob[] {
@@ -347,8 +522,14 @@ export function syncIptvUsersToFolder(
 function buildResellerSyncNotes(
   remote: IptvReseller,
   existingNotes?: string | null,
+  payments?: ItemPayment[],
 ): string {
-  const clean = stripPaymentMarker(existingNotes)
+  const pays = payments?.length
+    ? payments
+    : extractPaymentsFromNotes(existingNotes);
+  const clean = stripResellerMarker(
+    stripPaymentMarker(existingNotes),
+  )
     .split("\n")
     .filter(
       (line) =>
@@ -371,7 +552,53 @@ function buildResellerSyncNotes(
     const d = Math.floor(remote.daysToDue);
     auto.push(`Última recarga: ${d} ${d === 1 ? "dia" : "dias"}`);
   }
-  return [clean, ...auto].filter(Boolean).join("\n");
+  const body = [clean, ...auto].filter(Boolean).join("\n");
+  const withPay = embedPaymentsInNotes(body, pays);
+  const bought = extractResellerCreditsBought(existingNotes);
+  return bought != null
+    ? embedResellerCreditsBought(withPay, bought)
+    : withPay;
+}
+
+/**
+ * Registra recarga de revendedor: +créditos no saldo, soma em
+ * créditos comprados (Consultar Anual), PIX no histórico e “Última recarga”.
+ */
+export function applyResellerRechargeToItem(
+  item: Item,
+  opts: { credits: number; amountBrl: number; paidAt?: string },
+): Item {
+  const credits = Math.max(0, Math.floor(Number(opts.credits) || 0));
+  const amountBrl = Math.round((Number(opts.amountBrl) || 0) * 100) / 100;
+  const paidAt = String(
+    opts.paidAt || format(new Date(), "yyyy-MM-dd"),
+  ).slice(0, 10);
+
+  let notes = stripPaymentMarker(item.notes)
+    .split("\n")
+    .filter((line) => !/^Última recarga:\s*/i.test(line.trim()))
+    .join("\n")
+    .trim();
+  notes = notes
+    ? `${notes}\nÚltima recarga: 0 dias`
+    : "Última recarga: 0 dias";
+
+  const withCredits = withResellerCreditsBoughtDelta(
+    {
+      ...item,
+      price: (Number(item.price) || 0) + credits,
+      notes,
+      dueDate: null,
+    },
+    credits,
+  );
+  if (amountBrl <= 0) {
+    return withEmbeddedPayments({
+      ...withCredits,
+      payments: getRecordedPayments(item),
+    });
+  }
+  return appendItemPayment(withCredits, { paidAt, amount: amountBrl });
 }
 
 /**
@@ -404,9 +631,9 @@ export function syncIptvResellersToFolder(
       skipped += 1;
       continue;
     }
-    const dueDate = parseIptvExpToDateTime(
-      remote.exp_date ?? (remote as { expDate?: string }).expDate,
-    );
+    // Revendedor não usa vencimento de cliente — dueDate vazio evita o gráfico
+    // tratar saldo de créditos (price) como se fosse R$.
+    const dueDate = "";
     const name =
       (remote.name && String(remote.name).trim()) ||
       (remote.nota && String(remote.nota).trim()) ||
@@ -428,17 +655,36 @@ export function syncIptvResellersToFolder(
 
     if (existing) {
       const patch: Partial<typeof existing> = {};
-      const existingDue = existing.dueDate
-        ? parseIptvExpToDateTime(existing.dueDate) ||
-          `${ymdOnly(existing.dueDate)} 00:00:00`
-        : "";
-      if (dueDate && existingDue !== dueDate) patch.dueDate = dueDate;
+      if (existing.dueDate) patch.dueDate = dueDate;
       if (name && name !== (existing.name || "").trim()) patch.name = name;
       if (phone && phone !== (existing.phone || "").trim()) patch.phone = phone;
       if (credits != null && credits !== existing.price) patch.price = credits;
-      const nextNotes = buildResellerSyncNotes(remote, existing.notes);
-      if (nextNotes !== stripPaymentMarker(existing.notes)) {
+      // Inicia histórico editável com o saldo atual (só na 1ª vez)
+      if (
+        existing.resellerCreditsBought == null &&
+        credits != null &&
+        credits >= 0
+      ) {
+        patch.resellerCreditsBought = Math.max(
+          getResellerCreditsBought(existing),
+          Math.floor(credits),
+        );
+      }
+      // Limpa pagamentos sintéticos (saldo antigo contado como R$)
+      const recorded = getRecordedPayments(existing).filter(
+        (p) => Number(p.amount) >= 10,
+      );
+      const nextNotes = buildResellerSyncNotes(
+        remote,
+        existing.notes,
+        recorded,
+      );
+      if (
+        nextNotes !== (existing.notes || "").trim() ||
+        recorded.length !== getRecordedPayments(existing).length
+      ) {
         patch.notes = nextNotes;
+        patch.payments = recorded;
       }
       if (
         remote.createdAt &&
@@ -454,14 +700,17 @@ export function syncIptvResellersToFolder(
       next = updateItem(next, { ...existing, ...patch });
       updated += 1;
     } else {
+      const startCredits = Math.max(0, Math.floor(credits ?? 0));
       next = createItem(next, {
         folderId,
         itemId: username,
         name,
         dueDate,
         phone,
-        price: credits ?? 0,
-        notes: buildResellerSyncNotes(remote),
+        price: startCredits,
+        notes: buildResellerSyncNotes(remote, null, []),
+        payments: [],
+        resellerCreditsBought: startCredits,
         createdAt:
           remote.createdAt && /^\d{4}-\d{2}-\d{2}/.test(remote.createdAt)
             ? remote.createdAt.slice(0, 19).replace("T", " ")
@@ -485,7 +734,8 @@ export type SyncPanelTestsResult = {
 /**
  * Espelha os testes da lista UniPlay na fila local (jobs kind=test).
  * - Cria/atualiza cada teste encontrado no painel
- * - Remove jobs de teste cujo login não está mais na lista de testes
+ * - Mantém histórico local/WhatsApp que não veio na lista
+ * - Remove só espelhos UniPlay que sumiram do painel
  * - Não mexe em jobs de renovação
  */
 export function mergePanelTestsIntoJobs(
@@ -493,7 +743,19 @@ export function mergePanelTestsIntoJobs(
   remoteUsers: IptvRemoteUser[],
   opts?: { m3uHost?: string; dnsFallback?: string },
 ): SyncPanelTestsResult {
-  const tests = remoteUsers.filter((u) => isIptvTestOrTrialUser(u));
+  const isTestForSync = (u: IptvRemoteUser) => {
+    if (isIptvTestOrTrialUser(u)) return true;
+    // UniPlay: testes costumam ser login só números + vida curta
+    const username = String(u.username || u.user || "").trim();
+    if (!/^\d{6,}$/.test(username)) return false;
+    const expFull = parseIptvExpToDateTime(u.exp_date ?? u.expDate);
+    if (!expFull) return false;
+    const left =
+      new Date(expFull.replace(" ", "T")).getTime() - Date.now();
+    return left > -86_400_000 && left < 3 * 86_400_000;
+  };
+
+  const tests = remoteUsers.filter(isTestForSync);
   const renewJobs = jobs.filter((j) => j.kind !== "test");
   const existingTests = jobs.filter((j) => j.kind === "test");
   const usedJobIds = new Set<string>();
@@ -599,15 +861,21 @@ export function mergePanelTestsIntoJobs(
     }
   }
 
-  const removed = existingTests.filter((j) => !usedJobIds.has(j.id)).length;
-  // Mantém testes locais ainda "em aberto" que não apareceram (ex.: acabou de gerar)
-  const keepOpenMissing = existingTests.filter(
-    (j) =>
-      !usedJobIds.has(j.id) &&
-      (j.status === "pending" || j.status === "doing"),
-  );
+  const keepMissing = existingTests.filter((j) => {
+    if (usedJobIds.has(j.id)) return false;
+    // Em aberto / WhatsApp / AuxPlus — nunca apaga no sync
+    if (j.status === "pending" || j.status === "doing") return true;
+    if (j.id.startsWith("wa_test_")) return true;
+    if (/whatsapp/i.test(j.note || "")) return true;
+    if (!/^UniPlay ·/i.test(j.note || "")) return true;
+    // Espelho antigo do painel que não está mais na lista → remove
+    return false;
+  });
+  const removed = existingTests.filter(
+    (j) => !usedJobIds.has(j.id) && !keepMissing.includes(j),
+  ).length;
 
-  const jobsOut = [...renewJobs, ...nextTests, ...keepOpenMissing].sort(
+  const jobsOut = [...renewJobs, ...nextTests, ...keepMissing].sort(
     (a, b) => b.updatedAt.localeCompare(a.updatedAt),
   );
 
@@ -615,7 +883,7 @@ export function mergePanelTestsIntoJobs(
     jobs: jobsOut,
     created,
     updated,
-    removed: removed - keepOpenMissing.length,
+    removed,
   };
 }
 

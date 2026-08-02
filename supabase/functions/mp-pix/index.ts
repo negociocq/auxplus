@@ -73,6 +73,24 @@ function cleanExternalRef(raw: string) {
     .slice(0, 64);
 }
 
+function pickDateOfExpiration(
+  payment?: Record<string, unknown>,
+  data?: Record<string, unknown>,
+): string | undefined {
+  for (const raw of [
+    payment?.date_of_expiration,
+    payment?.dateOfExpiration,
+    data?.date_of_expiration,
+    data?.dateOfExpiration,
+  ]) {
+    const s = String(raw || "").trim();
+    if (!s) continue;
+    const t = Date.parse(s);
+    if (Number.isFinite(t)) return new Date(t).toISOString();
+  }
+  return undefined;
+}
+
 function extractPixFromOrder(data: Record<string, unknown>) {
   const tx = (data.transactions || {}) as {
     payments?: Array<Record<string, unknown>>;
@@ -92,6 +110,7 @@ function extractPixFromOrder(data: Record<string, unknown>) {
     qr_code: String(pm.qr_code || ""),
     qr_code_base64: String(pm.qr_code_base64 || ""),
     ticket_url: String(pm.ticket_url || ""),
+    date_of_expiration: pickDateOfExpiration(payment, data),
   };
 }
 
@@ -155,6 +174,9 @@ Deno.serve(async (req) => {
       }
 
       const value = amountStr(amount);
+      // Padrão MP = 24h; mínimo 30min, máximo 30 dias (ISO 8601 duration)
+      const expirationTime = String(body.expirationTime || "PT24H").trim() ||
+        "PT24H";
       // Payload mínimo oficial do PIX (Orders API)
       const orderBody = {
         type: "online",
@@ -165,6 +187,7 @@ Deno.serve(async (req) => {
           payments: [
             {
               amount: value,
+              expiration_time: expirationTime,
               payment_method: {
                 id: "pix",
                 type: "bank_transfer",
@@ -207,36 +230,71 @@ Deno.serve(async (req) => {
             error:
               "Pedido criado, mas o Mercado Pago não retornou o QR PIX. Cadastre uma chave Pix na conta MP.",
             id: pix.id,
+            paymentId: pix.paymentId,
             status: pix.status,
           },
           502,
         );
       }
-      return json(pix);
+      return json({
+        id: pix.id,
+        paymentId: pix.paymentId,
+        status: pix.status,
+        status_detail: pix.status_detail,
+        qr_code: pix.qr_code,
+        qr_code_base64: pix.qr_code_base64,
+        ticket_url: pix.ticket_url,
+        date_of_expiration: pix.date_of_expiration || null,
+      });
     }
 
     if (action === "status") {
       const paymentId = String(body.paymentId || "").trim();
       if (!paymentId) return json({ error: "Informe paymentId" }, 400);
-      const upstream = await fetch(
+
+      // Preferimos Orders API (ids ORD…). Fallback Payments API (ids numéricos / PAY…).
+      const orderRes = await fetch(
         `https://api.mercadopago.com/v1/orders/${encodeURIComponent(paymentId)}`,
         { headers: mpHeaders },
       );
-      const data = (await upstream.json().catch(() => ({}))) as Record<
+      const orderData = (await orderRes.json().catch(() => ({}))) as Record<
         string,
         unknown
       >;
-      if (!upstream.ok) {
+      if (orderRes.ok) {
+        const pix = extractPixFromOrder(orderData);
+        return json({
+          id: pix.id || paymentId,
+          status: pix.status,
+          status_detail: pix.status_detail,
+          date_of_expiration: pix.date_of_expiration || null,
+        });
+      }
+
+      const payRes = await fetch(
+        `https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`,
+        { headers: mpHeaders },
+      );
+      const payData = (await payRes.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
+      if (!payRes.ok) {
         return json(
-          { error: mpErrorMessage(data, upstream.status) },
-          upstream.status,
+          {
+            error: mpErrorMessage(
+              Object.keys(orderData).length ? orderData : payData,
+              orderRes.status || payRes.status,
+            ),
+          },
+          payRes.status || orderRes.status,
         );
       }
-      const pix = extractPixFromOrder(data);
       return json({
-        id: pix.id,
-        status: pix.status,
-        status_detail: pix.status_detail,
+        id: String(payData.id || paymentId),
+        status: String(payData.status || "pending"),
+        status_detail: String(payData.status_detail || ""),
+        date_of_expiration: pickDateOfExpiration(payData, payData) || null,
       });
     }
 

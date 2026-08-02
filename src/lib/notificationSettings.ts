@@ -11,6 +11,8 @@ export interface NotificationSettings {
   dueTodayTime: string;
   userCreditsEnabled: boolean;
   resellerCreditsEnabled: boolean;
+  /** Avisa no celular quando alguém pedir atendentes no WhatsApp */
+  whatsappHumanEnabled: boolean;
   /** Avisa quando seus créditos UniPlay ficarem abaixo deste valor */
   userCreditsThreshold: number;
   /** Avisa quando um revendedor ficar com créditos ≤ este valor */
@@ -33,6 +35,7 @@ export function defaultNotificationSettings(): NotificationSettings {
     dueTodayTime: "08:00",
     userCreditsEnabled: true,
     resellerCreditsEnabled: true,
+    whatsappHumanEnabled: true,
     userCreditsThreshold: 10,
     resellerCreditsThreshold: 2,
     lastNotified: {},
@@ -80,6 +83,7 @@ export function normalizeNotificationSettings(
     ),
     userCreditsEnabled: parsed.userCreditsEnabled !== false,
     resellerCreditsEnabled: parsed.resellerCreditsEnabled !== false,
+    whatsappHumanEnabled: parsed.whatsappHumanEnabled !== false,
     userCreditsThreshold: clampInt(
       parsed.userCreditsThreshold,
       base.userCreditsThreshold,

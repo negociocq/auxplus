@@ -953,7 +953,18 @@ function hasIptvTestFlag(row: Record<string, unknown>): boolean {
     if (v === true || v === 1 || v === "1" || v === "true") return true;
   }
   const testHours = Number(row.test_hours ?? row.testHours ?? 0);
-  return Number.isFinite(testHours) && testHours > 0;
+  if (Number.isFinite(testHours) && testHours > 0) return true;
+  // UniPlay às vezes aninha em infos
+  if (row.infos && typeof row.infos === "object") {
+    const nested = row.infos as Record<string, unknown>;
+    const nestedHours = Number(nested.test_hours ?? nested.testHours ?? 0);
+    if (Number.isFinite(nestedHours) && nestedHours > 0) return true;
+    for (const k of ["is_test", "is_trial", "isTest", "trial", "teste"]) {
+      const v = nested[k];
+      if (v === true || v === 1 || v === "1" || v === "true") return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -1008,18 +1019,63 @@ export function isConfirmedIptvTestUser(
   return hasIptvTestFlag(u as Record<string, unknown>);
 }
 
-/** Lista usuários IPTV no painel. */
+function userRowKey(u: IptvRemoteUser): string {
+  if (u.id != null && String(u.id).trim()) return `id:${u.id}`;
+  const username = String(u.username || u.user || "")
+    .trim()
+    .toLowerCase();
+  return username ? `u:${username}` : "";
+}
+
+/** Lista usuários IPTV no painel (com paginação quando a API limitar). */
 export async function listIptvUsers(
   creds: IptvPanelCreds,
   opts?: { /** Se true, omite testes/trials */ activeOnly?: boolean },
 ): Promise<IptvRemoteUser[]> {
-  const q = creds.regPassword?.trim()
-    ? `?reg_password=${encodeURIComponent(creds.regPassword.trim())}`
-    : "";
-  const data = await panelFetch(creds, `/users-iptv${q}`);
-  let users = asArray(data).map((row) =>
-    pickUserFields((row || {}) as Record<string, unknown>),
+  const reg = creds.regPassword?.trim() || "";
+  const baseParams = new URLSearchParams();
+  if (reg) baseParams.set("reg_password", reg);
+
+  const fetchPage = async (page?: number, perPage?: number) => {
+    const params = new URLSearchParams(baseParams);
+    if (page != null) {
+      params.set("page", String(page));
+      params.set("per_page", String(perPage ?? 100));
+    }
+    const qs = params.toString();
+    const data = await panelFetch(creds, `/users-iptv${qs ? `?${qs}` : ""}`);
+    return asArray(data).map((row) =>
+      pickUserFields((row || {}) as Record<string, unknown>),
+    );
+  };
+
+  let users = await fetchPage();
+  const seen = new Set(
+    users.map(userRowKey).filter(Boolean),
   );
+
+  // Se a 1ª página veio “cheia”, tenta as próximas (evita perder testes)
+  const pageSize = users.length;
+  if (pageSize >= 15 && pageSize <= 100) {
+    for (let page = 2; page <= 40; page++) {
+      let batch: IptvRemoteUser[] = [];
+      try {
+        batch = await fetchPage(page, pageSize);
+      } catch {
+        break;
+      }
+      let added = 0;
+      for (const u of batch) {
+        const key = userRowKey(u);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        users.push(u);
+        added += 1;
+      }
+      if (added === 0 || batch.length < pageSize) break;
+    }
+  }
+
   if (opts?.activeOnly) {
     users = users.filter((u) => !isIptvTestOrTrialUser(u));
   }
@@ -1490,8 +1546,11 @@ export const IPTV_RENEW_OPTIONS = [
 export type IptvRenewOption = (typeof IPTV_RENEW_OPTIONS)[number];
 
 /**
- * Renova usuário existente.
+ * Renova/estende usuário (Extend Line — consome crédito no painel).
  * No painel: action=1 + credits (= créditos gastos do plano, ex. 6m=5, 12m=10).
+ * Algumas builds da UniPlay só aceitam PUT/PATCH em /users-iptv/{id} (POST → 405).
+ *
+ * No fluxo WhatsApp/PIX: chamar SOMENTE após status approved do Mercado Pago.
  */
 export async function renewIptvUser(
   creds: IptvPanelCreds,
@@ -1510,10 +1569,34 @@ export async function renewIptvUser(
     body.reg_password = creds.regPassword.trim();
   }
   const id = encodeURIComponent(String(remoteUserId));
-  return panelFetch(creds, `/users-iptv/${id}`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  const path = `/users-iptv/${id}`;
+  const payload = JSON.stringify(body);
+  // UniPlay/Laravel: POST em /users-iptv/{id} costuma dar 405
+  const methods = ["PUT", "PATCH", "POST"] as const;
+  let lastError: Error | null = null;
+
+  for (const method of methods) {
+    try {
+      return await panelFetch(creds, path, {
+        method,
+        body: payload,
+      });
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      const msg = lastError.message;
+      const methodNotAllowed =
+        /405|method is not supported|Method Not Allowed|não permitido|not supported for this route/i.test(
+          msg,
+        );
+      if (methodNotAllowed) continue;
+      throw lastError;
+    }
+  }
+
+  throw (
+    lastError ||
+    new Error("Falha ao renovar/estender no UniPlay (método não aceito)")
+  );
 }
 
 /**

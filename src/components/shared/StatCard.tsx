@@ -33,26 +33,26 @@ export function StatCard({
       className="ax-surface p-4 sm:p-5"
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-2 text-2xl font-bold tracking-tight tabular-nums whitespace-nowrap sm:text-3xl">
-            {value}
-          </p>
-          {hint ? (
-            <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-          ) : null}
-        </div>
+        <p className="min-w-0 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </p>
         <div
           className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10",
             toneClass[tone],
           )}
         >
-          <Icon className="h-5 w-5" />
+          <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
       </div>
+
+      <p className="mt-2 text-2xl font-bold tracking-tight tabular-nums sm:text-3xl">
+        {value}
+      </p>
+
+      {hint ? (
+        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+      ) : null}
     </motion.div>
   );
 }

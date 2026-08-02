@@ -49,8 +49,11 @@ import {
 } from "@/lib/storage";
 import {
   annualPaymentBalance,
+  getRecordedPayments,
   sumPaymentsByMonth,
+  sumRecordedPaymentsByMonth,
 } from "@/lib/payments";
+import { sumResellerCreditsValueByItems } from "@/lib/resellerCredits";
 import {
   annualDebtPaid,
   debtSummary,
@@ -62,6 +65,7 @@ import { isExpenseFolderType, isRevenueFolderType } from "@/types";
 import { formatBrDate } from "@/lib/format";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import {
+  isUniplayConnected,
   loadAutomationsConfig,
   loadAutomationsConfigRemote,
 } from "@/lib/automationsConfig";
@@ -69,7 +73,6 @@ import {
   ensureIptvToken,
   fetchIptvPanelCredits,
   formatIptvCredits,
-  tokenExpiresInSec,
 } from "@/lib/iptvPanelApi";
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -118,6 +121,8 @@ export default function Dashboard() {
   const [uniplayCredits, setUniplayCredits] = useState<number | null>(null);
   const [uniplayConnected, setUniplayConnected] = useState(false);
   const [loadingCredits, setLoadingCredits] = useState(false);
+  const [resellersFolderId, setResellersFolderId] = useState("");
+  const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(8.5);
 
   useEffect(() => {
     if (!user) {
@@ -131,14 +136,12 @@ export default function Dashboard() {
         const cfg = await loadAutomationsConfigRemote(user.id).catch(() =>
           loadAutomationsConfig(user.id),
         );
-        const bearer = cfg.iptvBearerToken?.trim() || "";
-        const left = bearer ? tokenExpiresInSec(bearer) : null;
-        const sessionOk = Boolean(bearer) && (left == null || left > 0);
-        const canLogin = Boolean(
-          cfg.iptvUsername?.trim() && cfg.iptvPassword,
-        );
-        // Sem sessão e sem login salvo → não mostra o bloco na Dashboard
-        if (!sessionOk && !canLogin) {
+        // Sem UniPlay conectada → não busca nem mostra créditos
+        if (!cancelled) {
+          setResellersFolderId(cfg.syncResellersFolderId || "");
+          setResellerCreditPriceBrl(cfg.resellerCreditPriceBrl || 8.5);
+        }
+        if (!isUniplayConnected(cfg)) {
           if (!cancelled) {
             setUniplayCredits(null);
             setUniplayConnected(false);
@@ -146,6 +149,7 @@ export default function Dashboard() {
           }
           return;
         }
+        const bearer = cfg.iptvBearerToken?.trim() || "";
         if (!cancelled) setLoadingCredits(true);
         const plat = await loadIptvPlatformConfig();
         const ensured = await ensureIptvToken({
@@ -359,6 +363,10 @@ export default function Dashboard() {
         const y = Number(String(raw).slice(0, 4));
         if (y >= 2020) years.add(y);
       }
+      for (const p of getRecordedPayments(item)) {
+        const y = Number(String(p.paidAt).slice(0, 4));
+        if (y >= 2020) years.add(y);
+      }
     }
     return [...years].sort((a, b) => b - a);
   }, [myItems]);
@@ -371,15 +379,59 @@ export default function Dashboard() {
     return myItems.filter((i) => i.folderId === chartFolderId);
   }, [chartFolderId, myItems, revenueFolderIds]);
 
-  const monthlyChart = useMemo(
-    () => sumPaymentsByMonth(chartItems, chartYear),
-    [chartYear, chartItems],
-  );
+  const monthlyChart = useMemo(() => {
+    const isResellerFolder =
+      Boolean(resellersFolderId) && chartFolderId === resellersFolderId;
+    if (isResellerFolder) {
+      return sumRecordedPaymentsByMonth(chartItems, chartYear);
+    }
+    if (chartFolderId === "all" && resellersFolderId) {
+      const clients = chartItems.filter(
+        (i) => i.folderId !== resellersFolderId,
+      );
+      const resellers = chartItems.filter(
+        (i) => i.folderId === resellersFolderId,
+      );
+      const a = sumPaymentsByMonth(clients, chartYear);
+      const b = sumRecordedPaymentsByMonth(resellers, chartYear);
+      return a.map((row, idx) => ({
+        name: row.name,
+        total: row.total + (b[idx]?.total || 0),
+        itens: row.itens + (b[idx]?.itens || 0),
+      }));
+    }
+    return sumPaymentsByMonth(chartItems, chartYear);
+  }, [chartYear, chartItems, chartFolderId, resellersFolderId]);
 
-  const annualBalance = useMemo(
-    () => annualPaymentBalance(chartItems, chartYear),
-    [chartYear, chartItems],
-  );
+  const annualBalance = useMemo(() => {
+    const isResellerFolder =
+      Boolean(resellersFolderId) && chartFolderId === resellersFolderId;
+    if (isResellerFolder) {
+      return sumResellerCreditsValueByItems(
+        chartItems,
+        resellerCreditPriceBrl,
+      );
+    }
+    if (chartFolderId === "all" && resellersFolderId) {
+      const clients = chartItems.filter(
+        (i) => i.folderId !== resellersFolderId,
+      );
+      const resellers = chartItems.filter(
+        (i) => i.folderId === resellersFolderId,
+      );
+      return (
+        annualPaymentBalance(clients, chartYear) +
+        sumResellerCreditsValueByItems(resellers, resellerCreditPriceBrl)
+      );
+    }
+    return annualPaymentBalance(chartItems, chartYear);
+  }, [
+    chartYear,
+    chartItems,
+    chartFolderId,
+    resellersFolderId,
+    resellerCreditPriceBrl,
+  ]);
 
   const ranking = useMemo(
     () =>
@@ -1121,7 +1173,8 @@ export default function Dashboard() {
                     Receita por mês
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Cliente/Produto até o vencimento · sem dívidas
+                    Cliente/Produto até o vencimento · recargas de revendedor
+                    entram pelo valor pago · sem dívidas
                   </p>
                   <p className="mt-2 text-lg font-bold tracking-tight text-primary">
                     Saldo anual {chartYear}: {money(annualBalance)}

@@ -6,6 +6,13 @@ verify_jwt = false
 [functions.ges-api]
 verify_jwt = false
 
+# Webhook Evolution (sem JWT — a Evolution chama direto)
+[functions.evolution-webhook]
+verify_jwt = false
+
+[functions.mp-pix]
+verify_jwt = false
+
 # Auth URLs (produção + localhost / Dyad)
 [auth]
 enabled = true

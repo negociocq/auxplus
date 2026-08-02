@@ -16,6 +16,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  PhoneOff,
   Search,
   Settings2,
   Trash2,
@@ -55,10 +56,47 @@ import {
 import { useHideBalance } from "@/hooks/useHideBalance";
 import {
   annualPaymentBalance,
+  getRecordedPayments,
   stripPaymentMarker,
   sumPaymentsByMonth,
+  sumRecordedPaymentsByMonth,
 } from "@/lib/payments";
+import {
+  getResellerCreditsBought,
+  resellerCreditsValueBrl,
+  stripResellerMarker,
+  sumResellerCreditsValueByItems,
+} from "@/lib/resellerCredits";
+import {
+  getPlanMonths,
+  planCycleProgress,
+  planPixAmount,
+  stripPlanMarker,
+} from "@/lib/planMonths";
+import { getItemScreens, stripScreensMarker } from "@/lib/itemScreens";
+import { stripDebtMarker } from "@/lib/debts";
 import type { Item, ItemStatus } from "@/types";
+
+/** Nota que o usuário vê/edita — sem marcadores internos (plano, pagamentos, etc.). */
+function notesForDisplay(notes?: string | null): string {
+  return stripScreensMarker(
+    stripPlanMarker(
+      stripResellerMarker(stripDebtMarker(stripPaymentMarker(notes))),
+    ),
+  );
+}
+
+/** Sem número útil (vazio, só +55, ou incompleto). */
+function isMissingPhone(phone?: string | null): boolean {
+  const raw = String(phone || "").trim();
+  if (!raw || raw === "+55" || raw === "55") return true;
+  const d = raw.replace(/\D/g, "");
+  if (d.length <= 2) return true;
+  if (d === "55") return true;
+  return d.length < 10;
+}
+
+type ListFilter = "all" | ItemStatus | "no-phone";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -104,6 +142,7 @@ import { cn } from "@/lib/utils";
 import { DebtFolderView } from "@/components/debt/DebtFolderView";
 import { isExpenseFolderType } from "@/types";
 import {
+  isUniplayConnected,
   loadAutomationsConfig,
   loadAutomationsConfigRemote,
   saveAutomationsConfig,
@@ -137,6 +176,12 @@ const emptyForm = {
   dueDate: "",
   phone: "+55",
   price: "",
+  /** Meses liberados no painel — ex.: 3 meses por R$ 130 → preço 130 e 3 meses */
+  planMonths: "1",
+  /** Telas / ativações de app (só com UniPlay) */
+  screens: "1",
+  /** Créditos já comprados (histórico) — pasta revendedores */
+  creditsBought: "",
   notes: "",
 };
 
@@ -253,7 +298,7 @@ export default function FolderItems() {
     user: maskUser,
   } = useHideBalance();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | ItemStatus>("all");
+  const [listFilter, setListFilter] = useState<ListFilter>("all");
   const [showTools, setShowTools] = useState(false);
   const [showAnnualChart, setShowAnnualChart] = useState(false);
   const [showStatusSlide, setShowStatusSlide] = useState(false);
@@ -272,6 +317,8 @@ export default function FolderItems() {
   const [syncFolderIdCloud, setSyncFolderIdCloud] = useState("");
   const [syncResellersFolderIdCloud, setSyncResellersFolderIdCloud] =
     useState("");
+  const [uniplayLinked, setUniplayLinked] = useState(false);
+  const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(8.5);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folder = data.folders.find(
@@ -283,12 +330,16 @@ export default function FolderItems() {
     void loadAutomationsConfigRemote(user.id).then((cfg) => {
       setSyncFolderIdCloud(cfg.syncFolderId);
       setSyncResellersFolderIdCloud(cfg.syncResellersFolderId);
+      setUniplayLinked(isUniplayConnected(cfg));
+      setResellerCreditPriceBrl(cfg.resellerCreditPriceBrl || 8.5);
     });
     void loadSyncExclusionsRemote(user.id);
   }, [user]);
 
   const uniplaySyncMode = useMemo(() => {
-    if (!user || !folder || folder.type !== "Cliente") return null as null | "clients" | "resellers";
+    if (!user || !folder || folder.type !== "Cliente") {
+      return null as null | "clients" | "resellers";
+    }
     const local = loadAutomationsConfig(user.id);
     const clientsId = syncFolderIdCloud || local.syncFolderId;
     const resellersId =
@@ -298,7 +349,8 @@ export default function FolderItems() {
     return null;
   }, [user, folder, syncFolderIdCloud, syncResellersFolderIdCloud]);
 
-  const uniplaySyncEnabled = uniplaySyncMode != null;
+  /** Botão de sync só com UniPlay conectada. */
+  const uniplaySyncEnabled = uniplaySyncMode != null && uniplayLinked;
   const isResellerFolder = uniplaySyncMode === "resellers";
 
   const formatItemAmount = (value: number) =>
@@ -433,22 +485,30 @@ export default function FolderItems() {
       "Perto de Vencer": 0,
       "Já Vencido": 0,
       "Sem Vencimento": 0,
+      noPhone: 0,
     };
-    for (const i of folderItems) c[i.status] += 1;
+    for (const i of folderItems) {
+      c[i.status] += 1;
+      if (isMissingPhone(i.phone)) c.noPhone += 1;
+    }
     return c;
   }, [folderItems]);
 
   const items = useMemo(() => {
     return folderItems
       .filter((i) => {
-        if (statusFilter !== "all" && i.status !== statusFilter) return false;
+        if (listFilter === "no-phone") {
+          if (!isMissingPhone(i.phone)) return false;
+        } else if (listFilter !== "all" && i.status !== listFilter) {
+          return false;
+        }
         if (!search.trim()) return true;
         const q = search.toLowerCase();
         return (
           i.name.toLowerCase().includes(q) ||
           i.itemId.toLowerCase().includes(q) ||
           i.phone.toLowerCase().includes(q) ||
-          stripPaymentMarker(i.notes).toLowerCase().includes(q)
+          notesForDisplay(i.notes).toLowerCase().includes(q)
         );
       })
       .sort((a, b) => {
@@ -465,7 +525,7 @@ export default function FolderItems() {
           Number(a.itemId) - Number(b.itemId) || a.name.localeCompare(b.name)
         );
       });
-  }, [folderItems, search, statusFilter]);
+  }, [folderItems, search, listFilter]);
 
   const chartYears = useMemo(() => {
     const yNow = new Date().getFullYear();
@@ -476,18 +536,33 @@ export default function FolderItems() {
         const y = Number(String(raw).slice(0, 4));
         if (y >= 2020 && y <= yNow + 1) years.add(y);
       }
+      for (const p of getRecordedPayments(item)) {
+        const y = Number(String(p.paidAt).slice(0, 4));
+        if (y >= 2020 && y <= yNow + 1) years.add(y);
+      }
     }
     return [...years].sort((a, b) => b - a);
   }, [folderItems]);
 
   const chartData = useMemo(
-    () => sumPaymentsByMonth(folderItems, chartYear),
-    [chartYear, folderItems],
+    () =>
+      isResellerFolder
+        ? sumRecordedPaymentsByMonth(folderItems, chartYear)
+        : sumPaymentsByMonth(folderItems, chartYear),
+    [chartYear, folderItems, isResellerFolder],
   );
 
   const annualBalance = useMemo(
-    () => annualPaymentBalance(folderItems, chartYear),
-    [chartYear, folderItems],
+    () =>
+      isResellerFolder
+        ? sumResellerCreditsValueByItems(folderItems, resellerCreditPriceBrl)
+        : annualPaymentBalance(folderItems, chartYear),
+    [
+      chartYear,
+      folderItems,
+      isResellerFolder,
+      resellerCreditPriceBrl,
+    ],
   );
 
   const statusChartData = useMemo(() => {
@@ -537,6 +612,8 @@ export default function FolderItems() {
     setForm({
       ...emptyForm,
       createdAt: format(new Date(), "yyyy-MM-dd"),
+      dueMode: isResellerFolder ? "sem" : "com",
+      creditsBought: "0",
     });
     setFormOpen(true);
   };
@@ -549,19 +626,39 @@ export default function FolderItems() {
       createdAt: item.createdAt
         ? String(item.createdAt).slice(0, 10)
         : format(new Date(), "yyyy-MM-dd"),
-      dueMode: item.status === "Sem Vencimento" || !item.dueDate ? "sem" : "com",
+      dueMode:
+        isResellerFolder || item.status === "Sem Vencimento" || !item.dueDate
+          ? "sem"
+          : "com",
       dueDate: toDatetimeLocalValue(item.dueDate),
       phone: item.phone || "+55",
       price: item.price != null ? String(item.price) : "",
-      notes: stripPaymentMarker(item.notes),
+      planMonths: String(getPlanMonths(item, 1)),
+      screens: String(getItemScreens(item, 1)),
+      creditsBought: String(getResellerCreditsBought(item)),
+      notes: notesForDisplay(item.notes),
     });
     setFormOpen(true);
   };
 
   const onSave = (e: FormEvent) => {
     e.preventDefault();
-    const noDue = form.dueMode === "sem";
+    const noDue = isResellerFolder || form.dueMode === "sem";
     const price = Number(String(form.price).replace(",", ".")) || 0;
+    const planMonths = Math.max(
+      1,
+      Math.min(24, Math.floor(Number(form.planMonths) || 1)),
+    );
+    const screens = Math.max(
+      1,
+      Math.min(10, Math.floor(Number(form.screens) || 1)),
+    );
+    const creditsBought = Math.max(
+      0,
+      Math.floor(
+        Number(String(form.creditsBought).replace(",", ".")) || 0,
+      ),
+    );
     const payload = {
       folderId: folder.id,
       itemId: form.itemId.trim(),
@@ -569,11 +666,22 @@ export default function FolderItems() {
       dueDate: noDue ? null : fromDatetimeLocalValue(form.dueDate),
       phone: form.phone.trim(),
       price,
+      planMonths,
+      ...(uniplayLinked && !isResellerFolder ? { screens } : {}),
       notes: form.notes.trim(),
       createdAt: form.createdAt
         ? `${form.createdAt}T00:00:00`
         : new Date().toISOString(),
       isActive: true,
+      ...(isResellerFolder
+        ? {
+            resellerCreditsBought: creditsBought,
+            // remove lixo antigo que somava saldo como R$
+            payments: (editing ? getRecordedPayments(editing) : []).filter(
+              (p) => Number(p.amount) >= 10,
+            ),
+          }
+        : {}),
     };
     if (user && payload.itemId) {
       includeInSync(user.id, folder.id, payload.itemId);
@@ -640,26 +748,30 @@ export default function FolderItems() {
     );
   };
 
-  const filterChips: { key: "all" | ItemStatus; label: string; count: number }[] =
-    [
-      { key: "all", label: "Todos", count: counts.all },
-      {
-        key: "Longe de Vencer",
-        label: "Longe",
-        count: counts["Longe de Vencer"],
-      },
-      {
-        key: "Perto de Vencer",
-        label: "Perto",
-        count: counts["Perto de Vencer"],
-      },
-      { key: "Já Vencido", label: "Vencido", count: counts["Já Vencido"] },
-      {
-        key: "Sem Vencimento",
-        label: "Sem",
-        count: counts["Sem Vencimento"],
-      },
-    ];
+  const filterChips: {
+    key: ListFilter;
+    label: string;
+    count: number;
+  }[] = [
+    { key: "all", label: "Todos", count: counts.all },
+    {
+      key: "Longe de Vencer",
+      label: "Longe",
+      count: counts["Longe de Vencer"],
+    },
+    {
+      key: "Perto de Vencer",
+      label: "Perto",
+      count: counts["Perto de Vencer"],
+    },
+    { key: "Já Vencido", label: "Vencido", count: counts["Já Vencido"] },
+    {
+      key: "Sem Vencimento",
+      label: "Sem prazo",
+      count: counts["Sem Vencimento"],
+    },
+    { key: "no-phone", label: "Sem telefone", count: counts.noPhone },
+  ];
 
   return (
     <div className="space-y-6">
@@ -709,26 +821,31 @@ export default function FolderItems() {
         }
       />
 
-      {/* Status filter chips */}
+      {/* Filtros (únicos — sem select duplicado na busca) */}
       <div className="flex flex-wrap gap-2">
         {filterChips.map((chip) => (
           <button
             key={chip.key}
             type="button"
-            onClick={() => setStatusFilter(chip.key)}
+            onClick={() => setListFilter(chip.key)}
             className={cn(
               "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
-              statusFilter === chip.key
+              listFilter === chip.key
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
           >
-            {chip.key !== "all" ? (
-              <StatusBadge status={chip.key} />
-            ) : (
+            {chip.key === "all" ? (
               <Badge variant="secondary" className="font-normal">
                 Todos
               </Badge>
+            ) : chip.key === "no-phone" ? (
+              <Badge variant="outline" className="gap-1 font-normal">
+                <PhoneOff className="h-3 w-3" />
+                Sem tel.
+              </Badge>
+            ) : (
+              <StatusBadge status={chip.key} />
             )}
             <span className="tabular-nums">{num(chip.count)}</span>
           </button>
@@ -840,11 +957,21 @@ export default function FolderItems() {
             <p className="text-sm text-muted-foreground">
               {folder.type === "Dívida"
                 ? "Gastos por mês (dívidas) — não entra no lucro da página inicial"
-                : "Lucro até o vencimento · já vencidos não entram no mês atual"}
+                : isResellerFolder
+                  ? `Cada crédito comprado = ${money(resellerCreditPriceBrl)} (ajuste o valor em UniPlay → Conta). Edite o total comprado em cada revendedor.`
+                  : "Lucro até o vencimento · já vencidos não entram no mês atual"}
             </p>
             <p className="mt-2 text-lg font-bold tracking-tight text-primary">
-              Saldo anual {chartYear}: {money(annualBalance)}
+              {isResellerFolder
+                ? `Créditos comprados: ${money(annualBalance)}`
+                : `Saldo anual ${chartYear}: ${money(annualBalance)}`}
             </p>
+            {isResellerFolder ? (
+              <p className="text-xs text-muted-foreground">
+                Soma de (créditos comprados × {money(resellerCreditPriceBrl)}).
+                O gráfico mensal abaixo mostra só recargas novas com PIX.
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Select
@@ -932,43 +1059,15 @@ export default function FolderItems() {
         </AnimatePresence>
       </div>
 
-      {/* Search + status select */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Pesquisar itens..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v as "all" | ItemStatus)}
-        >
-          <SelectTrigger className="w-full sm:w-[240px]" id="color-filter">
-            <SelectValue placeholder="Filtrar por status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">
-              Mostrar Todos ({num(counts.all)})
-            </SelectItem>
-            <SelectItem value="Sem Vencimento">
-              Sem vencimento ({num(counts["Sem Vencimento"])})
-            </SelectItem>
-            <SelectItem value="Longe de Vencer">
-              Longe de Vencer ({num(counts["Longe de Vencer"])})
-            </SelectItem>
-            <SelectItem value="Perto de Vencer">
-              Perto de Vencer ({num(counts["Perto de Vencer"])})
-            </SelectItem>
-            <SelectItem value="Já Vencido">
-              Já Vencido ({num(counts["Já Vencido"])})
-            </SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="relative min-w-0">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          placeholder="Pesquisar por nome, usuário, telefone ou nota…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {/* Item list */}
@@ -977,12 +1076,14 @@ export default function FolderItems() {
           icon={Package}
           title="Nenhum item encontrado"
           description={
-            search || statusFilter !== "all"
-              ? "Ajuste a busca ou o filtro de status."
+            search || listFilter !== "all"
+              ? listFilter === "no-phone"
+                ? "Nenhum cliente sem telefone (ou a busca não achou)."
+                : "Ajuste a busca ou o filtro."
               : "Adicione o primeiro item desta pasta."
           }
           action={
-            !search && statusFilter === "all" ? (
+            !search && listFilter === "all" ? (
               <Button onClick={openCreate}>
                 <Plus className="h-4 w-4" />
                 Adicionar Novo
@@ -1047,16 +1148,33 @@ export default function FolderItems() {
                           {isResellerFolder &&
                           item.name.trim().toLowerCase() ===
                             item.itemId.trim().toLowerCase()
-                            ? stripPaymentMarker(item.notes)
+                            ? notesForDisplay(item.notes)
                                 ?.match(/^E-mail:\s*(.+)$/im)?.[1]
                                 ?.trim() || item.name
                             : item.name}
                         </h3>
                       </div>
                       <div className="flex shrink-0 items-start gap-0.5 sm:hidden">
-                        <p className="pr-0.5 pt-1 text-sm font-bold tabular-nums tracking-tight whitespace-nowrap">
-                          {formatItemAmount(item.price || 0)}
-                        </p>
+                        <div className="pr-0.5 pt-1 text-right">
+                          <p className="text-sm font-bold tabular-nums tracking-tight whitespace-nowrap">
+                            {formatItemAmount(item.price || 0)}
+                          </p>
+                          {!isResellerFolder ? (
+                            <p className="text-[10px] font-medium tabular-nums text-muted-foreground">
+                              {(() => {
+                                const m = getPlanMonths(item, 1);
+                                const prog = planCycleProgress(item);
+                                const telas =
+                                  uniplayLinked
+                                    ? ` · ${getItemScreens(item, 1)} tela${getItemScreens(item, 1) > 1 ? "s" : ""}`
+                                    : "";
+                                return prog
+                                  ? `${m} ${m === 1 ? "mês" : "meses"} · ${prog.label}${telas}`
+                                  : `${m} ${m === 1 ? "mês" : "meses"}${telas}`;
+                              })()}
+                            </p>
+                          ) : null}
+                        </div>
                         <div className="flex flex-col items-center">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -1118,7 +1236,7 @@ export default function FolderItems() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                          {stripPaymentMarker(item.notes) ? (
+                          {notesForDisplay(item.notes) ? (
                             <Popover>
                               <PopoverTrigger asChild>
                                 <Button
@@ -1141,7 +1259,7 @@ export default function FolderItems() {
                                   Notas
                                 </div>
                                 <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                                  {stripPaymentMarker(item.notes)}
+                                  {notesForDisplay(item.notes)}
                                 </p>
                               </PopoverContent>
                             </Popover>
@@ -1160,31 +1278,48 @@ export default function FolderItems() {
                         </span>
                       </span>
                       {!isResellerFolder ? (
-                        <span>
-                          <span className="sm:hidden">Vence </span>
-                          <span className="hidden sm:inline">Vencimento: </span>
-                          <span className="font-medium text-foreground">
-                            {item.status === "Sem Vencimento" || !item.dueDate
-                              ? "Indefinido"
-                              : formatBrDate(item.dueDate)}
+                        <>
+                          <span>
+                            <span className="sm:hidden">Vence </span>
+                            <span className="hidden sm:inline">
+                              Vencimento:{" "}
+                            </span>
+                            <span className="font-medium text-foreground">
+                              {item.status === "Sem Vencimento" || !item.dueDate
+                                ? "Indefinido"
+                                : formatBrDate(item.dueDate)}
+                            </span>
                           </span>
-                        </span>
+                          <span>
+                            <span className="sm:hidden">Plano </span>
+                            <span className="hidden sm:inline">Plano: </span>
+                            <span className="font-medium text-foreground">
+                              {(() => {
+                                const m = getPlanMonths(item, 1);
+                                const prog = planCycleProgress(item);
+                                return prog
+                                  ? `${m} ${m === 1 ? "mês" : "meses"} · ${prog.label}`
+                                  : `${m} ${m === 1 ? "mês" : "meses"}`;
+                              })()}
+                            </span>
+                          </span>
+                        </>
                       ) : (
                         <>
-                          {stripPaymentMarker(item.notes)
+                          {notesForDisplay(item.notes)
                             ?.match(/^Ativos:\s*(.+)$/im)?.[1]
                             ?.trim() ? (
                             <span>
                               <span className="sm:hidden">Ativos </span>
                               <span className="hidden sm:inline">Ativos: </span>
                               <span className="font-medium text-foreground">
-                                {stripPaymentMarker(item.notes)
+                                {notesForDisplay(item.notes)
                                   ?.match(/^Ativos:\s*(.+)$/im)?.[1]
                                   ?.trim()}
                               </span>
                             </span>
                           ) : null}
-                          {stripPaymentMarker(item.notes)
+                          {notesForDisplay(item.notes)
                             ?.match(/^Última recarga:\s*(.+)$/im)?.[1]
                             ?.trim() ? (
                             <span>
@@ -1193,12 +1328,30 @@ export default function FolderItems() {
                                 Última recarga:{" "}
                               </span>
                               <span className="font-medium text-foreground">
-                                {stripPaymentMarker(item.notes)
+                                {notesForDisplay(item.notes)
                                   ?.match(/^Última recarga:\s*(.+)$/im)?.[1]
                                   ?.trim()}
                               </span>
                             </span>
                           ) : null}
+                          <span>
+                            <span className="sm:hidden">Comprados </span>
+                            <span className="hidden sm:inline">
+                              Comprados:{" "}
+                            </span>
+                            <span className="font-medium text-foreground">
+                              {num(
+                                String(getResellerCreditsBought(item)),
+                              )}{" "}
+                              ·{" "}
+                              {money(
+                                resellerCreditsValueBrl(
+                                  getResellerCreditsBought(item),
+                                  resellerCreditPriceBrl,
+                                ),
+                              )}
+                            </span>
+                          </span>
                         </>
                       )}
                       <span>
@@ -1215,11 +1368,24 @@ export default function FolderItems() {
                     </div>
                   </div>
                   <div className="hidden items-center justify-between gap-3 sm:flex sm:flex-col sm:items-end">
-                    <p className="text-lg font-bold tabular-nums tracking-tight whitespace-nowrap">
-                      {formatItemAmount(item.price || 0)}
-                    </p>
+                    <div className="text-right">
+                      <p className="text-lg font-bold tabular-nums tracking-tight whitespace-nowrap">
+                        {formatItemAmount(item.price || 0)}
+                      </p>
+                      {!isResellerFolder ? (
+                        <p className="text-xs font-medium tabular-nums text-muted-foreground">
+                          {(() => {
+                            const m = getPlanMonths(item, 1);
+                            const prog = planCycleProgress(item);
+                            return prog
+                              ? `${m} ${m === 1 ? "mês" : "meses"} · ${prog.label}`
+                              : `${m} ${m === 1 ? "mês" : "meses"}`;
+                          })()}
+                        </p>
+                      ) : null}
+                    </div>
                     <div className="flex items-center gap-1">
-                      {stripPaymentMarker(item.notes) ? (
+                      {notesForDisplay(item.notes) ? (
                         <Popover>
                           <PopoverTrigger asChild>
                             <Button
@@ -1242,7 +1408,7 @@ export default function FolderItems() {
                               Notas
                             </div>
                             <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                              {stripPaymentMarker(item.notes)}
+                              {notesForDisplay(item.notes)}
                             </p>
                           </PopoverContent>
                         </Popover>
@@ -1409,7 +1575,7 @@ export default function FolderItems() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="item-price">
-                {isResellerFolder ? "Créditos" : "Preço"}
+                {isResellerFolder ? "Saldo de créditos (atual)" : "Preço do plano"}
               </Label>
               <Input
                 id="item-price"
@@ -1419,7 +1585,92 @@ export default function FolderItems() {
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
                 readOnly={hideSensitive}
               />
+              {!isResellerFolder ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Valor do PIX (ex.: R$ 130). Se mudar preço ou meses, o gráfico
+                  mantém o passado e só aplica o novo valor a partir de hoje.
+                </p>
+              ) : null}
             </div>
+            {!isResellerFolder ? (
+              <div className="space-y-2">
+                <Label htmlFor="item-plan-months">Meses do plano</Label>
+                <Input
+                  id="item-plan-months"
+                  type="number"
+                  min={1}
+                  max={24}
+                  step={1}
+                  value={form.planMonths}
+                  onChange={(e) =>
+                    setForm({ ...form, planMonths: e.target.value })
+                  }
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Tempo liberado no painel / PIX. Ex.: preço 130 + 3 meses → PIX
+                  R${" "}
+                  {(() => {
+                    const total = planPixAmount(
+                      Number(String(form.price).replace(",", ".")) || 0,
+                    );
+                    const months = Math.max(
+                      1,
+                      Math.min(24, Math.floor(Number(form.planMonths) || 1)),
+                    );
+                    return total > 0
+                      ? `${total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${months} ${months === 1 ? "mês" : "meses"}`
+                      : "—";
+                  })()}
+                </p>
+              </div>
+            ) : null}
+            {uniplayLinked && !isResellerFolder ? (
+              <div className="space-y-2">
+                <Label htmlFor="item-screens">Telas (ativações de app)</Label>
+                <Input
+                  id="item-screens"
+                  type="number"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={form.screens}
+                  onChange={(e) =>
+                    setForm({ ...form, screens: e.target.value })
+                  }
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Quantas TVs/aparelhos este plano pode ativar (MAC). Ex.:
+                  Básico 1 · Padrão 2. Só aparece com UniPlay conectada.
+                </p>
+              </div>
+            ) : null}
+            {isResellerFolder ? (
+              <div className="space-y-2">
+                <Label htmlFor="item-credits-bought">
+                  Créditos já comprados (histórico)
+                </Label>
+                <Input
+                  id="item-credits-bought"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={form.creditsBought}
+                  onChange={(e) =>
+                    setForm({ ...form, creditsBought: e.target.value })
+                  }
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Inclui compras antigas. Valor na anual:{" "}
+                  {money(
+                    resellerCreditsValueBrl(
+                      Number(form.creditsBought) || 0,
+                      resellerCreditPriceBrl,
+                    ),
+                  )}{" "}
+                  ({money(resellerCreditPriceBrl)} por crédito).
+                </p>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label htmlFor="item-notes">Notas</Label>
               <Textarea

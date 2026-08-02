@@ -22,19 +22,66 @@ import {
   paymentsForNewItem,
   stripPaymentMarker,
 } from "@/lib/payments";
+import {
+  embedResellerCreditsBought,
+  extractResellerCreditsBought,
+  stripResellerMarker,
+} from "@/lib/resellerCredits";
+import {
+  embedPlanState,
+  extractPlanMonths,
+  resolvePlanSegmentsOnSave,
+  stripPlanMarker,
+  type PlanSegment,
+} from "@/lib/planMonths";
+import {
+  clampScreens,
+  embedScreensInNotes,
+  extractScreens,
+  stripScreensMarker,
+} from "@/lib/itemScreens";
 
 function stripAllMarkers(notes?: string | null): string {
-  return stripDebtMarker(stripPaymentMarker(notes));
+  return stripScreensMarker(
+    stripPlanMarker(
+      stripResellerMarker(stripDebtMarker(stripPaymentMarker(notes))),
+    ),
+  );
 }
 
 function composeNotes(
   notes: string | null | undefined,
   payments: { paidAt: string; amount: number }[],
   debt: ReturnType<typeof extractDebtFromNotes> | undefined,
+  resellerCreditsBought?: number | null,
+  planMonths?: number | null,
+  planSegments?: PlanSegment[] | null,
+  screens?: number | null,
 ): string {
+  const boughtFromNotes = extractResellerCreditsBought(notes);
+  const bought =
+    resellerCreditsBought != null && Number.isFinite(Number(resellerCreditsBought))
+      ? Math.max(0, Math.floor(Number(resellerCreditsBought)))
+      : boughtFromNotes;
+  const planFromNotes = extractPlanMonths(notes);
+  const plan =
+    planMonths != null && Number.isFinite(Number(planMonths))
+      ? Math.max(1, Math.min(24, Math.floor(Number(planMonths))))
+      : planFromNotes ?? 1;
+  const screensFromNotes = extractScreens(notes);
+  const screenCount =
+    screens != null && Number.isFinite(Number(screens))
+      ? clampScreens(screens, 0)
+      : screensFromNotes;
   let next = stripAllMarkers(notes);
   if (debt?.installments?.length) next = embedDebtInNotes(next, debt);
   next = embedPaymentsInNotes(next, payments);
+  if (bought != null) next = embedResellerCreditsBought(next, bought);
+  if (planSegments?.length) next = embedPlanState(next, plan, planSegments);
+  else if (plan > 1) next = embedPlanState(next, plan, []);
+  if (screenCount != null && screenCount >= 1) {
+    next = embedScreensInNotes(next, screenCount);
+  }
   return next;
 }
 
@@ -260,21 +307,47 @@ export function createItem(
   input: Omit<Item, "id" | "status">,
 ): AppData {
   const { near, far } = folderThresholds(data, input.folderId);
-  const payments = input.payments?.length
-    ? input.payments
-    : paymentsForNewItem(input);
+  // `payments: []` explícito = sem histórico (ex.: revendedor novo)
+  const payments =
+    input.payments != null ? input.payments : paymentsForNewItem(input);
   const debt =
     input.debt ??
     extractDebtFromNotes(input.notes) ??
     undefined;
   const dueDate = debt ? nextOpenDue(debt) ?? input.dueDate : input.dueDate;
+  const planMonths =
+    input.planMonths != null
+      ? Math.max(1, Math.min(24, Math.floor(Number(input.planMonths) || 1)))
+      : extractPlanMonths(input.notes) ?? 1;
+  const price = debt?.total ?? input.price;
+  const planHistory = resolvePlanSegmentsOnSave(null, {
+    price,
+    planMonths,
+    createdAt: input.createdAt,
+  });
+  const screens =
+    input.screens != null
+      ? clampScreens(input.screens, 1)
+      : extractScreens(input.notes);
   const item: Item = {
     ...input,
     debt: debt ?? undefined,
     dueDate,
-    price: debt?.total ?? input.price,
+    price,
     payments,
-    notes: composeNotes(input.notes, payments, debt),
+    planMonths,
+    planHistory,
+    screens: screens ?? null,
+    resellerCreditsBought: input.resellerCreditsBought ?? null,
+    notes: composeNotes(
+      input.notes,
+      payments,
+      debt,
+      input.resellerCreditsBought,
+      planMonths,
+      planHistory,
+      screens,
+    ),
     isActive: input.isActive !== false,
     id: nextId(data.items.map((i) => i.id)),
     status: computeItemStatus(dueDate, near, far),
@@ -289,12 +362,17 @@ export function updateItem(data: AppData, item: Item): AppData {
   const newDue = item.dueDate?.slice(0, 10) ?? null;
   const renewed = Boolean(oldDue && newDue && newDue > oldDue);
 
+  const prevPays = previous ? getItemPayments(previous) : [];
+  const incomingPays = item.payments != null ? item.payments : null;
   const paymentsFinal = previous
     ? renewed
       ? paymentsAfterDueChange(previous, item)
-      : getItemPayments(previous)
-    : item.payments?.length
-      ? item.payments
+      : // `payments` explícito no item (mesmo vazio) prevalece
+        incomingPays != null
+        ? incomingPays
+        : prevPays
+    : incomingPays != null
+      ? incomingPays
       : paymentsForNewItem(item);
 
   const debt =
@@ -308,13 +386,51 @@ export function updateItem(data: AppData, item: Item): AppData {
     ? nextOpenDue(debt)
     : item.dueDate;
 
+  const bought =
+    item.resellerCreditsBought != null
+      ? item.resellerCreditsBought
+      : previous?.resellerCreditsBought ??
+        extractResellerCreditsBought(item.notes ?? previous?.notes);
+
+  const planMonths =
+    item.planMonths != null
+      ? Math.max(1, Math.min(24, Math.floor(Number(item.planMonths) || 1)))
+      : previous?.planMonths ??
+        extractPlanMonths(item.notes ?? previous?.notes) ??
+        1;
+
+  const price = debt?.total ?? item.price;
+  const planHistory = resolvePlanSegmentsOnSave(previous, {
+    price,
+    planMonths,
+    createdAt: item.createdAt ?? previous?.createdAt,
+  });
+
+  const screens =
+    item.screens != null
+      ? clampScreens(item.screens, 1)
+      : previous?.screens ??
+        extractScreens(item.notes ?? previous?.notes);
+
   const updated: Item = {
     ...item,
     debt: debt ?? undefined,
     dueDate,
-    price: debt?.total ?? item.price,
+    price,
     payments: paymentsFinal,
-    notes: composeNotes(item.notes, paymentsFinal, debt ?? undefined),
+    planMonths,
+    planHistory,
+    screens: screens ?? null,
+    resellerCreditsBought: bought ?? null,
+    notes: composeNotes(
+      item.notes,
+      paymentsFinal,
+      debt ?? undefined,
+      bought,
+      planMonths,
+      planHistory,
+      screens,
+    ),
     status: computeItemStatus(dueDate, near, far),
   };
   return {

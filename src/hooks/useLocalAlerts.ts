@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import type { AppData, User } from "@/types";
 import { isRevenueFolderType } from "@/types";
 import {
+  isUniplayConnected,
   loadAutomationsConfig,
   loadAutomationsConfigRemote,
 } from "@/lib/automationsConfig";
@@ -10,7 +11,6 @@ import {
   ensureIptvToken,
   fetchIptvPanelCredits,
   listIptvResellers,
-  tokenExpiresInSec,
 } from "@/lib/iptvPanelApi";
 import {
   isAtOrAfterLocalTime,
@@ -23,8 +23,15 @@ import {
   showLocalAlert,
 } from "@/lib/localNotifications";
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
+import {
+  formatWaPhoneDisplay,
+  loadWaBotAlertsRemote,
+  markWaBotAlertsSeenRemote,
+} from "@/lib/whatsappBotAlerts";
 
 const CHECK_MS = 90_000;
+/** Handoff WhatsApp → atendentes: poll mais curto */
+const WA_HUMAN_CHECK_MS = 15_000;
 
 function todayKey() {
   return format(new Date(), "yyyy-MM-dd");
@@ -48,9 +55,11 @@ function countDueToday(user: User, data: AppData) {
  * - quantos vencem hoje
  * - créditos UniPlay abaixo do limite
  * - revendedores com créditos no limite
+ * - alguém pediu atendentes no WhatsApp
  */
 export function useLocalAlerts(user: User | null, data: AppData) {
   const runningRef = useRef(false);
+  const waRunningRef = useRef(false);
   const dataRef = useRef(data);
   dataRef.current = data;
 
@@ -131,16 +140,12 @@ export function useLocalAlerts(user: User | null, data: AppData) {
         const cfg = await loadAutomationsConfigRemote(userId).catch(() =>
           loadAutomationsConfig(userId),
         );
-        const bearer = cfg.iptvBearerToken?.trim() || "";
-        const left = bearer ? tokenExpiresInSec(bearer) : null;
-        const sessionOk = Boolean(bearer) && (left == null || left > 0);
-        const canLogin = Boolean(cfg.iptvUsername?.trim() && cfg.iptvPassword);
-        if (!sessionOk && !canLogin) return;
+        if (!isUniplayConnected(cfg)) return;
 
         const plat = await loadIptvPlatformConfig();
         const ensured = await ensureIptvToken({
           apiBaseUrl: plat.apiBaseUrl || cfg.iptvApiBaseUrl,
-          bearerToken: bearer,
+          bearerToken: cfg.iptvBearerToken?.trim() || "",
           username: cfg.iptvUsername || undefined,
           password: cfg.iptvPassword || undefined,
           defaultPackage: plat.packageId || "1",
@@ -252,4 +257,62 @@ export function useLocalAlerts(user: User | null, data: AppData) {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [user, userId, folderSignature, itemsSignature]);
+
+  useEffect(() => {
+    if (!user || !userId) return;
+
+    let cancelled = false;
+
+    const tickWa = async () => {
+      if (cancelled || waRunningRef.current) return;
+      waRunningRef.current = true;
+      try {
+        await loadNotificationSettingsRemote(userId).catch(() =>
+          loadNotificationSettings(userId),
+        );
+        const settings = loadNotificationSettings(userId);
+        if (!settings.enabled || !settings.whatsappHumanEnabled) return;
+
+        const bag = await loadWaBotAlertsRemote(userId);
+        const pending = bag.alerts.filter((a) => a && a.id && !a.seen);
+        if (!pending.length) return;
+
+        const seenIds: string[] = [];
+        for (const alert of pending) {
+          const phoneLabel = formatWaPhoneDisplay(alert.phone);
+          const roleLabel =
+            alert.role === "reseller"
+              ? "Revendedor"
+              : alert.role === "client"
+                ? "Cliente"
+                : "Contato";
+          await showLocalAlert({
+            title: "Pessoa no atendimento",
+            body: `${roleLabel} pediu atendentes · ${phoneLabel}`,
+            tag: `auxplus-wa-human-${alert.id}`,
+            url: "/whatsapp",
+          });
+          seenIds.push(alert.id);
+        }
+        if (seenIds.length) {
+          await markWaBotAlertsSeenRemote(userId, seenIds).catch(() => undefined);
+        }
+      } finally {
+        waRunningRef.current = false;
+      }
+    };
+
+    void tickWa();
+    const id = window.setInterval(() => void tickWa(), WA_HUMAN_CHECK_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void tickWa();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [user, userId]);
 }

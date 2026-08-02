@@ -354,8 +354,19 @@ export function phoneDigits(phone: string) {
 export function normalizeBrPhone(phone: string): string | null {
   let d = phoneDigits(phone);
   if (!d) return null;
+  // 55 + DDD + 8 dígitos → inclui o 9 do celular
+  if (d.startsWith("55") && d.length === 12) {
+    const ddd = d.slice(2, 4);
+    const rest = d.slice(4);
+    if (rest.length === 8) d = `55${ddd}9${rest}`;
+  }
   if (d.startsWith("55") && d.length >= 12) return d;
-  if (d.length >= 10 && d.length <= 11) return `55${d}`;
+  if (d.length === 10) {
+    const ddd = d.slice(0, 2);
+    const rest = d.slice(2);
+    return `55${ddd}9${rest}`;
+  }
+  if (d.length === 11) return `55${d}`;
   if (d.length >= 12) return d;
   return null;
 }
@@ -736,11 +747,201 @@ export async function fetchEvolutionStatus(
   }
 }
 
+export type EvolutionConnectedProfile = {
+  phone: string;
+  profileName?: string;
+};
+
+/** Formata JID/número Evolution para exibição (+55 71 99999-9999). */
+export function formatConnectedWaPhone(raw: string): string {
+  const d = phoneDigits(raw.split("@")[0] || "");
+  if (!d) return "";
+  if (d.startsWith("55") && d.length >= 12) {
+    const ddd = d.slice(2, 4);
+    const rest = d.slice(4);
+    if (rest.length === 9) {
+      return `+55 ${ddd} ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    }
+    if (rest.length === 8) {
+      return `+55 ${ddd} ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    }
+    return `+${d}`;
+  }
+  return d.length >= 10 ? `+${d}` : d;
+}
+
+function pickConnectedProfile(row: unknown): EvolutionConnectedProfile | null {
+  if (!row || typeof row !== "object") return null;
+  const obj = row as Record<string, unknown>;
+  const nested =
+    obj.instance && typeof obj.instance === "object"
+      ? (obj.instance as Record<string, unknown>)
+      : obj;
+  const owner = String(
+    nested.ownerJid ||
+      nested.owner ||
+      nested.wuid ||
+      nested.number ||
+      obj.ownerJid ||
+      obj.owner ||
+      obj.number ||
+      "",
+  ).trim();
+  const phone = formatConnectedWaPhone(owner);
+  if (!phone) return null;
+  const profileName = String(
+    nested.profileName || obj.profileName || "",
+  ).trim();
+  return { phone, profileName: profileName || undefined };
+}
+
+/** Número (e nome) do WhatsApp conectado na instância Evolution. */
+export async function fetchEvolutionConnectedProfile(
+  runtime: EvolutionRuntimeConfig,
+): Promise<EvolutionConnectedProfile | null> {
+  const name = runtime.instanceName.trim() || "auxplus";
+  try {
+    const raw = await evolutionFetch(
+      runtime,
+      `/instance/fetchInstances?instanceName=${encodeURIComponent(name)}`,
+    );
+    const list = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object" && Array.isArray((raw as { instance?: unknown }).instance)
+        ? [(raw as { instance: unknown }).instance]
+        : raw
+          ? [raw]
+          : [];
+    for (const row of list) {
+      const picked = pickConnectedProfile(row);
+      if (picked) return picked;
+    }
+  } catch {
+    /* tenta outros formatos abaixo */
+  }
+  try {
+    const raw = await evolutionFetch(runtime, "/instance/fetchInstances");
+    const list = Array.isArray(raw) ? raw : [];
+    const want = name.toLowerCase();
+    for (const row of list) {
+      if (!row || typeof row !== "object") continue;
+      const obj = row as Record<string, unknown>;
+      const nested =
+        obj.instance && typeof obj.instance === "object"
+          ? (obj.instance as Record<string, unknown>)
+          : obj;
+      const instName = String(
+        nested.instanceName || nested.name || obj.instanceName || obj.name || "",
+      ).toLowerCase();
+      if (instName && instName !== want) continue;
+      const picked = pickConnectedProfile(row);
+      if (picked) return picked;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 export async function logoutEvolution(runtime: EvolutionRuntimeConfig) {
   const name = runtime.instanceName.trim() || "auxplus";
   await evolutionFetch(runtime, `/instance/logout/${name}`, {
     method: "DELETE",
   });
+}
+
+/**
+ * Registra o webhook da Evolution para o bot AuxPlus receber mensagens.
+ * URL: {SUPABASE_URL}/functions/v1/evolution-webhook
+ * (Independe de localhost — a Evolution chama o Supabase direto.)
+ */
+export async function setEvolutionWebhook(
+  runtime: EvolutionRuntimeConfig,
+  webhookUrl: string,
+) {
+  const name = runtime.instanceName.trim() || "auxplus";
+  const url = webhookUrl.trim();
+  if (!url) throw new Error("URL do webhook vazia");
+
+  const events = ["MESSAGES_UPSERT"];
+  const bodies: unknown[] = [
+    {
+      enabled: true,
+      url,
+      webhookByEvents: false,
+      webhookBase64: false,
+      events,
+    },
+    {
+      webhook: {
+        enabled: true,
+        url,
+        webhookByEvents: false,
+        webhookBase64: false,
+        events,
+      },
+    },
+    {
+      enabled: true,
+      url,
+      webhook_by_events: false,
+      webhook_base64: false,
+      events,
+    },
+  ];
+
+  const paths = [
+    `/webhook/set/${encodeURIComponent(name)}`,
+    `/webhook/${encodeURIComponent(name)}`,
+  ];
+  let lastErr: unknown;
+  for (const path of paths) {
+    for (const body of bodies) {
+      for (const method of ["POST", "PUT"] as const) {
+        try {
+          await evolutionFetch(runtime, path, {
+            method,
+            body: JSON.stringify(body),
+          });
+          return;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("Não foi possível registrar o webhook na Evolution");
+}
+
+/** Confere se a Evolution tem webhook apontando para o AuxPlus. */
+export async function findEvolutionWebhook(
+  runtime: EvolutionRuntimeConfig,
+): Promise<{ url?: string; enabled?: boolean } | null> {
+  const name = runtime.instanceName.trim() || "auxplus";
+  const paths = [
+    `/webhook/find/${encodeURIComponent(name)}`,
+    `/webhook/${encodeURIComponent(name)}`,
+  ];
+  for (const path of paths) {
+    try {
+      const raw = await evolutionFetch(runtime, path);
+      if (!raw || typeof raw !== "object") continue;
+      const obj = raw as Record<string, unknown>;
+      const nested =
+        obj.webhook && typeof obj.webhook === "object"
+          ? (obj.webhook as Record<string, unknown>)
+          : obj;
+      return {
+        url: String(nested.url || nested.webhookUrl || "").trim() || undefined,
+        enabled: nested.enabled !== false,
+      };
+    } catch {
+      /* tenta próximo */
+    }
+  }
+  return null;
 }
 
 export async function sendEvolutionText(

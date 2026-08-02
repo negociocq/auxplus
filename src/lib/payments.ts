@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import type { Item, ItemPayment } from "@/types";
+import { planMonthlyInMonth } from "@/lib/planMonths";
 
 export type { ItemPayment };
 
@@ -48,17 +49,42 @@ export function embedPaymentsInNotes(
     : `<!--AXPAY:${payload}-->`;
 }
 
+/** Pagamentos gravados (campo ou marcador nas notes) — sem fallback sintético. */
+export function getRecordedPayments(item: Item): ItemPayment[] {
+  if (item.payments?.length) {
+    return item.payments.map((p) => ({
+      paidAt: String(p.paidAt).slice(0, 10),
+      amount: Number(p.amount) || 0,
+    }));
+  }
+  return extractPaymentsFromNotes(item.notes);
+}
+
 /** Pagamentos do item (histórico) ou fallback: 1º pagamento na criação. */
 export function getItemPayments(item: Item): ItemPayment[] {
-  const fromField = item.payments?.length
-    ? item.payments
-    : extractPaymentsFromNotes(item.notes);
+  const fromField = getRecordedPayments(item);
   if (fromField.length) return fromField;
 
   // Sem histórico: conta só o ciclo atual (vencimento), não espalha nos meses intermediários
   const paidAt = String(item.dueDate || item.createdAt || "").slice(0, 10);
   if (!paidAt) return [];
   return [{ paidAt, amount: item.price || 0 }];
+}
+
+/** Acrescenta um pagamento ao histórico do item (ex.: recarga de revendedor). */
+export function appendItemPayment(
+  item: Item,
+  payment: ItemPayment,
+): Item {
+  const paidAt = String(payment.paidAt || "").slice(0, 10);
+  const amount = Math.round((Number(payment.amount) || 0) * 100) / 100;
+  if (!paidAt || amount <= 0) return withEmbeddedPayments(item);
+  const payments = [...getRecordedPayments(item), { paidAt, amount }];
+  return withEmbeddedPayments({
+    ...item,
+    payments,
+    notes: stripPaymentMarker(item.notes),
+  });
 }
 
 export function withEmbeddedPayments(item: Item): Item {
@@ -153,10 +179,20 @@ export function sumPaymentsByMonth(
 
   for (const item of items) {
     const dueRaw = toDateKey(item.dueDate);
-    if (!dueRaw) continue;
+    // Revendedores (sem vencimento): conta cada recarga gravada no histórico
+    if (!dueRaw) {
+      for (const p of getRecordedPayments(item)) {
+        const paid = toDateKey(p.paidAt);
+        if (!paid || !paid.startsWith(`${year}-`)) continue;
+        const m = Number(paid.slice(5, 7)) - 1;
+        if (m < 0 || m > 11) continue;
+        months[m].total += Number(p.amount) || 0;
+        months[m].itens += 1;
+      }
+      continue;
+    }
 
     const createdRaw = toDateKey(item.createdAt) ?? "2020-01-01";
-    const price = Number(item.price) || 0;
     const dueDate = parseLocalYmd(dueRaw);
     const dueMonthKey = dueRaw.slice(0, 7);
     // Para no mês do vencimento (não conta depois de vencido)
@@ -186,7 +222,8 @@ export function sumPaymentsByMonth(
           include = dueRaw >= todayStr;
         }
         if (include) {
-          months[m].total += price;
+          // Mensalidade do plano vigente naquele mês (histórico de mudanças)
+          months[m].total += planMonthlyInMonth(item, monthKey);
           months[m].itens += 1;
         }
       }
@@ -204,4 +241,50 @@ export function annualPaymentBalance(
   now: Date = new Date(),
 ): number {
   return sumPaymentsByMonth(items, year, now).reduce((s, m) => s + m.total, 0);
+}
+
+/**
+ * Só histórico de pagamentos gravados (recargas de revendedor em R$).
+ * Não usa saldo de créditos nem vencimento do painel.
+ */
+export function sumRecordedPaymentsByMonth(
+  items: Item[],
+  year: number,
+): { name: string; total: number; itens: number }[] {
+  const names = [
+    "Jan",
+    "Fev",
+    "Mar",
+    "Abr",
+    "Mai",
+    "Jun",
+    "Jul",
+    "Ago",
+    "Set",
+    "Out",
+    "Nov",
+    "Dez",
+  ];
+  const months = names.map((name) => ({ name, total: 0, itens: 0 }));
+  for (const item of items) {
+    for (const p of getRecordedPayments(item)) {
+      const paid = toDateKey(p.paidAt);
+      if (!paid || !paid.startsWith(`${year}-`)) continue;
+      const m = Number(paid.slice(5, 7)) - 1;
+      if (m < 0 || m > 11) continue;
+      months[m].total += Number(p.amount) || 0;
+      months[m].itens += 1;
+    }
+  }
+  return months;
+}
+
+export function annualRecordedPaymentBalance(
+  items: Item[],
+  year: number,
+): number {
+  return sumRecordedPaymentsByMonth(items, year).reduce(
+    (s, m) => s + m.total,
+    0,
+  );
 }

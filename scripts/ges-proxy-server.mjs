@@ -36,6 +36,24 @@ const server = http.createServer(async (req, res) => {
   let apiPath = pathHeader || (req.url || "/").split("?")[0] || "/";
   apiPath = apiPath.replace(/^\/ges-api/, "") || "/";
   if (!apiPath.startsWith("/")) apiPath = `/${apiPath}`;
+
+  // Sem x-iptv-path, POST/PUT em "/" cai na raiz da UniPlay → 405 Laravel
+  if (
+    !pathHeader &&
+    apiPath === "/" &&
+    req.method &&
+    !["GET", "HEAD", "OPTIONS"].includes(req.method)
+  ) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        error:
+          "Header x-iptv-path ausente. Use o proxy do AuxPlus (não aponte o túnel para outra app).",
+      }),
+    );
+    return;
+  }
+
   const qs = (req.url || "").includes("?")
     ? req.url.slice(req.url.indexOf("?"))
     : "";

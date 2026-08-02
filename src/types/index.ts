@@ -97,8 +97,32 @@ export interface Item {
   notes?: string;
   createdAt?: string | null;
   isActive?: boolean;
+  /**
+   * Meses liberados no painel ao renovar (ex.: 3 meses por R$ 130 → price=130 e planMonths=3).
+   * O preço é o valor cobrado de uma vez; persistido na nota (`<!--AXPLAN:...-->`).
+   */
+  planMonths?: number | null;
+  /**
+   * Quantidade de telas / ativações de app (MAC) do plano.
+   * Só faz sentido com UniPlay; persistido em `<!--AXSCREENS:N-->`.
+   */
+  screens?: number | null;
+  /**
+   * Histórico de planos (preço/meses). Mudanças só valem a partir da data do segmento.
+   * Persistido em `<!--AXPLAN:...-->`.
+   */
+  planHistory?: Array<{
+    from: string;
+    price: number;
+    planMonths: number;
+  }> | null;
   /** Histórico de pagamentos/renovações (para o gráfico mensal) */
   payments?: ItemPayment[];
+  /**
+   * Revendedor: total de créditos já comprados (histórico editável).
+   * Consultar Anual = isto × valor do crédito (UniPlay).
+   */
+  resellerCreditsBought?: number | null;
   /** Plano de parcelas (pastas Dívida) */
   debt?: DebtPlan;
 }

@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { HeaderUniplayCredits } from "@/components/layout/HeaderUniplayCredits";
 import { BrandLogo } from "@/components/shared/BrandLogo";
 import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -486,16 +487,17 @@ export function AppLayout() {
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event("auxplus:command"))}
-            className="flex h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-left text-sm text-muted-foreground shadow-sm transition hover:bg-accent sm:max-w-md"
+            className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-left text-sm text-muted-foreground shadow-sm transition hover:bg-accent lg:max-w-xl"
           >
-            <Search className="h-4 w-4" />
+            <Search className="h-4 w-4 shrink-0" />
             <span className="flex-1 truncate">Busca rápida…</span>
             <kbd className="hidden rounded border bg-muted px-1.5 py-0.5 text-[10px] font-semibold sm:inline">
               Ctrl K
             </kbd>
           </button>
 
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <HeaderUniplayCredits user={user} hideBalance={hideBalance} />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
