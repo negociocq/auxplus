@@ -24,7 +24,7 @@ const server = http.createServer(async (req, res) => {
   );
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "authorization, content-type, x-iptv-authorization, x-iptv-path, apikey",
+    "authorization, content-type, x-iptv-authorization, x-iptv-path, apikey, ngrok-skip-browser-warning",
   );
   if (req.method === "OPTIONS") {
     res.writeHead(200);
@@ -33,13 +33,18 @@ const server = http.createServer(async (req, res) => {
   }
 
   const pathHeader = String(req.headers["x-iptv-path"] || "").trim();
-  let apiPath = pathHeader || (req.url || "/").split("?")[0] || "/";
-  apiPath = apiPath.replace(/^\/ges-api/, "") || "/";
+  // Preferir path da URL (túneis Cloudflare às vezes perdem headers custom)
+  let urlPath = (req.url || "/").split("?")[0] || "/";
+  urlPath = urlPath.replace(/^\/ges-api/, "") || "/";
+  let apiPath = pathHeader || urlPath;
   if (!apiPath.startsWith("/")) apiPath = `/${apiPath}`;
+  // Se a URL trouxe o path e o header também, URL ganha quando header é "/" ou vazio
+  if (urlPath && urlPath !== "/" && (!pathHeader || pathHeader === "/")) {
+    apiPath = urlPath.startsWith("/") ? urlPath : `/${urlPath}`;
+  }
 
-  // Sem x-iptv-path, POST/PUT em "/" cai na raiz da UniPlay → 405 Laravel
+  // Sem path, POST/PUT em "/" cai na raiz da UniPlay → 405 Laravel
   if (
-    !pathHeader &&
     apiPath === "/" &&
     req.method &&
     !["GET", "HEAD", "OPTIONS"].includes(req.method)
@@ -48,7 +53,7 @@ const server = http.createServer(async (req, res) => {
     res.end(
       JSON.stringify({
         error:
-          "Header x-iptv-path ausente. Use o proxy do AuxPlus (não aponte o túnel para outra app).",
+          "Path da API ausente. Use o proxy do AuxPlus (ges-proxy-server) e URL do túnel atualizada em Automações → Proxy API.",
       }),
     );
     return;

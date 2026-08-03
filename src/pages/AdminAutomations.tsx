@@ -140,12 +140,12 @@ export default function AdminAutomations() {
             autoComplete="off"
           />
           <p className="text-xs text-muted-foreground">
-            A UniPlay bloqueia login pela nuvem (erro Upstream 404). No PC onde
-            o localhost já conecta, rode{" "}
-            <code className="rounded bg-muted px-1">
-              node scripts/ges-proxy-server.mjs
-            </code>{" "}
-            e exponha com ngrok; cole a URL aqui. Deixe vazio só em localhost.
+            Só para produção (Vercel) e WhatsApp na nuvem. No{" "}
+            <strong>localhost</strong> o app usa o proxy do Vite sozinho — não
+            precisa de túnel. Para expor:{" "}
+            <code className="rounded bg-muted px-1">npm run ges-proxy</code> +
+            cloudflared apontando para a porta 8787; cole a URL nova do túnel
+            aqui.
           </p>
         </div>
 

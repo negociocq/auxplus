@@ -75,6 +75,7 @@ import {
   formatIptvCredits,
 } from "@/lib/iptvPanelApi";
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
+import { onUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -185,9 +186,13 @@ export default function Dashboard() {
     };
     void load();
     const id = window.setInterval(() => void load(), 120_000);
+    const offCredits = onUniplayCreditsChanged(() => {
+      void load();
+    });
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      offCredits();
     };
   }, [user]);
 

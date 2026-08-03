@@ -363,23 +363,60 @@ function isSupabaseGesProxy(base: string) {
   );
 }
 
-function resolveBase(apiBaseUrl: string, apiProxyUrl?: string) {
-  const custom = apiProxyUrl?.trim().replace(/\/$/, "");
-  if (custom) {
-    // Proxy externo (ngrok) — path via header x-iptv-path
-    return custom;
-  }
+/** Proxies que só leem path no header (URL fica na raiz do proxy). */
+function isHeaderOnlyProxy(base: string) {
+  return (
+    base === "/api/gesapi" ||
+    base.includes("/functions/v1/gesapi") ||
+    base.includes("/functions/v1/ges-api")
+  );
+}
 
+/**
+ * Monta a URL final do fetch.
+ * Túnel ngrok/cloudflare: path NA URL + header (túneis às vezes perdem
+ * x-iptv-path e a UniPlay responde 405 em POST /).
+ */
+function buildPanelFetchUrl(base: string, path: string) {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (!isPathHeaderProxy(base)) return `${base}${p}`;
+  if (isHeaderOnlyProxy(base)) return base;
+  return `${base}${p}`;
+}
+
+/** Dyad/Vite em localhost — nem sempre import.meta.env.DEV é true (porta 32xxx). */
+function isLocalhostBrowser() {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return (
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "[::1]" ||
+    h.endsWith(".local")
+  );
+}
+
+function resolveBase(apiBaseUrl: string, apiProxyUrl?: string) {
   const configured = (apiBaseUrl || "https://gesapioffice.com/api").replace(
     /\/$/,
     "",
   );
-  if (!shouldUseGesProxy(configured)) return configured;
 
-  // Dev: proxy do Vite (sai pelo seu IP — a API aceita)
-  if (typeof window !== "undefined" && import.meta.env.DEV) {
+  // Localhost: SEMPRE /ges-api (proxy Vite/Dyad). Ignora túnel do Admin —
+  // Cloudflare morto causa CORS e 405 em /criar.
+  if (isLocalhostBrowser()) {
+    if (!shouldUseGesProxy(configured)) return configured;
     return "/ges-api";
   }
+
+  const custom = apiProxyUrl?.trim().replace(/\/$/, "");
+  if (custom) {
+    // Produção / outro origin: proxy externo (ngrok + ges-proxy-server)
+    return custom;
+  }
+
+  if (!shouldUseGesProxy(configured)) return configured;
+
   // Produção sem proxy custom: Vercel /api/gesapi (Node).
   // Não usar Supabase Edge — a UniPlay responde 404 a IPs de datacenter.
   if (typeof window !== "undefined") {
@@ -401,10 +438,8 @@ function proxyHeaders(
     h.apikey = SUPABASE_ANON_KEY;
     h.Authorization = `Bearer ${SUPABASE_ANON_KEY}`;
   }
-  // Ngrok free: evita página intermediária HTML
-  if (/ngrok/i.test(base)) {
-    h["ngrok-skip-browser-warning"] = "true";
-  }
+  // Nunca enviar ngrok-skip-browser-warning do browser: Cloudflare/CORS bloqueia
+  // o preflight. O ges-proxy já fala direto com a UniPlay.
   if (iptvBearer?.trim()) {
     h["x-iptv-authorization"] = `Bearer ${iptvBearer
       .trim()
@@ -523,7 +558,7 @@ export async function loginIptvPanel(
 
   const base = resolveBase(apiBaseUrl, apiProxyUrl);
   const loginPath = "/login";
-  const loginUrl = isPathHeaderProxy(base) ? base : `${base}${loginPath}`;
+  const loginUrl = buildPanelFetchUrl(base, loginPath);
 
   try {
     const res = await fetch(loginUrl, {
@@ -641,7 +676,7 @@ async function panelFetch(
 
   const base = resolveBase(creds.apiBaseUrl, creds.apiProxyUrl);
   const p = path.startsWith("/") ? path : `/${path}`;
-  const url = isPathHeaderProxy(base) ? base : `${base}${p}`;
+  const url = buildPanelFetchUrl(base, p);
   const doFetch = (t: string) =>
     fetch(url, {
       ...init,
@@ -688,9 +723,9 @@ async function panelFetch(
     }
     if (res.status === 405) {
       throw new Error(
-        msg && msg !== res.statusText
-          ? msg
-          : "Método não permitido no proxy (405). Tentando alternativa…",
+        isLocalhostBrowser()
+          ? `Rota UniPlay recusou ${init?.method || "GET"} ${p} (405).`
+          : "Proxy UniPlay sem rota (405). Confira ges-proxy + cloudflared e a URL em Automações → Proxy API.",
       );
     }
     throw new Error(msg || `Erro HTTP ${res.status}`);
@@ -1223,6 +1258,7 @@ function pickResellerFields(u: Record<string, unknown>): IptvReseller {
 
   return {
     ...u,
+    // PK do revendedor — não usar id_res/idRes da linha (muitas vezes é o pai)
     id: (u.id ?? u.reseller_id ?? u.user_id ?? u.uid ?? username) as
       | string
       | number,
@@ -1286,12 +1322,47 @@ export async function listIptvResellers(
 export const IPTV_RESELLER_CREDITS_MIN = 10;
 
 /**
+ * ID numérico do revendedor no painel (PK).
+ * Importante: em linhas do UniPlay, `id_res` / `idRes` costuma ser o PAI
+ * (ou o usuário logado). O body de POST /recargas/criar espera o `id` do
+ * revendedor alvo — o front só chama isso de idRes depois de selecionar.
+ */
+export function resolveIptvResellerPanelId(
+  reseller: Pick<IptvReseller, "id" | "username"> & Record<string, unknown>,
+): number | null {
+  for (const raw of [reseller.id, reseller.reseller_id, reseller.user_id, reseller.uid]) {
+    if (raw == null || raw === "") continue;
+    // Evita usar o username como id (Number("eronvitor") === NaN)
+    if (typeof raw === "string" && raw.trim() === reseller.username?.trim()) {
+      continue;
+    }
+    const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+  return null;
+}
+
+/**
  * Adiciona créditos a um revendedor (sub-conta).
- * Front UniPlay: POST /criar { id_res, qtd_creditos }
+ *
+ * Caminho principal = botão “Créditos Add” do painel:
+ *   PUT /reg-users/{id} { action: 0, credits, sale, reason }
+ *   (sale = valor R$ da venda, máx. 100 no front UniPlay)
+ *
+ * Fallback legado: POST /recargas/criar { id_res, qtd_creditos }
+ * (em várias contas responde “Créditos insuficientes” mesmo com saldo).
  */
 export async function addIptvResellerCredits(
   creds: IptvPanelCreds,
-  opts: { resellerId: string | number; credits: number },
+  opts: {
+    resellerId: string | number;
+    credits: number;
+    /** Valor R$ da venda (painel: campo sale, máx. 100). */
+    saleBrl?: number;
+    /** Preço unitário p/ calcular sale quando saleBrl não vier. */
+    unitPriceBrl?: number;
+    reason?: string;
+  },
 ): Promise<unknown> {
   const credits = Math.floor(Number(opts.credits));
   if (!Number.isFinite(credits) || credits < IPTV_RESELLER_CREDITS_MIN) {
@@ -1299,16 +1370,92 @@ export async function addIptvResellerCredits(
       `A UniPlay só permite passar ${IPTV_RESELLER_CREDITS_MIN} créditos ou mais.`,
     );
   }
-  if (opts.resellerId == null || opts.resellerId === "") {
-    throw new Error("Revendedor inválido.");
+  const idRes = (() => {
+    const n = Number(opts.resellerId);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  })();
+  if (idRes == null) {
+    throw new Error(
+      "Revendedor sem ID numérico no UniPlay. Atualize a lista de revendedores e tente de novo.",
+    );
   }
-  return panelFetch(creds, "/criar", {
-    method: "POST",
-    body: JSON.stringify({
-      id_res: opts.resellerId,
-      qtd_creditos: credits,
-    }),
+
+  const unit = Math.max(0.01, Number(opts.unitPriceBrl) || 8.5);
+  const saleRaw =
+    opts.saleBrl != null && Number.isFinite(Number(opts.saleBrl))
+      ? Number(opts.saleBrl)
+      : credits * unit;
+  // Front UniPlay: if (sale > 100) → "Valor máximo do crédito R$100."
+  const sale = Math.min(100, Math.max(0.01, Math.round(saleRaw * 100) / 100));
+  const reason = String(opts.reason || "AuxPlus").trim() || "AuxPlus";
+
+  // Pré-checagem: teste/renovação e “Créditos Add” usam o mesmo saldo dash.credits
+  let bal: IptvPanelCredits | null = null;
+  try {
+    bal = await fetchIptvPanelCredits(creds);
+    if (bal.credits + 1e-9 < credits) {
+      throw new Error(
+        `Créditos insuficientes no UniPlay (saldo ${formatIptvCredits(bal.credits)} · necessário ${credits}).`,
+      );
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/insuficientes/i.test(msg)) throw e;
+  }
+
+  const actionBody = JSON.stringify({
+    action: 0,
+    credits,
+    sale,
+    reason,
   });
+  const idPath = `/reg-users/${encodeURIComponent(String(idRes))}`;
+  const methods = ["PUT", "POST", "PATCH"] as const;
+  let lastErr: Error | null = null;
+
+  for (const method of methods) {
+    try {
+      return await panelFetch(creds, idPath, {
+        method,
+        body: actionBody,
+      });
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      const msg = lastErr.message;
+      if (
+        /405|method is not supported|Method Not Allowed|não permitido/i.test(
+          msg,
+        )
+      ) {
+        continue;
+      }
+      // Se o action em /reg-users falhar, tenta o endpoint legado de recargas
+      break;
+    }
+  }
+
+  try {
+    return await panelFetch(creds, "/recargas/criar", {
+      method: "POST",
+      body: JSON.stringify({
+        id_res: idRes,
+        qtd_creditos: credits,
+      }),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const prev = lastErr?.message || "";
+    throw new Error(
+      /insuficientes/i.test(msg)
+        ? `UniPlay recusou créditos (saldo ${bal != null ? formatIptvCredits(bal.credits) : "?"} · envio ${credits} · id ${idRes} · sale R$${sale}). ` +
+            `Teste/renovação gastam crédito normalmente; “passar créditos” usa outra rota do painel. ` +
+            `Tente no searchdefense.top a coluna Créditos Add do revendedor. ` +
+            `API: ${msg}${prev && prev !== msg ? ` · reg-users: ${prev}` : ""}`
+        : lastErr && !/405/i.test(lastErr.message)
+          ? lastErr.message
+          : msg,
+    );
+  }
 }
 
 export async function findIptvUserByUsername(
@@ -1799,12 +1946,61 @@ export function buildRenewalReceiptMessage(
   dueDateFormatted: string,
 ): string {
   return [
-    "Comprovante de Renovação de TV!",
+    "✅ *Pagamento confirmado!*",
     "",
-    `Usuário: ${username}`,
-    "Estendido com sucesso!",
+    "Comprovante de renovação",
+    `Usuário: *${username}*`,
+    "Renovação/extensão concluída com sucesso!",
     "",
-    `O novo vencimento é: ${dueDateFormatted}`,
+    `Novo vencimento: *${dueDateFormatted}*`,
+    "",
+    "Bom proveito! Qualquer dúvida, é só chamar.",
+  ].join("\n");
+}
+
+/** Comprovante de recarga de créditos para revendedor. */
+export function buildResellerCreditsReceiptMessage(
+  username: string,
+  credits: number,
+  amountBrl?: number,
+): string {
+  const amountLine =
+    amountBrl != null && Number.isFinite(amountBrl) && amountBrl > 0
+      ? `\nValor: *R$ ${amountBrl.toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}*`
+      : "";
+  return [
+    "✅ *Pagamento confirmado!*",
+    "",
+    "Recarga de créditos liberada.",
+    `Login: *${username}*`,
+    `Créditos creditados: *${credits}*${amountLine}`,
+    "",
+    "Já pode usar no painel. Qualquer dúvida, é só chamar.",
+  ].join("\n");
+}
+
+/** Aviso ao cliente/revendedor quando o PIX pagou mas a liberação falhou. */
+export function buildReleaseFailedClientMessage(
+  username: string,
+  kind: "renew" | "reseller_credits" | "test_activate" | string,
+): string {
+  const what =
+    kind === "reseller_credits"
+      ? "sua recarga de créditos"
+      : kind === "test_activate"
+        ? "a liberação do plano"
+        : "sua renovação";
+  return [
+    "⚠️ *Pagamento recebido*",
+    "",
+    `Seu PIX foi confirmado, mas houve um problema ao concluir ${what}` +
+      (username ? ` (*${username}*)` : "") +
+      ".",
+    "",
+    "Já encaminhei para um *atendente* — em breve alguém responde por aqui.",
   ].join("\n");
 }
 
@@ -1850,11 +2046,17 @@ export function extractIptvCredits(data: unknown): IptvPanelCredits | null {
   const nest =
     root.data && typeof root.data === "object"
       ? (root.data as Record<string, unknown>)
+      : root;
+  // Front UniPlay valida transferência com dash.credits
+  const dash =
+    nest.dash && typeof nest.dash === "object"
+      ? (nest.dash as Record<string, unknown>)
       : root.dash && typeof root.dash === "object"
         ? (root.dash as Record<string, unknown>)
-        : root;
+        : null;
 
   const credits =
+    pickCreditNumber(dash?.credits) ??
     pickCreditNumber(nest.credits) ??
     pickCreditNumber(nest.credit) ??
     pickCreditNumber(nest.creditos) ??
@@ -1864,9 +2066,12 @@ export function extractIptvCredits(data: unknown): IptvPanelCredits | null {
   if (credits == null) return null;
 
   const creditsPortal =
+    pickCreditNumber(dash?.creditos_portal) ??
+    pickCreditNumber(dash?.creditPortal) ??
     pickCreditNumber(nest.creditos_portal) ??
     pickCreditNumber(nest.creditPortal) ??
     pickCreditNumber(nest.credit_portal) ??
+    pickCreditNumber(root.creditos_portal) ??
     undefined;
 
   return {

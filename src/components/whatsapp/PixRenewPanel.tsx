@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   ClipboardCopy,
   Loader2,
+  MessageSquare,
   QrCode,
   RefreshCw,
   Search,
@@ -42,6 +43,10 @@ import {
 } from "@/lib/iptvAutomation";
 import {
   addIptvResellerCredits,
+  buildReleaseFailedClientMessage,
+  buildRenewalReceiptMessage,
+  buildResellerCreditsReceiptMessage,
+  resolveIptvResellerPanelId,
   ensureIptvToken,
   findIptvUserByUsername,
   getLastIssuedIptvToken,
@@ -55,6 +60,8 @@ import {
   loadWaBotStateRemote,
   saveWaBotStateRemote,
 } from "@/lib/whatsappBotConfig";
+import { enqueueWaHumanAlertRemote } from "@/lib/whatsappBotAlerts";
+import { notifyUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
 import {
   createMercadoPagoPix,
   fetchMercadoPagoPaymentStatus,
@@ -115,6 +122,7 @@ export function PixRenewPanel() {
   const [pixBusy, setPixBusy] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [pixActiveOrderId, setPixActiveOrderId] = useState<string | null>(null);
+  const [sendingWaOrderId, setSendingWaOrderId] = useState<string | null>(null);
   const releasingRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -170,6 +178,145 @@ export function PixRenewPanel() {
     const map = new Map(clients.map((c) => [c.id, c]));
     return map;
   }, [clients]);
+
+  const sendWaReceipt = async (phone: string, text: string) => {
+    if (!user) return false;
+    const digits = String(phone || "").replace(/\D/g, "");
+    if (digits.length < 10) return false;
+    try {
+      const evo = await loadEvolutionPlatformConfig();
+      if (!isEvolutionConfigured(evo)) return false;
+      const runtime = {
+        apiBaseUrl: evo.apiBaseUrl,
+        apiKey: evo.apiKey,
+        instanceName: instanceNameForUser(
+          evo.instancePrefix,
+          user.id,
+          user.username,
+        ),
+      };
+      if ((await fetchEvolutionStatus(runtime)) !== "open") return false;
+      await sendEvolutionText(runtime, digits, text);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const receiptTextForOrder = (order: MpRenewOrder): string => {
+    const live = clientById.get(order.itemRefId);
+    const username = (
+      order.panelUsername ||
+      live?.itemId ||
+      ""
+    ).trim();
+    // Pago com falha na liberação → mensagem de encaminhamento
+    if (order.status === "approved" && order.error) {
+      return buildReleaseFailedClientMessage(
+        username,
+        order.kind || "renew",
+      );
+    }
+    if (order.kind === "reseller_credits") {
+      return buildResellerCreditsReceiptMessage(
+        username,
+        Math.max(10, Math.floor(Number(order.credits) || 10)),
+        Number(order.amount) || undefined,
+      );
+    }
+    if (order.kind === "test_activate") {
+      return (
+        `✅ *Pagamento confirmado!*\n\n` +
+        `Plano liberado no usuário *${username || "—"}*.\n` +
+        `Bom proveito!`
+      );
+    }
+    const due = live?.dueDate || order.dueDate || null;
+    return buildRenewalReceiptMessage(
+      username || "—",
+      formatBrDate(due),
+    );
+  };
+
+  const sendOrderWhatsappManual = async (order: MpRenewOrder) => {
+    if (!user) return;
+    const phone = String(
+      order.phone || clientById.get(order.itemRefId)?.phone || "",
+    ).replace(/\D/g, "");
+    if (phone.length < 10) {
+      toast.error(
+        "Pedido sem telefone — preencha no cadastro do cliente/revendedor",
+      );
+      return;
+    }
+    setSendingWaOrderId(order.id);
+    try {
+      const evo = await loadEvolutionPlatformConfig();
+      if (!isEvolutionConfigured(evo)) {
+        toast.error("Configure o WhatsApp (Evolution) em Automações");
+        return;
+      }
+      const runtime = {
+        apiBaseUrl: evo.apiBaseUrl,
+        apiKey: evo.apiKey,
+        instanceName: instanceNameForUser(
+          evo.instancePrefix,
+          user.id,
+          user.username,
+        ),
+      };
+      if ((await fetchEvolutionStatus(runtime)) !== "open") {
+        toast.error("WhatsApp desconectado — conecte a instância e tente de novo");
+        return;
+      }
+      await sendEvolutionText(runtime, phone, receiptTextForOrder(order));
+      toast.success("Mensagem enviada no WhatsApp");
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Falha ao enviar no WhatsApp",
+      );
+    } finally {
+      setSendingWaOrderId(null);
+    }
+  };
+
+  /** PIX pago mas liberação falhou → avisa o cliente e pausa bot p/ atendente. */
+  const handoffReleaseFailure = async (
+    order: MpRenewOrder,
+    username: string,
+  ) => {
+    if (!user) return;
+    const phone = String(order.phone || "").replace(/\D/g, "");
+    if (phone.length < 10) return;
+    const role =
+      order.kind === "reseller_credits"
+        ? "reseller"
+        : order.kind === "test_activate"
+          ? "unknown"
+          : "client";
+    try {
+      await sendWaReceipt(
+        phone,
+        buildReleaseFailedClientMessage(username, order.kind || "renew"),
+      );
+      const state = await loadWaBotStateRemote(user.id);
+      state.humanPaused[phone] = true;
+      state.sessions[phone] = {
+        ...(state.sessions[phone] || {
+          state: "human",
+          updatedAt: new Date().toISOString(),
+        }),
+        state: "human",
+        role,
+        panelUsername: username || state.sessions[phone]?.panelUsername,
+        updatedAt: new Date().toISOString(),
+      };
+      await saveWaBotStateRemote(user.id, state);
+      await enqueueWaHumanAlertRemote(user.id, phone, role);
+    } catch {
+      /* handoff opcional */
+    }
+  };
 
   const persistToken = (token: string) => {
     if (!user || !token) return;
@@ -392,6 +539,10 @@ export function PixRenewPanel() {
           /* WhatsApp opcional */
         }
 
+        notifyUniplayCreditsChanged({
+          spent: Math.max(1, Number(order.credits) || 1),
+          source: "pix_test_activate",
+        });
         toast.success(`Pagamento confirmado · plano liberado (${username})`);
         return;
       }
@@ -406,17 +557,27 @@ export function PixRenewPanel() {
           search: username,
           perPage: 100,
         });
-        const remote =
-          resellers.find(
-            (r) =>
-              String(r.username || "").toLowerCase() === username.toLowerCase(),
-          ) || resellers[0];
-        if (!remote?.id) {
-          throw new Error(`Revendedor ${username || "?"} não encontrado no UniPlay`);
+        const want = username.toLowerCase();
+        const remote = resellers.find(
+          (r) => String(r.username || "").toLowerCase() === want,
+        );
+        if (!remote) {
+          throw new Error(
+            `Revendedor ${username || "?"} não encontrado no UniPlay (busca exata).`,
+          );
         }
+        const resellerId = resolveIptvResellerPanelId(remote);
+        if (resellerId == null) {
+          throw new Error(
+            `Revendedor ${username} sem ID numérico no UniPlay. Abra Automações → Revendedores e atualize a lista.`,
+          );
+        }
+        const amountBrl = Number(order.amount) || 0;
         await addIptvResellerCredits(creds, {
-          resellerId: remote.id,
+          resellerId,
           credits,
+          saleBrl: amountBrl > 0 ? amountBrl : undefined,
+          reason: `AuxPlus PIX ${order.id}`,
         });
         const issued = getLastIssuedIptvToken();
         if (issued) persistToken(issued);
@@ -428,7 +589,7 @@ export function PixRenewPanel() {
         if (item) {
           const updated = applyResellerRechargeToItem(item, {
             credits,
-            amountBrl: Number(order.amount) || 0,
+            amountBrl,
             paidAt,
           });
           setData((prev) => ({
@@ -445,9 +606,32 @@ export function PixRenewPanel() {
             error: undefined,
           }),
         );
-        toast.success(
-          `Pagamento confirmado · ${credits} créditos liberados para ${username}`,
-        );
+        notifyUniplayCreditsChanged({
+          spent: credits,
+          source: "pix_reseller_credits",
+        });
+        {
+          const phone = String(order.phone || item?.phone || "").replace(
+            /\D/g,
+            "",
+          );
+          const sent = await sendWaReceipt(
+            phone,
+            buildResellerCreditsReceiptMessage(username, credits, amountBrl),
+          );
+          if (sent) {
+            toast.success(
+              `${credits} créditos liberados · comprovante enviado no WhatsApp`,
+            );
+          } else {
+            toast.success(
+              `Pagamento confirmado · ${credits} créditos liberados para ${username}`,
+            );
+            if (phone.length < 10) {
+              toast.message("Sem telefone no pedido — WhatsApp não enviado");
+            }
+          }
+        }
         return;
       }
 
@@ -547,9 +731,34 @@ export function PixRenewPanel() {
           error: undefined,
         }),
       );
-      toast.success(
-        `Pagamento confirmado · vence ${formatBrDate(updated.dueDate)}`,
-      );
+      if (canRenewUniplay) {
+        notifyUniplayCreditsChanged({
+          spent: option.credits,
+          source: "pix_renew",
+        });
+      }
+      {
+        const phone = String(order.phone || item.phone || "").replace(/\D/g, "");
+        const sent = await sendWaReceipt(
+          phone,
+          buildRenewalReceiptMessage(
+            item.itemId.trim() || username,
+            formatBrDate(updated.dueDate),
+          ),
+        );
+        if (sent) {
+          toast.success(
+            `Renovado · vence ${formatBrDate(updated.dueDate)} · WhatsApp enviado`,
+          );
+        } else {
+          toast.success(
+            `Pagamento confirmado · vence ${formatBrDate(updated.dueDate)}`,
+          );
+          if (phone.length < 10) {
+            toast.message("Sem telefone no pedido — WhatsApp não enviado");
+          }
+        }
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Falha ao liberar";
       persistMpOrders(
@@ -558,6 +767,12 @@ export function PixRenewPanel() {
           error: msg,
         }),
       );
+      const username = String(
+        order.panelUsername ||
+          clients.find((i) => i.id === order.itemRefId)?.itemId ||
+          "",
+      ).trim();
+      void handoffReleaseFailure(order, username);
       toast.error(`Pago, mas falhou a liberação: ${msg}`);
     } finally {
       releasingRef.current.delete(order.id);
@@ -1011,6 +1226,29 @@ export function PixRenewPanel() {
                         onClick={() => void releasePaidOrder(order)}
                       >
                         Liberar
+                      </Button>
+                    ) : null}
+                    {order.status === "released" ||
+                    (order.status === "approved" && order.error) ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1 px-2"
+                        disabled={sendingWaOrderId === order.id}
+                        title={
+                          order.status === "released"
+                            ? "Reenviar comprovante no WhatsApp"
+                            : "Avisar no WhatsApp e encaminhar (liberação falhou)"
+                        }
+                        onClick={() => void sendOrderWhatsappManual(order)}
+                      >
+                        {sendingWaOrderId === order.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <MessageSquare className="h-3.5 w-3.5" />
+                        )}
+                        <span className="text-[11px]">WhatsApp</span>
                       </Button>
                     ) : null}
                   </div>

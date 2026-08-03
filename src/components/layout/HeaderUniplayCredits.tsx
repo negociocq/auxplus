@@ -13,6 +13,7 @@ import {
   formatIptvCredits,
 } from "@/lib/iptvPanelApi";
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
+import { onUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
 import {
   Tooltip,
   TooltipContent,
@@ -93,10 +94,14 @@ export function HeaderUniplayCredits({ user, hideBalance }: Props) {
     const id = window.setInterval(() => void load(), 120_000);
     const onFocus = () => void load();
     window.addEventListener("focus", onFocus);
+    const offCredits = onUniplayCreditsChanged(() => {
+      void load();
+    });
     return () => {
       cancelled = true;
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
+      offCredits();
     };
   }, [user]);
 

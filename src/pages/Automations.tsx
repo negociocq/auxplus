@@ -85,8 +85,13 @@ import {
 } from "@/lib/mercadoPagoOrders";
 import { loadWaBotStateRemote } from "@/lib/whatsappBotConfig";
 import {
+  notifyUniplayCreditsChanged,
+  onUniplayCreditsChanged,
+} from "@/lib/uniplayCreditsSync";
+import {
   activatePartnerApp,
   addIptvResellerCredits,
+  resolveIptvResellerPanelId,
   buildRenewalReceiptMessage,
   createIptvTest,
   deleteSmartApp,
@@ -627,9 +632,13 @@ export default function Automations() {
     };
     void load();
     const id = window.setInterval(() => void load(), 60_000);
+    const offCredits = onUniplayCreditsChanged(() => {
+      if (!cancelled) void load();
+    });
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      offCredits();
     };
   }, [
     uniplayConnected,
@@ -807,20 +816,30 @@ export default function Automations() {
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
       const creds = { ...panelCreds(), bearerToken: ensured.token };
-      await addIptvResellerCredits(creds, {
-        resellerId: creditTarget.id,
-        credits: amount,
-      });
-      const username = String(creditTarget.username || "").trim().toLowerCase();
-      const folderId =
-        syncResellersFolderId ||
-        loadAutomationsConfig(user?.id || "0").syncResellersFolderId;
+      const resellerId = resolveIptvResellerPanelId(creditTarget);
+      if (resellerId == null) {
+        toast.error(
+          "Revendedor sem ID numérico no UniPlay. Atualize a lista e tente de novo.",
+        );
+        return;
+      }
       const unit = Math.max(
         0.01,
         Number(
           loadAutomationsConfig(user?.id || "0").resellerCreditPriceBrl,
         ) || 8.5,
       );
+      await addIptvResellerCredits(creds, {
+        resellerId,
+        credits: amount,
+        unitPriceBrl: unit,
+        saleBrl: amount * unit,
+        reason: "AuxPlus manual",
+      });
+      const username = String(creditTarget.username || "").trim().toLowerCase();
+      const folderId =
+        syncResellersFolderId ||
+        loadAutomationsConfig(user?.id || "0").syncResellersFolderId;
       if (username && folderId) {
         const item = data.items.find(
           (i) =>
@@ -843,6 +862,7 @@ export default function Automations() {
         `${amount} crédito(s) enviados para ${creditTarget.username || creditTarget.name || "revendedor"}`,
       );
       setCreditTarget(null);
+      notifyUniplayCreditsChanged({ spent: amount, source: "reseller_manual" });
       void refreshResellers(true);
       void refreshPanelCredits(true);
     } catch (e) {
@@ -1118,6 +1138,11 @@ export default function Automations() {
         note: `${verb} via API · ${option.label} · vence ${formatBrDate(updated.dueDate)}`,
       });
       persistJobs(nextJobs);
+      notifyUniplayCreditsChanged({
+        spent: option.credits,
+        source: "renew_manual",
+      });
+      void refreshPanelCredits(true);
       toast.success(
         `${verb}: ${item.name} · vence ${formatBrDate(updated.dueDate)}`,
       );
@@ -1604,6 +1629,8 @@ export default function Automations() {
       });
       persistJobs(nextJobs);
       setDetailJobId(job.id);
+      notifyUniplayCreditsChanged({ spent: 1, source: "create_test" });
+      void refreshPanelCredits(true);
       toast.success(
         createdUser
           ? `Teste de ${hoursSafe}h criado: ${createdUser}. Preencha o MAC e ative o app.`
@@ -1771,6 +1798,11 @@ export default function Automations() {
           note: `Ativado · ${option.label} · vence ${formatBrDate(dueDate)}`,
         }),
       );
+      notifyUniplayCreditsChanged({
+        spent: option.credits,
+        source: "test_activate",
+      });
+      void refreshPanelCredits(true);
       toast.success(
         `Teste ativado: ${option.label} · vence ${formatBrDate(dueDate)}`,
       );

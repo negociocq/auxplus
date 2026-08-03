@@ -1,0 +1,62 @@
+﻿
+--- 2187856 ---
+tegory':'','filterRequest':{},'profile':'','datePicker':'','idRes':'','atualizaStatus':'','channels':[],'selectedChannels':[],'users':[],'selectedUser':0x0};},'
+{}
+
+--- 2335255 ---
+Filter':'','filterRequest':{},'profile':'','datePicker':'','idRes':'','atualizaStatus':'','channels':[],'selectedChannels':[],'users':[],'selectedUser':0x0,'loa
+{}
+
+--- 2362717 ---
+x64b3)+_0x48153f(0x4f4e)]=!0x1:this[_0x48153f(0x40f4)]();},'idRes':function(){const _0xed6c98=_0x189670;this[_0xed6c98(0x40f4)]();},'tmdbSearchQuery':function(_
+{ '0x4f4e': 'alTutorial', '0x40f4': 'filter' }
+
+--- 2452245 ---
+atus':this['tabSelecte'+'d'],'date':this[_0x44a6f4(0x372)],'idRes':this[_0x44a6f4(0x49a2)],'atualizaStatus':this['atualizaSt'+_0x44a6f4(0xb39)],'systemTypeId':0
+{ '0x372': 'datePicker', '0x49a2': 'idRes', '0xb39': 'atus' }
+
+--- 3288766 ---
+KeyValid':!0x0,'isPrivateKeyValid':!0x0,'creditPortal':0x0,'idRes':this['id'],'alreadyConfig':0x0,'mostrarModalTutorial':!0x1,'filtroStatus':_0xe41a4c(0x3f3b),'
+{ '0x3f3b': 'Todos' }
+
+--- 3339042 ---
+f)],'japnP':_0x4a6246(0x1a1d)};this['dash']=_0x4eac8e,this['idRes']=_0x4eac8e['id'],_0x631cd0[_0x4a6246(0x44b9)](setTimeout,()=>{const _0x62f70e=_0x4a6246;_0x30
+{ '0x1a1d': 'kXbce', '0x44b9': 'qCtDf' }
+
+--- 3839873 ---
+tegory':'','filterRequest':{},'profile':'','datePicker':'','idRes':'','atualizaStatus':'','channels':[],'selectedChannels':[],'users':[],'selectedUser':0x0};els
+{}
+
+--- 3841821 ---
+on(){const _0x57f3a9=_0x189670;this[_0x57f3a9(0x40f4)]();},'idRes':function(){const _0x539380=_0x189670,_0x4a6658={'Mnqol':function(_0x433da3,_0x2ab5c8){const _
+{ '0x40f4': 'filter' }
+
+--- 3884454 ---
+,'status':this['tabSelecte'+'d'],'date':this['datePicker'],'idRes':this['idRes'],'atualizaStatus':this[_0x382ff1(0x4871)+_0x382ff1(0xb39)],'systemTypeId':0x2},_
+{ '0x4871': 'atualizaSt', '0xb39': 'atus' }
+
+--- 3884467 ---
+s['tabSelecte'+'d'],'date':this['datePicker'],'idRes':this['idRes'],'atualizaStatus':this[_0x382ff1(0x4871)+_0x382ff1(0xb39)],'systemTypeId':0x2},_0x4bd551[_0x3
+{ '0x4871': 'atualizaSt', '0xb39': 'atus' }
+
+--- 3925593 ---
+7f0(0x43e3)](_0x100a3d[_0x5df7f0(0x1bd)+_0x5df7f0(0x4df)]),'idRes':localStorage[_0x5df7f0(0x43e3)](_0x100a3d[_0x5df7f0(0x52fe)+'ID']),'loadingWhatsapp':!0x1,'te
+{
+  '0x43e3': 'getItem',
+  '0x1bd': 'AUTH_WHATS',
+  '0x4df': 'APP',
+  '0x52fe': 'AUTH_USER_'
+}
+
+--- 4391625 ---
+0ea(0x43e3)](_0x4a99c8[_0x1540ea(0x1bd)+_0x1540ea(0x4df)]),'idRes':_0x5a0aac[_0x1540ea(0x43e3)](_0x317158[_0x1540ea(0x52fe)+'ID']),'loadingWhatsapp':!0x1,'texta
+{
+  '0x43e3': 'getItem',
+  '0x1bd': 'AUTH_WHATS',
+  '0x4df': 'APP',
+  '0x52fe': 'AUTH_USER_'
+}
+
+key PmEtb null
+
+key Zsquq null

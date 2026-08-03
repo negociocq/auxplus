@@ -80,4 +80,38 @@ export async function markWaBotAlertsSeenRemote(
   );
 }
 
+/** Enfileira alerta de handoff (mesmo formato do webhook Evolution). */
+export async function enqueueWaHumanAlertRemote(
+  userId: string,
+  phone: string,
+  role: "client" | "reseller" | "unknown" | string = "unknown",
+): Promise<string | null> {
+  if (!supabase || !userId) return null;
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length < 10) return null;
+  const cur = await loadWaBotAlertsRemote(userId);
+  const id = `ha_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  const next = {
+    alerts: [
+      {
+        id,
+        phone: digits,
+        role,
+        at: new Date().toISOString(),
+        seen: false,
+      },
+      ...cur.alerts,
+    ].slice(0, 40),
+  };
+  await supabase.from("platform_settings").upsert(
+    {
+      key: alertsDbKey(userId),
+      value: next,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "key" },
+  );
+  return id;
+}
+
 export { alertsDbKey as waBotAlertsDbKey };
