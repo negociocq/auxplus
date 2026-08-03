@@ -493,9 +493,57 @@ function extractText(msg: Record<string, unknown>): string {
   if (ext?.text) return ext.text;
   const img = m.imageMessage as { caption?: string } | undefined;
   if (img?.caption) return img.caption;
+  const vid = m.videoMessage as { caption?: string } | undefined;
+  if (vid?.caption) return vid.caption;
+  const doc = m.documentMessage as { caption?: string; title?: string } | undefined;
+  if (doc?.caption) return doc.caption;
   const btn = m.buttonsResponseMessage as { selectedDisplayText?: string } | undefined;
   if (btn?.selectedDisplayText) return btn.selectedDisplayText;
   return "";
+}
+
+/** Detecta mídia sem texto útil (foto, áudio, vídeo, doc, figurinha). */
+function detectInboundMedia(
+  msg: Record<string, unknown>,
+): "image" | "audio" | "video" | "document" | "sticker" | null {
+  const m = (msg.message || msg) as Record<string, unknown>;
+  if (m.imageMessage) return "image";
+  if (m.audioMessage || m.pttMessage) return "audio";
+  if (m.videoMessage) return "video";
+  if (m.documentMessage || m.documentWithCaptionMessage) return "document";
+  if (m.stickerMessage) return "sticker";
+  return null;
+}
+
+function mediaHintMessage(
+  kind: "image" | "audio" | "video" | "document" | "sticker",
+): string {
+  if (kind === "image" || kind === "document") {
+    return (
+      "Recebi seu arquivo/foto 👍\n\n" +
+      "Se for *comprovante de pagamento*, aguarde a confirmação automática " +
+      "(pode levar alguns segundos).\n\n" +
+      "Se precisar de outra coisa, digite *1* (renovação/créditos) ou *2* (atendente).\n" +
+      "Ou escreva em texto o que precisa."
+    );
+  }
+  if (kind === "audio") {
+    return (
+      "Recebi seu áudio 🔊\n\n" +
+      "Por enquanto respondo melhor por *texto*.\n" +
+      "Digite *1* para renovação/créditos, *2* para atendente, ou explique por escrito."
+    );
+  }
+  if (kind === "video") {
+    return (
+      "Recebi seu vídeo 🎬\n\n" +
+      "Se puder, envie o pedido em *texto* (*1* renovação/créditos ou *2* atendente)."
+    );
+  }
+  return (
+    "Recebi sua figurinha 🙂\n\n" +
+    "Me diga em texto como posso ajudar: *1* renovação/créditos ou *2* atendente."
+  );
 }
 
 function jidToPhone(jid: string): string {
@@ -1906,14 +1954,16 @@ Deno.serve(async (req) => {
     const data = normalizeMessageData(payload);
     const { phone, fromMe } = extractRemotePhone(data);
     const text = extractText(data).trim();
+    const mediaKind = detectInboundMedia(data);
     const messageId = extractMessageId(data);
-    if (!instance || !phone || !text) {
+    if (!instance || !phone || (!text && !mediaKind)) {
       return json({
         ok: true,
         skipped: "incomplete",
         instance: Boolean(instance),
         phone: Boolean(phone),
         text: Boolean(text),
+        media: Boolean(mediaKind),
       });
     }
 
@@ -2231,6 +2281,15 @@ Deno.serve(async (req) => {
     }
 
     if (fromMe) return json({ ok: true, skipped: "fromMe" });
+
+    // Foto/áudio/vídeo/doc sem legenda → não ficar calado
+    if (!text && mediaKind) {
+      if (isHumanPaused(phone)) {
+        return json({ ok: true, skipped: "human_media" });
+      }
+      await send(mediaHintMessage(mediaKind));
+      return json({ ok: true, action: "media_hint", media: mediaKind });
+    }
 
     // Opt-out: cliente digita parar / stop
     const wantsOptOut =

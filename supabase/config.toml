@@ -13,6 +13,10 @@ verify_jwt = false
 [functions.mp-pix]
 verify_jwt = false
 
+# Webhook Mercado Pago (sem JWT — o MP chama direto)
+[functions.mp-webhook]
+verify_jwt = false
+
 # Auth URLs (produção + localhost / Dyad)
 [auth]
 enabled = true

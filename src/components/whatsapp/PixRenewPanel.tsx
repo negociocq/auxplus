@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import {
   CheckCircle2,
@@ -28,45 +28,22 @@ import {
 import {
   loadAutomationsConfig,
   loadAutomationsConfigRemote,
-  saveAutomationsConfig,
   type AutomationsConfig,
 } from "@/lib/automationsConfig";
+import { copyText } from "@/lib/iptvAutomation";
 import {
-  applyPanelDueToItem,
-  applyRenewalToItem,
-  applyResellerRechargeToItem,
-  copyText,
-  createIptvJob,
-  loadIptvJobs,
-  patchIptvJob,
-  saveIptvJobs,
-} from "@/lib/iptvAutomation";
-import {
-  addIptvResellerCredits,
   buildReleaseFailedClientMessage,
   buildRenewalReceiptMessage,
   buildResellerCreditsReceiptMessage,
-  resolveIptvResellerPanelId,
-  ensureIptvToken,
-  findIptvUserByUsername,
-  getLastIssuedIptvToken,
   IPTV_RENEW_OPTIONS,
-  listIptvResellers,
-  renewIptvUser,
-  type IptvPanelCreds,
   type IptvRenewOption,
 } from "@/lib/iptvPanelApi";
+import { createMercadoPagoPix } from "@/lib/mercadoPagoApi";
 import {
-  loadWaBotStateRemote,
-  saveWaBotStateRemote,
-} from "@/lib/whatsappBotConfig";
-import { enqueueWaHumanAlertRemote } from "@/lib/whatsappBotAlerts";
-import { notifyUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
-import {
-  createMercadoPagoPix,
-  fetchMercadoPagoPaymentStatus,
-  mapMpStatusToOrder,
-} from "@/lib/mercadoPagoApi";
+  MP_ORDERS_CHANGED_EVENT,
+  pollAndReleaseMpOrders,
+  releasePaidMpOrder,
+} from "@/lib/mpOrderAutoRelease";
 import {
   buildPixWhatsappCodeOnly,
   buildPixWhatsappIntro,
@@ -75,7 +52,6 @@ import {
   getMpOrderExpiresAt,
   loadMpOrders,
   loadMpOrdersRemote,
-  patchMpOrder,
   pruneStaleMpOrders,
   saveMpOrders,
   type MpRenewOrder,
@@ -84,7 +60,6 @@ import {
   instanceNameForUser,
   isEvolutionConfigured,
   loadEvolutionPlatformConfig,
-  loadIptvPlatformConfig,
 } from "@/lib/platformApi";
 import {
   fetchEvolutionStatus,
@@ -123,7 +98,6 @@ export function PixRenewPanel() {
   const [verifying, setVerifying] = useState(false);
   const [pixActiveOrderId, setPixActiveOrderId] = useState<string | null>(null);
   const [sendingWaOrderId, setSendingWaOrderId] = useState<string | null>(null);
-  const releasingRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -280,66 +254,6 @@ export function PixRenewPanel() {
     }
   };
 
-  /** PIX pago mas liberação falhou → avisa o cliente e pausa bot p/ atendente. */
-  const handoffReleaseFailure = async (
-    order: MpRenewOrder,
-    username: string,
-  ) => {
-    if (!user) return;
-    const phone = String(order.phone || "").replace(/\D/g, "");
-    if (phone.length < 10) return;
-    const role =
-      order.kind === "reseller_credits"
-        ? "reseller"
-        : order.kind === "test_activate"
-          ? "unknown"
-          : "client";
-    try {
-      await sendWaReceipt(
-        phone,
-        buildReleaseFailedClientMessage(username, order.kind || "renew"),
-      );
-      const state = await loadWaBotStateRemote(user.id);
-      state.humanPaused[phone] = true;
-      state.sessions[phone] = {
-        ...(state.sessions[phone] || {
-          state: "human",
-          updatedAt: new Date().toISOString(),
-        }),
-        state: "human",
-        role,
-        panelUsername: username || state.sessions[phone]?.panelUsername,
-        updatedAt: new Date().toISOString(),
-      };
-      await saveWaBotStateRemote(user.id, state);
-      await enqueueWaHumanAlertRemote(user.id, phone, role);
-    } catch {
-      /* handoff opcional */
-    }
-  };
-
-  const persistToken = (token: string) => {
-    if (!user || !token) return;
-    const cur = loadAutomationsConfig(user.id);
-    const next = { ...cur, iptvBearerToken: token };
-    saveAutomationsConfig(user.id, next);
-    setConfig(next);
-  };
-
-  const panelCreds = async (): Promise<IptvPanelCreds> => {
-    const plat = await loadIptvPlatformConfig();
-    const cur = user ? loadAutomationsConfig(user.id) : config;
-    return {
-      apiBaseUrl: plat.apiBaseUrl || cur.iptvApiBaseUrl,
-      bearerToken: cur.iptvBearerToken.trim(),
-      regPassword: plat.regPassword.trim() || undefined,
-      defaultPackage: plat.packageId.trim() || "1",
-      username: cur.iptvUsername.trim() || undefined,
-      password: cur.iptvPassword || undefined,
-      apiProxyUrl: plat.apiProxyUrl?.trim() || undefined,
-    };
-  };
-
   const openPixDialog = (itemId: string) => {
     const item = clients.find((i) => i.id === itemId);
     if (!item) return;
@@ -392,518 +306,32 @@ export function PixRenewPanel() {
   };
 
   const releasePaidOrder = async (order: MpRenewOrder) => {
-    if (!user || releasingRef.current.has(order.id)) return;
-    const latest = loadMpOrders(user.id).find((o) => o.id === order.id) || order;
-    if (latest.status === "released") return;
-    // Trava de crédito: nunca Extend Line sem PIX confirmado no MP
-    if (latest.status !== "approved") {
-      toast.error(
-        "Pagamento ainda não confirmado — nenhum crédito será gasto no painel",
-      );
-      return;
-    }
-    releasingRef.current.add(order.id);
-    try {
-      const item = clients.find((i) => i.id === order.itemRefId);
-      const username = (
-        order.panelUsername ||
-        item?.itemId ||
-        ""
-      ).trim();
-      if (!username && !item) {
-        throw new Error("Pedido sem usuário vinculado");
-      }
-
-      const credsBase = await panelCreds();
-      const ensured = await ensureIptvToken(credsBase);
-      if (ensured.renewed) persistToken(ensured.token);
-      const creds = { ...credsBase, bearerToken: ensured.token };
-
-      // Teste WhatsApp → plano: só libera no UniPlay depois do PIX
-      if (order.kind === "test_activate") {
-        if (!creds.bearerToken.trim()) {
-          throw new Error("Conecte a UniPlay para liberar o plano");
-        }
-        if (!username) {
-          throw new Error("Pedido sem usuário do teste");
-        }
-        let remoteId = order.testRemoteId;
-        if (remoteId == null || remoteId === "") {
-          const remote = await findIptvUserByUsername(creds, username);
-          if (!remote?.id) {
-            throw new Error(`Usuário ${username} não encontrado no UniPlay`);
-          }
-          remoteId = remote.id;
-        }
-        const months = Math.max(1, Number(order.months) || 1);
-        await renewIptvUser(creds, remoteId, {
-          months,
-          credits: Math.max(1, Number(order.credits) || 1),
-        });
-        const issued = getLastIssuedIptvToken();
-        if (issued) persistToken(issued);
-
-        {
-          const currentJobs = loadIptvJobs(user.id);
-          const job = createIptvJob({
-            kind: "renew",
-            status: "done",
-            itemRefId: order.itemRefId || "",
-            clientName: order.clientName || username,
-            panelUsername: username,
-            panelRemoteId: remoteId,
-            phone: order.phone || "",
-            dueDate: order.dueDate ?? null,
-            months,
-            testHours: config.testHours,
-            note: `WhatsApp · teste→plano · ${months}m · MP ${order.mpPaymentId}`,
-          });
-          saveIptvJobs(user.id, [job, ...currentJobs]);
-        }
-
-        persistMpOrders(
-          patchMpOrder(loadMpOrders(user.id), order.id, {
-            status: "released",
-            paidAt: latest.paidAt || new Date().toISOString(),
-            releasedAt: new Date().toISOString(),
-            error: undefined,
-          }),
-        );
-
-        const screens = Math.max(1, Math.floor(Number(order.screens) || 1));
-        const testApp =
-          order.testApp === "prime"
-            ? "prime"
-            : order.testApp === "fun"
-              ? "fun"
-              : "";
-        const phone = String(order.phone || "").replace(/\D/g, "");
-
-        try {
-          const evo = await loadEvolutionPlatformConfig();
-          if (isEvolutionConfigured(evo) && phone.length >= 10) {
-            const runtime = {
-              apiBaseUrl: evo.apiBaseUrl,
-              apiKey: evo.apiKey,
-              instanceName: instanceNameForUser(
-                evo.instancePrefix,
-                user.id,
-                user.username,
-              ),
-            };
-            if ((await fetchEvolutionStatus(runtime)) === "open") {
-              await sendEvolutionText(
-                runtime,
-                phone,
-                `✅ *Pagamento confirmado!*\n\n` +
-                  `Plano liberado no usuário *${username}*.\n` +
-                  `Bom proveito!`,
-              );
-              if (
-                screens > 1 &&
-                (testApp === "fun" || testApp === "prime") &&
-                order.testPassword
-              ) {
-                const state = await loadWaBotStateRemote(user.id);
-                state.sessions[phone] = {
-                  ...(state.sessions[phone] || {
-                    state: "idle",
-                    updatedAt: new Date().toISOString(),
-                  }),
-                  state: "test_plan_await_mac",
-                  role: "unknown",
-                  testUsername: username,
-                  testPassword: order.testPassword,
-                  testRemoteId: remoteId,
-                  testApp,
-                  activationsTotal: screens,
-                  activationsDone: 1,
-                  updatedAt: new Date().toISOString(),
-                };
-                await saveWaBotStateRemote(user.id, state);
-                await new Promise((r) => window.setTimeout(r, 1400));
-                const appName =
-                  testApp === "prime" ? "Prime IPTV" : "FunPlay";
-                await sendEvolutionText(
-                  runtime,
-                  phone,
-                  `Seu plano inclui *${screens} telas*. A *1ª* já foi no teste.\n\n` +
-                    `Envie o *MAC* da *2ª tela* no *${appName}*.\n\n` +
-                    `_Formatos: aa:bb:cc:dd:ee:ff ou aabbccddeeff.\n` +
-                    `Digite *pular* para encerrar, ou *atendente*._`,
-                );
-              }
-            }
-          }
-        } catch {
-          /* WhatsApp opcional */
-        }
-
-        notifyUniplayCreditsChanged({
-          spent: Math.max(1, Number(order.credits) || 1),
-          source: "pix_test_activate",
-        });
-        toast.success(`Pagamento confirmado · plano liberado (${username})`);
-        return;
-      }
-
-      // Revendedor: PIX pago → passa créditos no UniPlay
-      if (order.kind === "reseller_credits") {
-        if (!creds.bearerToken.trim()) {
-          throw new Error("Conecte a UniPlay para liberar créditos");
-        }
-        const credits = Math.max(10, Math.floor(Number(order.credits) || 10));
-        const resellers = await listIptvResellers(creds, {
-          search: username,
-          perPage: 100,
-        });
-        const want = username.toLowerCase();
-        const remote = resellers.find(
-          (r) => String(r.username || "").toLowerCase() === want,
-        );
-        if (!remote) {
-          throw new Error(
-            `Revendedor ${username || "?"} não encontrado no UniPlay (busca exata).`,
-          );
-        }
-        const resellerId = resolveIptvResellerPanelId(remote);
-        if (resellerId == null) {
-          throw new Error(
-            `Revendedor ${username} sem ID numérico no UniPlay. Abra Automações → Revendedores e atualize a lista.`,
-          );
-        }
-        const amountBrl = Number(order.amount) || 0;
-        await addIptvResellerCredits(creds, {
-          resellerId,
-          credits,
-          saleBrl: amountBrl > 0 ? amountBrl : undefined,
-          reason: `AuxPlus PIX ${order.id}`,
-        });
-        const issued = getLastIssuedIptvToken();
-        if (issued) persistToken(issued);
-
-        const paidAt = (
-          latest.paidAt ||
-          new Date().toISOString()
-        ).slice(0, 10);
-        if (item) {
-          const updated = applyResellerRechargeToItem(item, {
-            credits,
-            amountBrl,
-            paidAt,
-          });
-          setData((prev) => ({
-            ...prev,
-            items: prev.items.map((i) => (i.id === item.id ? updated : i)),
-          }));
-        }
-
-        persistMpOrders(
-          patchMpOrder(loadMpOrders(user.id), order.id, {
-            status: "released",
-            paidAt: latest.paidAt || new Date().toISOString(),
-            releasedAt: new Date().toISOString(),
-            error: undefined,
-          }),
-        );
-        notifyUniplayCreditsChanged({
-          spent: credits,
-          source: "pix_reseller_credits",
-        });
-        {
-          const phone = String(order.phone || item?.phone || "").replace(
-            /\D/g,
-            "",
-          );
-          const sent = await sendWaReceipt(
-            phone,
-            buildResellerCreditsReceiptMessage(username, credits, amountBrl),
-          );
-          if (sent) {
-            toast.success(
-              `${credits} créditos liberados · comprovante enviado no WhatsApp`,
-            );
-          } else {
-            toast.success(
-              `Pagamento confirmado · ${credits} créditos liberados para ${username}`,
-            );
-            if (phone.length < 10) {
-              toast.message("Sem telefone no pedido — WhatsApp não enviado");
-            }
-          }
-        }
-        return;
-      }
-
-      if (!item) throw new Error("Cliente do pedido não encontrado");
-      // Meses do plano do cliente → créditos UniPlay (1/2/3/4/6→5/12→10)
-      const option =
-        IPTV_RENEW_OPTIONS.find((o) => o.months === order.months) || {
-          months: Math.max(1, Number(order.months) || 1),
-          credits: Math.max(
-            1,
-            Number(order.credits) || Number(order.months) || 1,
-          ),
-          label: `${order.months} mês(es)`,
-        };
-
-      const canRenewUniplay =
-        Boolean(item.itemId.trim()) && Boolean(creds.bearerToken.trim());
-      let updated = applyRenewalToItem(item, option.months);
-
-      if (canRenewUniplay) {
-        const currentJobs = loadIptvJobs(user.id);
-        const todayKey = new Date().toISOString().slice(0, 10);
-        const dueKey = String(item.dueDate || "").slice(0, 10);
-        const isExtend = Boolean(dueKey && dueKey >= todayKey);
-        const verb = isExtend ? "Estendido" : "Renovado";
-        const job = createIptvJob({
-          kind: "renew",
-          status: "doing",
-          itemRefId: item.id,
-          clientName: item.name,
-          panelUsername: item.itemId.trim(),
-          phone: item.phone || order.phone || "",
-          dueDate: item.dueDate,
-          months: option.months,
-          testHours: config.testHours,
-          note: `WhatsApp · PIX · MP ${order.mpPaymentId}`,
-        });
-        let nextJobs = [job, ...currentJobs];
-        saveIptvJobs(user.id, nextJobs);
-
-        const remote = await findIptvUserByUsername(creds, item.itemId.trim());
-        if (!remote?.id) {
-          throw new Error(`Usuário ${item.itemId} não encontrado no painel`);
-        }
-        await renewIptvUser(creds, remote.id, option);
-        const issued = getLastIssuedIptvToken();
-        if (issued) persistToken(issued);
-
-        let panelExp: string | null | undefined;
-        try {
-          const after = await findIptvUserByUsername(creds, item.itemId.trim());
-          panelExp = after?.exp_date ?? after?.expDate;
-        } catch {
-          panelExp = remote.exp_date ?? remote.expDate;
-        }
-        updated = applyPanelDueToItem(item, {
-          panelExp,
-          months: option.months,
-        });
-        nextJobs = patchIptvJob(nextJobs, job.id, {
-          status: "done",
-          dueDate: updated.dueDate,
-          note: `WhatsApp · ${verb} · ${option.label} · vence ${formatBrDate(updated.dueDate)} · MP ${order.mpPaymentId}`,
-        });
-        saveIptvJobs(user.id, nextJobs);
-      } else {
-        const todayKey = new Date().toISOString().slice(0, 10);
-        const dueKey = String(item.dueDate || "").slice(0, 10);
-        const isExtend = Boolean(dueKey && dueKey >= todayKey);
-        const verb = isExtend ? "Estendido" : "Renovado";
-        const currentJobs = loadIptvJobs(user.id);
-        const job = createIptvJob({
-          kind: "renew",
-          status: "done",
-          itemRefId: item.id,
-          clientName: item.name,
-          panelUsername: item.itemId.trim() || username,
-          phone: item.phone || order.phone || "",
-          dueDate: updated.dueDate,
-          months: option.months,
-          testHours: config.testHours,
-          note: `WhatsApp · ${verb} · AuxPlus · ${option.label} · MP ${order.mpPaymentId}`,
-        });
-        saveIptvJobs(user.id, [job, ...currentJobs]);
-      }
-
-      setData((prev) => ({
-        ...prev,
-        items: prev.items.map((i) => (i.id === item.id ? updated : i)),
-      }));
-
-      persistMpOrders(
-        patchMpOrder(loadMpOrders(user.id), order.id, {
-          status: "released",
-          paidAt: latest.paidAt || new Date().toISOString(),
-          releasedAt: new Date().toISOString(),
-          error: undefined,
-        }),
-      );
-      if (canRenewUniplay) {
-        notifyUniplayCreditsChanged({
-          spent: option.credits,
-          source: "pix_renew",
-        });
-      }
+    if (!user) return;
+    await releasePaidMpOrder(
       {
-        const phone = String(order.phone || item.phone || "").replace(/\D/g, "");
-        const sent = await sendWaReceipt(
-          phone,
-          buildRenewalReceiptMessage(
-            item.itemId.trim() || username,
-            formatBrDate(updated.dueDate),
-          ),
-        );
-        if (sent) {
-          toast.success(
-            `Renovado · vence ${formatBrDate(updated.dueDate)} · WhatsApp enviado`,
-          );
-        } else {
-          toast.success(
-            `Pagamento confirmado · vence ${formatBrDate(updated.dueDate)}`,
-          );
-          if (phone.length < 10) {
-            toast.message("Sem telefone no pedido — WhatsApp não enviado");
-          }
-        }
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Falha ao liberar";
-      persistMpOrders(
-        patchMpOrder(loadMpOrders(user.id), order.id, {
-          status: "approved",
-          error: msg,
-        }),
-      );
-      const username = String(
-        order.panelUsername ||
-          clients.find((i) => i.id === order.itemRefId)?.itemId ||
-          "",
-      ).trim();
-      void handoffReleaseFailure(order, username);
-      toast.error(`Pago, mas falhou a liberação: ${msg}`);
-    } finally {
-      releasingRef.current.delete(order.id);
-    }
+        user,
+        items: clients,
+        setData,
+        silent: false,
+      },
+      order,
+    );
+    setMpOrders(pruneStaleMpOrders(loadMpOrders(user.id)));
   };
 
   const pollPendingMpOrders = async (opts?: { silent?: boolean }) => {
-    const silent = opts?.silent === true;
     if (!user) return;
-    if (!config.mpAccessToken.trim()) {
-      if (!silent) {
-        toast.error("Configure o Access Token do Mercado Pago em Automações");
-      }
-      return;
-    }
-    if (!silent) setVerifying(true);
+    if (!opts?.silent) setVerifying(true);
     try {
-      const loaded = loadMpOrders(user.id);
-      let next = pruneStaleMpOrders(loaded);
-      let changed = next.length !== loaded.length;
-      let removedExpired = loaded.length - next.length;
-      const pending = next.filter((o) => o.status === "pending");
-      const stuckApproved = next.filter(
-        (o) => o.status === "approved" && !o.releasedAt,
-      );
-      if (!pending.length && !stuckApproved.length) {
-        if (changed) persistMpOrders(next);
-        if (!silent) {
-          if (removedExpired > 0) {
-            toast.message(
-              `${removedExpired} PIX expirado(s) removido(s) da lista`,
-            );
-          } else {
-            toast.message("Nenhum PIX pendente para verificar");
-          }
-        }
-        return;
-      }
-      const approved: MpRenewOrder[] = [...stuckApproved];
-      const errors: string[] = [];
-      let stillWaiting = 0;
-      const now = Date.now();
-      for (const order of pending) {
-        if (now >= getMpOrderExpiresAt(order)) {
-          changed = true;
-          removedExpired += 1;
-          next = next.filter((o) => o.id !== order.id);
-          continue;
-        }
-        try {
-          const st = await fetchMercadoPagoPaymentStatus({
-            accessToken: config.mpAccessToken,
-            paymentId: order.mpPaymentId,
-          });
-          // Sincroniza validade real do MP (quando o QR deixa de valer)
-          if (
-            st.date_of_expiration &&
-            st.date_of_expiration !== order.expiresAt
-          ) {
-            changed = true;
-            next = patchMpOrder(next, order.id, {
-              expiresAt: st.date_of_expiration,
-            });
-          }
-          const expAt = st.date_of_expiration
-            ? Date.parse(st.date_of_expiration)
-            : getMpOrderExpiresAt(
-                next.find((o) => o.id === order.id) || order,
-              );
-          if (Number.isFinite(expAt) && now >= expAt) {
-            changed = true;
-            removedExpired += 1;
-            next = next.filter((o) => o.id !== order.id);
-            continue;
-          }
-          const mapped = mapMpStatusToOrder(st.status, st.status_detail);
-          if (mapped === "pending") {
-            stillWaiting += 1;
-            continue;
-          }
-          changed = true;
-          if (
-            mapped === "expired" ||
-            mapped === "cancelled" ||
-            mapped === "rejected"
-          ) {
-            removedExpired += 1;
-            next = next.filter((o) => o.id !== order.id);
-            continue;
-          }
-          next = patchMpOrder(next, order.id, {
-            status: mapped === "approved" ? "approved" : mapped,
-            paidAt:
-              mapped === "approved" ? new Date().toISOString() : order.paidAt,
-            expiresAt: st.date_of_expiration || order.expiresAt,
-          });
-          const updated = next.find((o) => o.id === order.id);
-          if (updated && mapped === "approved") approved.push(updated);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "Falha ao consultar MP";
-          errors.push(`${order.panelUsername || order.id}: ${msg}`);
-        }
-      }
-      if (changed) persistMpOrders(next);
-      for (const order of approved) void releasePaidOrder(order);
-
-      if (!silent) {
-        if (approved.length > 0) {
-          toast.success(
-            approved.length === 1
-              ? "Pagamento confirmado — liberando renovação"
-              : `${approved.length} pagamentos confirmados`,
-          );
-        } else if (errors.length > 0) {
-          toast.error(errors[0]!);
-        } else if (removedExpired > 0 && stillWaiting === 0) {
-          toast.message(
-            `${removedExpired} PIX expirado(s)/cancelado(s) removido(s)`,
-          );
-        } else if (stillWaiting > 0) {
-          toast.message(
-            stillWaiting === 1
-              ? "Ainda aguardando o pagamento deste PIX"
-              : `Ainda aguardando pagamento de ${stillWaiting} PIX`,
-          );
-        } else {
-          toast.message("Verificação concluída");
-        }
-      }
+      await pollAndReleaseMpOrders({
+        user,
+        items: clients,
+        setData,
+        silent: opts?.silent === true,
+      });
+      setMpOrders(pruneStaleMpOrders(loadMpOrders(user.id)));
     } finally {
-      if (!silent) setVerifying(false);
+      if (!opts?.silent) setVerifying(false);
     }
   };
 
@@ -1014,20 +442,14 @@ export function PixRenewPanel() {
     }
   };
 
-  const pollMpRef = useRef(() => {
-    /* preenchido abaixo */
-  });
-  pollMpRef.current = () => {
-    void pollPendingMpOrders({ silent: true });
-  };
-
   useEffect(() => {
-    if (!user || !config.mpAccessToken.trim()) return;
-    const tick = () => pollMpRef.current();
-    const id = window.setInterval(tick, 8000);
-    tick();
-    return () => window.clearInterval(id);
-  }, [user?.id, config.mpAccessToken]);
+    if (!user) return;
+    const refresh = () => {
+      setMpOrders(pruneStaleMpOrders(loadMpOrders(user.id)));
+    };
+    window.addEventListener(MP_ORDERS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(MP_ORDERS_CHANGED_EVENT, refresh);
+  }, [user]);
 
   const pixItem = clients.find((i) => i.id === pixTargetId);
   const unitPrice = Number(pixItem?.price) || 0;

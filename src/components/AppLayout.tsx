@@ -29,6 +29,7 @@ import { useHideBalance } from "@/hooks/useHideBalance";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { useWhatsappAutoSend } from "@/hooks/useWhatsappAutoSend";
 import { useLocalAlerts } from "@/hooks/useLocalAlerts";
+import { useMpOrderAutoRelease } from "@/hooks/useMpOrderAutoRelease";
 import { fileToAvatarDataUrl, saveLocalAvatar } from "@/lib/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -64,6 +65,7 @@ export function AppLayout() {
   } = usePwaInstall();
   useWhatsappAutoSend(user, data);
   useLocalAlerts(user, data);
+  useMpOrderAutoRelease(user, data, setData);
   const navigate = useNavigate();
   const location = useLocation();
   const fileRef = useRef<HTMLInputElement>(null);

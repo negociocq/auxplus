@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
 import { format } from "date-fns";
 import {
   Cable,
@@ -134,6 +135,7 @@ import {
   pingMercadoPago,
 } from "@/lib/mercadoPagoApi";
 import { openPanelWindow } from "@/lib/panelKeepAlive";
+import { SUPABASE_URL } from "@/integrations/supabase/client";
 import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -200,9 +202,15 @@ export default function Automations() {
   const [uniplaySubTab, setUniplaySubTab] = useState("conexao");
   const [logsSubTab, setLogsSubTab] = useState("renovacoes");
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
-  const [activateOption, setActivateOption] = useState<IptvRenewOption>(
-    IPTV_RENEW_OPTIONS[0],
-  );
+  const [detailClientId, setDetailClientId] = useState<string | null>(null);
+  const [clientDetailAccess, setClientDetailAccess] = useState<{
+    password: string;
+    m3u: string;
+    dnsSmarters: string;
+  } | null>(null);
+  const [showClientsList, setShowClientsList] = useState(false);
+  const [showTestsList, setShowTestsList] = useState(false);
+  const [renewTargetJobId, setRenewTargetJobId] = useState<string | null>(null);
   const [activatingTest, setActivatingTest] = useState(false);
   const [lastTest, setLastTest] = useState<{
     jobId: string;
@@ -494,20 +502,22 @@ export default function Automations() {
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-    // Só lista após busca — evita poluir a tela com todos os clientes
-    if (term.length < 2) return [];
+    // Oculto por padrão; busca (≥2) ou "Mostrar lista" revela
+    if (!showClientsList && term.length < 2) return [];
     const rank = (status?: string | null) => {
       if (status === "Perto de Vencer") return 0;
       if (status === "Longe de Vencer") return 1;
       return 2;
     };
     return activeClients
-      .filter(
-        (i) =>
+      .filter((i) => {
+        if (term.length < 2) return true;
+        return (
           i.name.toLowerCase().includes(term) ||
           i.itemId.toLowerCase().includes(term) ||
-          (i.phone || "").includes(term),
-      )
+          (i.phone || "").includes(term)
+        );
+      })
       .sort((a, b) => {
         const rs = rank(a.status) - rank(b.status);
         if (rs !== 0) return rs;
@@ -515,8 +525,8 @@ export default function Automations() {
         const db = b.dueDate || "9999-99-99";
         return da.localeCompare(db);
       })
-      .slice(0, 50);
-  }, [activeClients, q]);
+      .slice(0, showClientsList && term.length < 2 ? 100 : 50);
+  }, [activeClients, q, showClientsList]);
 
   const jobMatchesQuery = (job: IptvJob, query: string) => {
     const qn = query.trim().toLowerCase();
@@ -533,16 +543,20 @@ export default function Automations() {
     return hay.includes(qn);
   };
 
-  /** Testes só após busca (igual Clientes) */
+  /** Oculto por padrão; busca (≥2) ou "Mostrar lista" revela */
   const filteredTests = useMemo(() => {
     const term = jobsQ.trim().toLowerCase();
-    if (term.length < 2) return [];
+    if (!showTestsList && term.length < 2) return [];
     return jobs
-      .filter((j) => j.kind === "test" && jobMatchesQuery(j, jobsQ))
+      .filter(
+        (j) =>
+          j.kind === "test" &&
+          (term.length < 2 || jobMatchesQuery(j, jobsQ)),
+      )
       .slice()
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, 50);
-  }, [jobs, jobsQ]);
+      .slice(0, showTestsList && term.length < 2 ? 100 : 50);
+  }, [jobs, jobsQ, showTestsList]);
   const openRenewJobs = useMemo(
     () =>
       jobs.filter(
@@ -589,6 +603,38 @@ export default function Automations() {
   const detailJob = useMemo(
     () => (detailJobId ? jobs.find((j) => j.id === detailJobId) || null : null),
     [detailJobId, jobs],
+  );
+  const detailClient = useMemo(
+    () =>
+      detailClientId
+        ? clients.find((c) => c.id === detailClientId) || null
+        : null,
+    [detailClientId, clients],
+  );
+
+  useDialogHistoryBack(!!detailJob, () => setDetailJobId(null), "test-detail");
+  useDialogHistoryBack(
+    !!detailClient,
+    () => setDetailClientId(null),
+    "client-detail",
+  );
+  useDialogHistoryBack(
+    !!renewTargetId || !!renewTargetJobId,
+    () => {
+      setRenewTargetId(null);
+      setRenewTargetJobId(null);
+    },
+    "renew-dialog",
+  );
+  useDialogHistoryBack(
+    testDialogOpen,
+    () => setTestDialogOpen(false),
+    "test-create",
+  );
+  useDialogHistoryBack(
+    !!creditTarget,
+    () => setCreditTarget(null),
+    "credits-dialog",
   );
 
   useEffect(() => {
@@ -968,7 +1014,55 @@ export default function Automations() {
       IPTV_RENEW_OPTIONS.find((o) => o.months === renewMonths) ||
       IPTV_RENEW_OPTIONS[0];
     setRenewOption(preferred);
+    setRenewTargetJobId(null);
     setRenewTargetId(itemId);
+  };
+
+  const openTestRenewDialog = (jobId: string) => {
+    const preferred =
+      IPTV_RENEW_OPTIONS.find((o) => o.months === renewMonths) ||
+      IPTV_RENEW_OPTIONS[0];
+    setRenewOption(preferred);
+    setRenewTargetId(null);
+    setDetailJobId(null);
+    setRenewTargetJobId(jobId);
+  };
+
+  const openClientDetail = (itemId: string) => {
+    const item = clients.find((c) => c.id === itemId);
+    if (!item) return;
+    setDetailClientId(item.id);
+    setClientDetailAccess(null);
+    const username = item.itemId.trim();
+    if (
+      !username ||
+      (!bearer.trim() && !(panelUser.trim() && panelPass))
+    ) {
+      return;
+    }
+    void (async () => {
+      try {
+        const ensured = await ensureIptvToken(panelCreds());
+        if (ensured.renewed) persistToken(ensured.token);
+        const creds = { ...panelCreds(), bearerToken: ensured.token };
+        const password =
+          (await fetchIptvUserPassword(creds, username)) || "";
+        if (!password) return;
+        const links = resolveTestAccessLinks({
+          username,
+          password,
+          m3uHost: platform.m3uHost,
+          dnsFallback: platform.dnsSmarters,
+        });
+        setClientDetailAccess({
+          password,
+          m3u: links.m3u,
+          dnsSmarters: links.dnsSmarters,
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
   };
 
   const sendRenewalReceipt = async (
@@ -1703,7 +1797,6 @@ export default function Automations() {
 
   const openTestDetail = (job: IptvJob) => {
     if (job.kind !== "test") return;
-    setActivateOption(IPTV_RENEW_OPTIONS[0]);
     setDetailJobId(job.id);
     // Testes antigos sem senha/M3U: tenta completar ao abrir o modal
     if (
@@ -2565,16 +2658,36 @@ export default function Automations() {
             {uniplayConnected ? (
               <>
             <TabsContent value="ativos" className="mt-0 space-y-4">
+          {renderActivateAppSection(
+            "clientes",
+            "Informe o MAC e ative o app.",
+          )}
           <section className="ax-surface space-y-3 p-4">
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold tracking-tight">
-                Clientes
-              </h2>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Longe e perto de vencer
-                {activeClients.length > 0 ? ` · ${activeClients.length}` : ""}
-                {" · vencidos ficam de fora"}
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold tracking-tight">
+                  Clientes
+                </h2>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Longe e perto de vencer
+                  {activeClients.length > 0 ? ` · ${activeClients.length}` : ""}
+                  {" · vencidos ficam de fora"}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => setShowClientsList((v) => !v)}
+              >
+                {showClientsList ? (
+                  <EyeOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+                {showClientsList ? "Ocultar lista" : "Mostrar lista"}
+              </Button>
             </div>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
@@ -2590,9 +2703,9 @@ export default function Automations() {
               />
             </div>
 
-            {q.trim().length < 2 ? (
+            {!showClientsList && q.trim().length < 2 ? (
               <p className="text-xs text-muted-foreground">
-                Digite ao menos 2 caracteres.
+                Lista oculta. Busque (2+ caracteres) ou toque em Mostrar lista.
               </p>
             ) : filtered.length === 0 ? (
               <p className="text-xs text-muted-foreground">
@@ -2614,7 +2727,16 @@ export default function Automations() {
                         {item.dueDate ? ` · ${formatBrDate(item.dueDate)}` : ""}
                       </p>
                     </div>
-                    <div className="flex shrink-0 gap-1">
+                    <div className="flex shrink-0 flex-wrap gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-8 px-2.5"
+                        onClick={() => openClientDetail(item.id)}
+                      >
+                        Detalhes
+                      </Button>
                       {(() => {
                         const extend = isClientStillActive(item.dueDate);
                         return (
@@ -2653,10 +2775,6 @@ export default function Automations() {
               </ul>
             )}
           </section>
-
-          {activateForms.clientes.username.trim()
-            ? renderActivateAppSection("clientes")
-            : null}
             </TabsContent>
 
             <TabsContent value="revendedores" className="mt-0 space-y-4">
@@ -2785,15 +2903,33 @@ export default function Automations() {
             </TabsContent>
 
             <TabsContent value="testes" className="mt-0 space-y-4">
+          {renderActivateAppSection(
+            "testes",
+            "Informe o MAC e ative o app.",
+          )}
           <section className="ax-surface space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold tracking-tight">Testes</h2>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Busque para achar · toque em App para ativar o MAC
+                  Lista inicia oculta · toque em App para ativar o MAC
                 </p>
               </div>
               <div className="flex flex-wrap gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  onClick={() => setShowTestsList((v) => !v)}
+                >
+                  {showTestsList ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                  {showTestsList ? "Ocultar lista" : "Mostrar lista"}
+                </Button>
                 <Button
                   type="button"
                   size="sm"
@@ -2892,9 +3028,9 @@ export default function Automations() {
               />
             </div>
 
-            {jobsQ.trim().length < 2 ? (
+            {!showTestsList && jobsQ.trim().length < 2 ? (
               <p className="text-xs text-muted-foreground">
-                Digite ao menos 2 caracteres.
+                Lista oculta. Busque (2+ caracteres) ou toque em Mostrar lista.
               </p>
             ) : filteredTests.length === 0 ? (
               <p className="text-xs text-muted-foreground">
@@ -2963,13 +3099,6 @@ export default function Automations() {
               </ul>
             )}
           </section>
-
-          {activateForms.testes.username.trim()
-            ? renderActivateAppSection(
-                "testes",
-                "Informe o MAC e ative o app.",
-              )
-            : null}
             </TabsContent>
 
             <TabsContent value="logs" className="mt-0 space-y-4">
@@ -3365,8 +3494,9 @@ export default function Automations() {
           <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
             <p className="text-sm font-medium">Mercado Pago</p>
             <p className="text-xs text-muted-foreground">
-              Aqui você só configura o token. O PIX para o cliente é gerado e
-              enviado na página <span className="font-medium">WhatsApp</span>.
+              Configure o token aqui. O PIX sai pelo WhatsApp. Quando o cliente
+              paga, o servidor libera sozinho (mesmo com o AuxPlus fechado) —
+              basta cadastrar o webhook abaixo no painel do MP.
             </p>
           </div>
 
@@ -3469,6 +3599,62 @@ export default function Automations() {
                 Testar token
               </Button>
             </div>
+          </section>
+
+          <section className="ax-surface space-y-3 p-4">
+            <div>
+              <h2 className="text-sm font-semibold tracking-tight">
+                Webhook (liberação automática)
+              </h2>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Com isso, o cliente paga o PIX e o sistema libera renovação /
+                créditos / teste→plano + WhatsApp sem o app precisar estar aberto.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">URL do webhook</Label>
+              <div className="flex flex-wrap gap-1.5">
+                <Input
+                  readOnly
+                  className="h-9 font-mono text-[11px]"
+                  value={`${SUPABASE_URL}/functions/v1/mp-webhook`}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9"
+                  onClick={() => {
+                    void copyField(
+                      "URL webhook",
+                      `${SUPABASE_URL}/functions/v1/mp-webhook`,
+                    );
+                  }}
+                >
+                  <ClipboardCopy className="h-3.5 w-3.5" />
+                  Copiar
+                </Button>
+              </div>
+            </div>
+            <ol className="list-decimal space-y-1 pl-4 text-[11px] text-muted-foreground">
+              <li>
+                Abra{" "}
+                <a
+                  className="text-primary underline underline-offset-2"
+                  href="https://www.mercadopago.com.br/developers/panel/app"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Mercado Pago → Suas integrações
+                </a>
+              </li>
+              <li>Selecione o app do Access Token (Produção)</li>
+              <li>Webhooks → configurar URL (cole a URL acima)</li>
+              <li>
+                Marque o evento <span className="font-medium">Order (Mercado Pago)</span>
+              </li>
+              <li>Salve. Faça um PIX de teste para validar</li>
+            </ol>
           </section>
         </TabsContent>
 
@@ -3577,9 +3763,12 @@ export default function Automations() {
       </Dialog>
 
       <Dialog
-        open={!!renewTargetId}
+        open={!!renewTargetId || !!renewTargetJobId}
         onOpenChange={(open) => {
-          if (!open) setRenewTargetId(null);
+          if (!open) {
+            setRenewTargetId(null);
+            setRenewTargetJobId(null);
+          }
         }}
       >
         <DialogContent className="sm:max-w-md">
@@ -3587,9 +3776,18 @@ export default function Automations() {
             const renewItem = renewTargetId
               ? clients.find((i) => i.id === renewTargetId)
               : undefined;
-            const isExtend = renewItem
-              ? isClientStillActive(renewItem.dueDate)
-              : false;
+            const renewJob = renewTargetJobId
+              ? jobs.find((j) => j.id === renewTargetJobId)
+              : undefined;
+            const due = renewItem?.dueDate ?? renewJob?.dueDate;
+            const isExtend = isClientStillActive(due);
+            const titleName =
+              renewItem?.name || renewJob?.clientName || "Escolha o plano";
+            const titleUser =
+              renewItem?.itemId || renewJob?.panelUsername || "";
+            const busy =
+              (renewTargetId && busyId === renewTargetId) ||
+              (renewTargetJobId && activatingTest);
             return (
               <>
                 <DialogHeader>
@@ -3597,12 +3795,12 @@ export default function Automations() {
                     {isExtend ? "Estender UniPlay" : "Renovação UniPlay"}
                   </DialogTitle>
                   <DialogDescription>
-                    {renewItem
-                      ? `${renewItem.name} · ${maskUser(renewItem.itemId) === "—" ? "sem usuário" : maskUser(renewItem.itemId)}${
-                          renewItem.dueDate
-                            ? ` · vence ${formatBrDate(renewItem.dueDate)}`
-                            : ""
-                        }`
+                    {renewItem || renewJob
+                      ? `${titleName} · ${
+                          maskUser(titleUser) === "—"
+                            ? "sem usuário"
+                            : maskUser(titleUser)
+                        }${due ? ` · vence ${formatBrDate(due)}` : ""}`
                       : "Escolha o plano"}
                   </DialogDescription>
                 </DialogHeader>
@@ -3630,19 +3828,30 @@ export default function Automations() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setRenewTargetId(null)}
+                    onClick={() => {
+                      setRenewTargetId(null);
+                      setRenewTargetJobId(null);
+                    }}
                   >
                     Cancelar
                   </Button>
                   <Button
                     type="button"
-                    disabled={!renewTargetId || busyId === renewTargetId}
+                    disabled={
+                      (!renewTargetId && !renewTargetJobId) || Boolean(busy)
+                    }
                     onClick={() => {
+                      if (renewTargetJobId && renewJob) {
+                        void activateTestJob(renewJob, renewOption).then(() => {
+                          setRenewTargetJobId(null);
+                        });
+                        return;
+                      }
                       if (!renewTargetId) return;
                       void runApiRenew(renewTargetId, renewOption);
                     }}
                   >
-                    {busyId && busyId === renewTargetId ? (
+                    {busy ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : isExtend ? (
                       <CalendarPlus className="h-4 w-4" />
@@ -3720,6 +3929,170 @@ export default function Automations() {
               Gerar teste
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!detailClient}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailClientId(null);
+            setClientDetailAccess(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          {detailClient ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Detalhes do cliente</DialogTitle>
+                <DialogDescription>
+                  {detailClient.name}
+                  {detailClient.dueDate
+                    ? ` · vence ${formatBrDate(detailClient.dueDate)}`
+                    : ""}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-9 justify-start"
+                    onClick={() =>
+                      void copyField("Usuário", detailClient.itemId)
+                    }
+                  >
+                    <ClipboardCopy className="h-3.5 w-3.5" />
+                    Copiar usuário
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-9 justify-start"
+                    onClick={() =>
+                      void copyField(
+                        "Senha",
+                        clientDetailAccess?.password || "",
+                      )
+                    }
+                  >
+                    <ClipboardCopy className="h-3.5 w-3.5" />
+                    Copiar senha
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-9 justify-start"
+                    onClick={() =>
+                      void copyField("Link M3U", clientDetailAccess?.m3u || "")
+                    }
+                  >
+                    <ClipboardCopy className="h-3.5 w-3.5" />
+                    Copiar link M3U
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-9 justify-start"
+                    onClick={() =>
+                      void copyField(
+                        "DNS Smarters",
+                        clientDetailAccess?.dnsSmarters || "",
+                      )
+                    }
+                  >
+                    <ClipboardCopy className="h-3.5 w-3.5" />
+                    Copiar DNS Smarters
+                  </Button>
+                </div>
+                <div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                  <p>Usuário: {maskUser(detailClient.itemId)}</p>
+                  <p>
+                    Senha:{" "}
+                    {hideSensitive
+                      ? "••••••••"
+                      : clientDetailAccess?.password || "—"}
+                  </p>
+                  <p className="break-all">
+                    M3U:{" "}
+                    {hideSensitive
+                      ? "••••••••"
+                      : clientDetailAccess?.m3u || "—"}
+                  </p>
+                  <p>
+                    DNS:{" "}
+                    {hideSensitive
+                      ? "••••••••"
+                      : clientDetailAccess?.dnsSmarters || "—"}
+                  </p>
+                </div>
+
+                <div className="space-y-2 border-t pt-3">
+                  <p className="text-sm font-medium">Ativar app (MAC)</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Carrega usuário e senha do cliente em Ativar app para
+                    cadastrar o aparelho.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-9 w-full sm:w-auto"
+                    disabled={!detailClient.itemId?.trim()}
+                    onClick={() => {
+                      fillActivateFromLogin(
+                        "clientes",
+                        detailClient.itemId || "",
+                        clientDetailAccess?.password,
+                        {
+                          emptyMessage: "Cliente sem usuário IPTV cadastrado",
+                        },
+                      );
+                      setDetailClientId(null);
+                      setClientDetailAccess(null);
+                    }}
+                  >
+                    <Smartphone className="h-3.5 w-3.5" />
+                    Ir para Ativar app
+                  </Button>
+                </div>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setDetailClientId(null);
+                    setClientDetailAccess(null);
+                  }}
+                >
+                  Fechar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={!bearer.trim() || busyId === detailClient.id}
+                  onClick={() => {
+                    openRenewDialog(detailClient.id);
+                    setDetailClientId(null);
+                    setClientDetailAccess(null);
+                  }}
+                >
+                  {isClientStillActive(detailClient.dueDate) ? (
+                    <CalendarPlus className="h-4 w-4" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  {isClientStillActive(detailClient.dueDate)
+                    ? "Estender"
+                    : "Renovar"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -3836,37 +4209,6 @@ export default function Automations() {
                         Ir para Ativar app
                       </Button>
                     </div>
-
-                    <div className="space-y-2 border-t pt-3">
-                      <p className="text-sm font-medium">
-                        Ativar plano (créditos)
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Converte o teste em plano pago no painel, cobrando os
-                        créditos do plano escolhido.
-                      </p>
-                      <div className="space-y-1.5">
-                        {IPTV_RENEW_OPTIONS.map((opt) => {
-                          const selected =
-                            activateOption.months === opt.months;
-                          return (
-                            <button
-                              key={opt.months}
-                              type="button"
-                              onClick={() => setActivateOption(opt)}
-                              className={cn(
-                                "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition",
-                                selected
-                                  ? "border-primary bg-primary/10 font-medium text-foreground"
-                                  : "border-border/70 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                              )}
-                            >
-                              <span>{opt.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
                   </div>
                 );
               })()}
@@ -3880,17 +4222,21 @@ export default function Automations() {
                 </Button>
                 <Button
                   type="button"
-                  disabled={activatingTest || !detailJob.panelUsername}
-                  onClick={() =>
-                    void activateTestJob(detailJob, activateOption)
+                  disabled={
+                    activatingTest ||
+                    !detailJob.panelUsername ||
+                    !bearer.trim()
                   }
+                  onClick={() => openTestRenewDialog(detailJob.id)}
                 >
-                  {activatingTest ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  {isClientStillActive(detailJob.dueDate) ? (
+                    <CalendarPlus className="h-4 w-4" />
                   ) : (
                     <RefreshCw className="h-4 w-4" />
                   )}
-                  Ativar plano
+                  {isClientStillActive(detailJob.dueDate)
+                    ? "Estender"
+                    : "Renovar"}
                 </Button>
               </DialogFooter>
             </>
