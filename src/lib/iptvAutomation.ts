@@ -734,25 +734,107 @@ export type SyncPanelTestsResult = {
 /**
  * Espelha os testes da lista UniPlay na fila local (jobs kind=test).
  * - Cria/atualiza cada teste encontrado no painel
- * - Mantém histórico local/WhatsApp que não veio na lista
- * - Remove só espelhos UniPlay que sumiram do painel
+ * - Remove da aba Testes o que foi apagado no painel (ghost local/WhatsApp)
+ * - Mantém só jobs locais ainda em andamento (pending/doing)
  * - Não mexe em jobs de renovação
+ * - Nunca promove cliente AuxPlus (excludeUsernames) a “teste”
  */
 export function mergePanelTestsIntoJobs(
   jobs: IptvJob[],
   remoteUsers: IptvRemoteUser[],
-  opts?: { m3uHost?: string; dnsFallback?: string },
+  opts?: {
+    m3uHost?: string;
+    dnsFallback?: string;
+    /** Logins já cadastrados como cliente no AuxPlus — nunca entram em Testes */
+    excludeUsernames?: Iterable<string>;
+  },
 ): SyncPanelTestsResult {
+  const excluded = new Set(
+    [...(opts?.excludeUsernames || [])]
+      .map((u) => String(u || "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  /**
+   * Só teste “de verdade” no painel:
+   * - flag / test_hours do UniPlay, ou
+   * - vida útil curta (horas), ou
+   * - nome “teste” SOMENTE se ainda acaba em poucas horas
+   *
+   * Evita plano mensal que ficou com nota “Teste WhatsApp…” após ativar.
+   */
   const isTestForSync = (u: IptvRemoteUser) => {
-    if (isIptvTestOrTrialUser(u)) return true;
-    // UniPlay: testes costumam ser login só números + vida curta
-    const username = String(u.username || u.user || "").trim();
-    if (!/^\d{6,}$/.test(username)) return false;
+    const username = String(u.username || u.user || "")
+      .trim()
+      .toLowerCase();
+    if (username && excluded.has(username)) return false;
+
+    const row = u as Record<string, unknown>;
     const expFull = parseIptvExpToDateTime(u.exp_date ?? u.expDate);
-    if (!expFull) return false;
-    const left =
-      new Date(expFull.replace(" ", "T")).getTime() - Date.now();
-    return left > -86_400_000 && left < 3 * 86_400_000;
+    const expMs = expFull
+      ? new Date(expFull.replace(" ", "T")).getTime()
+      : NaN;
+    const left = Number.isFinite(expMs) ? expMs - Date.now() : NaN;
+    const created = parseIptvExpToDateTime(
+      String(row.created_at ?? row.createdAt ?? row.created ?? ""),
+    );
+    const lifeMs =
+      created && Number.isFinite(expMs)
+        ? expMs - new Date(created.replace(" ", "T")).getTime()
+        : NaN;
+
+    // Plano longo (≥7 dias de vida) nunca entra em Testes
+    if (Number.isFinite(lifeMs) && lifeMs >= 7 * 86_400_000) return false;
+    // Ainda tem mais de 2 dias de validade → não é teste de horas
+    if (Number.isFinite(left) && left > 2 * 86_400_000) return false;
+
+    // Flag oficial do painel
+    const testHours = Number(row.test_hours ?? row.testHours ?? 0);
+    if (Number.isFinite(testHours) && testHours > 0) return true;
+    for (const k of [
+      "is_test",
+      "is_trial",
+      "isTest",
+      "isTrial",
+      "trial",
+      "teste",
+      "is_teste",
+    ]) {
+      const v = row[k];
+      if (v === true || v === 1 || v === "1" || v === "true") return true;
+    }
+
+    // Vida útil total curta (criação → exp)
+    if (Number.isFinite(lifeMs) && lifeMs >= 0 && lifeMs < 2 * 86_400_000) {
+      return true;
+    }
+
+    // Nome/nota “teste” só conta se acaba em até 18h (teste ativo)
+    const label = [row.nota, row.note, row.obs, row.notes, row.name]
+      .map((v) => String(v ?? "").toLowerCase())
+      .join(" ");
+    const nameIsTest =
+      /\bteste\b|\btest\b|\btrial\b|teste auxplus|teste uniplay/i.test(label);
+    if (
+      nameIsTest &&
+      Number.isFinite(left) &&
+      left > -3_600_000 &&
+      left <= 18 * 3_600_000
+    ) {
+      return true;
+    }
+
+    // Login numérico ainda válido por até 18h (sem created_at)
+    if (
+      /^\d{6,}$/.test(username) &&
+      Number.isFinite(left) &&
+      left > -3_600_000 &&
+      left <= 18 * 3_600_000
+    ) {
+      return true;
+    }
+
+    return false;
   };
 
   const tests = remoteUsers.filter(isTestForSync);
@@ -861,21 +943,25 @@ export function mergePanelTestsIntoJobs(
     }
   }
 
+  // Só mantém o que ainda está no painel (+ pending/doing local).
+  // Antes: WhatsApp/histórico ficavam pra sempre mesmo após apagar no UniPlay.
   const keepMissing = existingTests.filter((j) => {
     if (usedJobIds.has(j.id)) return false;
-    // Em aberto / WhatsApp / AuxPlus — nunca apaga no sync
-    if (j.status === "pending" || j.status === "doing") return true;
-    if (j.id.startsWith("wa_test_")) return true;
-    if (/whatsapp/i.test(j.note || "")) return true;
-    if (!/^UniPlay ·/i.test(j.note || "")) return true;
-    // Espelho antigo do painel que não está mais na lista → remove
-    return false;
+    const u = j.panelUsername.trim().toLowerCase();
+    if (u && excluded.has(u)) return false;
+    return j.status === "pending" || j.status === "doing";
   });
-  const removed = existingTests.filter(
-    (j) => !usedJobIds.has(j.id) && !keepMissing.includes(j),
-  ).length;
+  const nextTestsClean = nextTests.filter((j) => {
+    const u = j.panelUsername.trim().toLowerCase();
+    return !(u && excluded.has(u));
+  });
+  const removed =
+    existingTests.filter(
+      (j) => !usedJobIds.has(j.id) && !keepMissing.includes(j),
+    ).length +
+    (nextTests.length - nextTestsClean.length);
 
-  const jobsOut = [...renewJobs, ...nextTests, ...keepMissing].sort(
+  const jobsOut = [...renewJobs, ...nextTestsClean, ...keepMissing].sort(
     (a, b) => b.updatedAt.localeCompare(a.updatedAt),
   );
 

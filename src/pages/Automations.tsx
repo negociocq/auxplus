@@ -391,9 +391,13 @@ export default function Automations() {
 
         setResellers(rows);
 
+        const clientUsernames = data.items
+          .filter((i) => i.isActive !== false)
+          .map((i) => i.itemId);
         const result = mergePanelTestsIntoJobs(loadIptvJobs(user.id), users, {
           m3uHost: platform.m3uHost,
           dnsFallback: platform.dnsSmarters,
+          excludeUsernames: clientUsernames,
         });
         setJobs(result.jobs);
         saveIptvJobs(user.id, result.jobs);
@@ -421,6 +425,7 @@ export default function Automations() {
     platform.m3uHost,
     platform.dnsSmarters,
     config.iptvApiBaseUrl,
+    data.items,
   ]);
 
   // Renova o Bearer sozinho a cada 15 min (se usuário/senha salvos)
@@ -543,20 +548,43 @@ export default function Automations() {
     return hay.includes(qn);
   };
 
+  /** Usernames já cadastrados como cliente — não listar em Testes */
+  const clientUsernameSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of clients) {
+      const u = c.itemId.trim().toLowerCase();
+      if (u) set.add(u);
+    }
+    return set;
+  }, [clients]);
+
   /** Oculto por padrão; busca (≥2) ou "Mostrar lista" revela */
   const filteredTests = useMemo(() => {
     const term = jobsQ.trim().toLowerCase();
     if (!showTestsList && term.length < 2) return [];
+    const now = Date.now();
     return jobs
-      .filter(
-        (j) =>
-          j.kind === "test" &&
-          (term.length < 2 || jobMatchesQuery(j, jobsQ)),
-      )
+      .filter((j) => {
+        if (j.kind !== "test") return false;
+        const u = j.panelUsername.trim().toLowerCase();
+        // Cliente ativo no AuxPlus não aparece em Testes
+        if (u && clientUsernameSet.has(u)) return false;
+        // Plano longo (vence daqui a >2 dias) não é teste ativo
+        if (j.status !== "pending" && j.status !== "doing") {
+          const dueRaw = String(j.dueDate || "").trim();
+          if (dueRaw) {
+            const due = Date.parse(dueRaw.replace(" ", "T"));
+            if (Number.isFinite(due) && due - now > 2 * 86_400_000) {
+              return false;
+            }
+          }
+        }
+        return term.length < 2 || jobMatchesQuery(j, jobsQ);
+      })
       .slice()
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, showTestsList && term.length < 2 ? 100 : 50);
-  }, [jobs, jobsQ, showTestsList]);
+  }, [jobs, jobsQ, showTestsList, clientUsernameSet]);
   const openRenewJobs = useMemo(
     () =>
       jobs.filter(
@@ -576,21 +604,57 @@ export default function Automations() {
     );
     return list.slice(0, renewQ.trim() ? 150 : 80);
   }, [jobs, renewQ]);
+  const isRealTestJob = (j: (typeof jobs)[number]) => {
+    if (j.kind !== "test") return false;
+    const u = j.panelUsername.trim().toLowerCase();
+    if (u && clientUsernameSet.has(u)) return false;
+    if (j.status === "pending" || j.status === "doing") return true;
+    const dueRaw = String(j.dueDate || "").trim();
+    if (dueRaw) {
+      const due = Date.parse(dueRaw.replace(" ", "T"));
+      if (Number.isFinite(due) && due - Date.now() > 2 * 86_400_000) {
+        return false;
+      }
+    }
+    return true;
+  };
   const testLog = useMemo(() => {
     const list = jobs
-      .filter((j) => j.kind === "test" && jobMatchesQuery(j, testLogQ))
+      .filter((j) => isRealTestJob(j) && jobMatchesQuery(j, testLogQ))
       .slice()
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return list.slice(0, testLogQ.trim() ? 300 : 200);
-  }, [jobs, testLogQ]);
+  }, [jobs, testLogQ, clientUsernameSet]);
   const testLogCount = useMemo(
-    () => jobs.filter((j) => j.kind === "test").length,
-    [jobs],
+    () => jobs.filter(isRealTestJob).length,
+    [jobs, clientUsernameSet],
   );
   const testJobsCount = useMemo(
-    () => jobs.filter((j) => j.kind === "test").length,
-    [jobs],
+    () => jobs.filter(isRealTestJob).length,
+    [jobs, clientUsernameSet],
   );
+
+  // Limpa fantasmas da aba Testes (cliente AuxPlus ou “teste” que já virou plano longo)
+  useEffect(() => {
+    if (!user) return;
+    const now = Date.now();
+    const next = jobs.filter((j) => {
+      if (j.kind !== "test") return true;
+      const u = j.panelUsername.trim().toLowerCase();
+      if (u && clientUsernameSet.has(u)) return false;
+      // Plano longo gravado como teste (vence daqui a >2 dias) → some da lista
+      if (j.status === "pending" || j.status === "doing") return true;
+      const dueRaw = String(j.dueDate || "").trim();
+      if (dueRaw) {
+        const due = Date.parse(dueRaw.replace(" ", "T"));
+        if (Number.isFinite(due) && due - now > 2 * 86_400_000) return false;
+      }
+      return true;
+    });
+    if (next.length === jobs.length) return;
+    persistJobs(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, clientUsernameSet, jobs.length]);
   const renewLogCount = useMemo(
     () =>
       jobs.filter(
@@ -1421,6 +1485,27 @@ export default function Automations() {
     }
   };
 
+  const focusActivateApp = (scope: ActivateAppScope) => {
+    if (scope === "clientes") {
+      setShowClientsList(false);
+      setQ("");
+    } else {
+      setShowTestsList(false);
+      setJobsQ("");
+    }
+    // Espera o bloco Ativar app montar (só aparece com username)
+    window.setTimeout(() => {
+      document.getElementById(`ativar-app-${scope}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      const mac = document.getElementById(
+        `app-device-${scope}`,
+      ) as HTMLInputElement | null;
+      mac?.focus({ preventScroll: true });
+    }, 100);
+  };
+
   const fillActivateFromClient = (itemId: string) => {
     const item = clients.find((i) => i.id === itemId);
     if (!item) return;
@@ -1428,13 +1513,27 @@ export default function Automations() {
       emptyMessage: "Cliente sem usuário IPTV cadastrado",
       silentToast: true,
     });
+    if (item.itemId?.trim()) focusActivateApp("clientes");
   };
 
   const fillActivateFromTest = (job: IptvJob) => {
-    if (job.kind !== "test") return;
-    fillActivateFromLogin("testes", job.panelUsername, job.panelPassword, {
-      emptyMessage: "Teste sem usuário IPTV",
+    if (job.kind === "test") {
+      fillActivateFromLogin("testes", job.panelUsername, job.panelPassword, {
+        emptyMessage: "Teste sem usuário IPTV",
+        silentToast: true,
+      });
+      if (job.panelUsername?.trim()) focusActivateApp("testes");
+      return;
+    }
+    // Renovação (logs): abre Ativar app na aba Clientes
+    fillActivateFromLogin("clientes", job.panelUsername, job.panelPassword, {
+      emptyMessage: "Renovação sem usuário IPTV",
+      silentToast: true,
     });
+    if (job.panelUsername?.trim()) {
+      setUniplaySubTab("ativos");
+      focusActivateApp("clientes");
+    }
   };
 
   // Busca senha ao carregar usuário em cada formulário (clientes / testes)
@@ -1568,12 +1667,23 @@ export default function Automations() {
       const users = await listIptvUsers(creds);
       const issued = getLastIssuedIptvToken();
       if (issued) persistToken(issued);
+      const clientUsernames = data.items
+        .filter((i) => i.isActive !== false)
+        .map((i) => i.itemId);
       const result = mergePanelTestsIntoJobs(loadIptvJobs(user.id), users, {
         m3uHost: platform.m3uHost,
         dnsFallback: platform.dnsSmarters,
+        excludeUsernames: clientUsernames,
       });
       persistJobs(result.jobs);
-      const totalTests = result.jobs.filter((j) => j.kind === "test").length;
+      const exclude = new Set(
+        clientUsernames.map((u) => u.trim().toLowerCase()).filter(Boolean),
+      );
+      const totalTests = result.jobs.filter((j) => {
+        if (j.kind !== "test") return false;
+        const u = j.panelUsername.trim().toLowerCase();
+        return !(u && exclude.has(u));
+      }).length;
       const parts = [
         result.created ? `${result.created} novo(s)` : "",
         result.updated ? `${result.updated} atualizado(s)` : "",
@@ -1581,9 +1691,11 @@ export default function Automations() {
         totalTests ? `${totalTests} no total` : "",
       ].filter(Boolean);
       toast.success(
-        parts.length
-          ? `Testes UniPlay: ${parts.join(" · ")}`
-          : "Nenhum teste encontrado na UniPlay",
+        totalTests === 0
+          ? "Nenhum teste no painel UniPlay — lista limpa"
+          : parts.length
+            ? `Testes UniPlay: ${parts.join(" · ")}`
+            : "Testes atualizados",
       );
     } catch (e) {
       toast.error(
@@ -1795,47 +1907,47 @@ export default function Automations() {
     toast.message("Marcado como falhou");
   };
 
-  const openTestDetail = (job: IptvJob) => {
-    if (job.kind !== "test") return;
+  const openJobDetail = (job: IptvJob) => {
     setDetailJobId(job.id);
-    // Testes antigos sem senha/M3U: tenta completar ao abrir o modal
+    // Completa senha/M3U ao abrir (teste ou renovação)
     if (
-      job.panelUsername.trim() &&
-      (!job.panelPassword?.trim() || !job.m3u?.trim()) &&
-      (bearer.trim() || (panelUser.trim() && panelPass))
+      !job.panelUsername.trim() ||
+      (job.panelPassword?.trim() && job.m3u?.trim()) ||
+      (!bearer.trim() && !(panelUser.trim() && panelPass))
     ) {
-      void (async () => {
-        try {
-          const ensured = await ensureIptvToken(panelCreds());
-          if (ensured.renewed) persistToken(ensured.token);
-          const creds = { ...panelCreds(), bearerToken: ensured.token };
-          let password = job.panelPassword?.trim() || "";
-          if (!password) {
-            password =
-              (await fetchIptvUserPassword(creds, job.panelUsername.trim())) ||
-              "";
-          }
-          if (!password) return;
-          const links = resolveTestAccessLinks({
-            username: job.panelUsername,
-            password,
-            m3u: job.m3u,
-            dnsSmarters: job.dnsSmarters,
-            m3uHost: platform.m3uHost,
-            dnsFallback: platform.dnsSmarters,
-          });
-          persistJobs(
-            patchIptvJob(loadIptvJobs(user.id), job.id, {
-              panelPassword: password,
-              m3u: links.m3u || job.m3u,
-              dnsSmarters: links.dnsSmarters || job.dnsSmarters,
-            }),
-          );
-        } catch {
-          /* ignore */
-        }
-      })();
+      return;
     }
+    void (async () => {
+      try {
+        const ensured = await ensureIptvToken(panelCreds());
+        if (ensured.renewed) persistToken(ensured.token);
+        const creds = { ...panelCreds(), bearerToken: ensured.token };
+        let password = job.panelPassword?.trim() || "";
+        if (!password) {
+          password =
+            (await fetchIptvUserPassword(creds, job.panelUsername.trim())) ||
+            "";
+        }
+        if (!password) return;
+        const links = resolveTestAccessLinks({
+          username: job.panelUsername,
+          password,
+          m3u: job.m3u,
+          dnsSmarters: job.dnsSmarters,
+          m3uHost: platform.m3uHost,
+          dnsFallback: platform.dnsSmarters,
+        });
+        persistJobs(
+          patchIptvJob(loadIptvJobs(user.id), job.id, {
+            panelPassword: password,
+            m3u: links.m3u || job.m3u,
+            dnsSmarters: links.dnsSmarters || job.dnsSmarters,
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+    })();
   };
 
   const linksForJob = (job: IptvJob) =>
@@ -1919,7 +2031,10 @@ export default function Automations() {
         ? "Botão App no cliente"
         : "Botão App no teste";
     return (
-            <section className="ax-surface space-y-3 p-4">
+            <section
+              id={`ativar-app-${scope}`}
+              className="ax-surface scroll-mt-20 space-y-3 p-4"
+            >
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <h2 className="text-sm font-semibold tracking-tight">
@@ -2658,10 +2773,6 @@ export default function Automations() {
             {uniplayConnected ? (
               <>
             <TabsContent value="ativos" className="mt-0 space-y-4">
-          {renderActivateAppSection(
-            "clientes",
-            "Informe o MAC e ative o app.",
-          )}
           <section className="ax-surface space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
@@ -2775,6 +2886,10 @@ export default function Automations() {
               </ul>
             )}
           </section>
+
+          {activateForms.clientes.username.trim()
+            ? renderActivateAppSection("clientes")
+            : null}
             </TabsContent>
 
             <TabsContent value="revendedores" className="mt-0 space-y-4">
@@ -2903,16 +3018,12 @@ export default function Automations() {
             </TabsContent>
 
             <TabsContent value="testes" className="mt-0 space-y-4">
-          {renderActivateAppSection(
-            "testes",
-            "Informe o MAC e ative o app.",
-          )}
           <section className="ax-surface space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold tracking-tight">Testes</h2>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Lista inicia oculta · toque em App para ativar o MAC
+                  Espelha o painel UniPlay · Atualizar limpa o que foi apagado lá
                 </p>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -2985,7 +3096,7 @@ export default function Automations() {
                     className="h-8"
                     onClick={() => {
                       const job = jobs.find((j) => j.id === lastTest.jobId);
-                      if (job) openTestDetail(job);
+                      if (job) openJobDetail(job);
                       else setDetailJobId(lastTest.jobId);
                     }}
                   >
@@ -3064,7 +3175,7 @@ export default function Automations() {
                           size="sm"
                           variant="secondary"
                           className="h-8 px-2.5"
-                          onClick={() => openTestDetail(job)}
+                          onClick={() => openJobDetail(job)}
                         >
                           Detalhes
                         </Button>
@@ -3099,6 +3210,13 @@ export default function Automations() {
               </ul>
             )}
           </section>
+
+          {activateForms.testes.username.trim()
+            ? renderActivateAppSection(
+                "testes",
+                "Informe o MAC e ative o app.",
+              )
+            : null}
             </TabsContent>
 
             <TabsContent value="logs" className="mt-0 space-y-4">
@@ -3310,6 +3428,17 @@ export default function Automations() {
                                   {job.note}
                                 </p>
                               ) : null}
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  className="h-8"
+                                  onClick={() => openJobDetail(job)}
+                                >
+                                  Detalhes
+                                </Button>
+                              </div>
                             </li>
                           );
                         })}
@@ -3455,20 +3584,9 @@ export default function Automations() {
                                 size="sm"
                                 variant="secondary"
                                 className="h-8"
-                                onClick={() => openTestDetail(job)}
+                                onClick={() => openJobDetail(job)}
                               >
                                 Detalhes
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-8"
-                                disabled={!job.panelUsername?.trim()}
-                                onClick={() => fillActivateFromTest(job)}
-                              >
-                                <Smartphone className="h-3.5 w-3.5" />
-                                App
                               </Button>
                             </div>
                           </li>
@@ -4044,16 +4162,15 @@ export default function Automations() {
                     className="h-9 w-full sm:w-auto"
                     disabled={!detailClient.itemId?.trim()}
                     onClick={() => {
-                      fillActivateFromLogin(
-                        "clientes",
-                        detailClient.itemId || "",
-                        clientDetailAccess?.password,
-                        {
-                          emptyMessage: "Cliente sem usuário IPTV cadastrado",
-                        },
-                      );
+                      const username = detailClient.itemId || "";
+                      const password = clientDetailAccess?.password;
                       setDetailClientId(null);
                       setClientDetailAccess(null);
+                      fillActivateFromLogin("clientes", username, password, {
+                        emptyMessage: "Cliente sem usuário IPTV cadastrado",
+                        silentToast: true,
+                      });
+                      if (username.trim()) focusActivateApp("clientes");
                     }}
                   >
                     <Smartphone className="h-3.5 w-3.5" />
@@ -4106,11 +4223,20 @@ export default function Automations() {
           {detailJob ? (
             <>
               <DialogHeader>
-                <DialogTitle>Detalhes do teste</DialogTitle>
+                <DialogTitle>
+                  {detailJob.kind === "renew"
+                    ? "Detalhes da renovação"
+                    : "Detalhes do teste"}
+                </DialogTitle>
                 <DialogDescription>
                   {detailJob.clientName}
                   {detailJob.dueDate
                     ? ` · vence ${formatBrDate(detailJob.dueDate)}`
+                    : ""}
+                  {detailJob.kind === "renew" && detailJob.months
+                    ? ` · +${detailJob.months} ${
+                        detailJob.months === 1 ? "mês" : "meses"
+                      }`
                     : ""}
                 </DialogDescription>
               </DialogHeader>
@@ -4187,13 +4313,26 @@ export default function Automations() {
                           ? "••••••••"
                           : links.dnsSmarters || "—"}
                       </p>
+                      {detailJob.kind === "renew" ? (
+                        <p>
+                          Plano: +{detailJob.months}{" "}
+                          {detailJob.months === 1 ? "mês" : "meses"}
+                        </p>
+                      ) : detailJob.testHours ? (
+                        <p>Duração: {detailJob.testHours}h</p>
+                      ) : null}
+                      {detailJob.note ? (
+                        <p className="whitespace-pre-wrap break-all">
+                          Nota: {detailJob.note}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="space-y-2 border-t pt-3">
                       <p className="text-sm font-medium">Ativar app (MAC)</p>
                       <p className="text-[11px] text-muted-foreground">
-                        Carrega usuário e senha do teste em Ativar app para
-                        cadastrar o aparelho.
+                        Carrega usuário e senha em Ativar app para cadastrar o
+                        aparelho.
                       </p>
                       <Button
                         type="button"
@@ -4223,11 +4362,23 @@ export default function Automations() {
                 <Button
                   type="button"
                   disabled={
-                    activatingTest ||
                     !detailJob.panelUsername ||
-                    !bearer.trim()
+                    !bearer.trim() ||
+                    (detailJob.kind === "test"
+                      ? activatingTest
+                      : busyId === detailJob.itemRefId)
                   }
-                  onClick={() => openTestRenewDialog(detailJob.id)}
+                  onClick={() => {
+                    if (
+                      detailJob.kind === "renew" &&
+                      detailJob.itemRefId
+                    ) {
+                      openRenewDialog(detailJob.itemRefId);
+                      setDetailJobId(null);
+                      return;
+                    }
+                    openTestRenewDialog(detailJob.id);
+                  }}
                 >
                   {isClientStillActive(detailJob.dueDate) ? (
                     <CalendarPlus className="h-4 w-4" />
