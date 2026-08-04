@@ -462,11 +462,10 @@ export function buildTodayQueue(
   const scheduledAt = parseLocalYmd(todayKey);
   scheduledAt.setHours(hour, minute, 0, 0);
 
-  // 1 envio por item por dia (regra: máximo 1 lembrete/dia por cliente).
   const sentKeys = new Set(
     alreadySent
       .filter((l) => l.day === todayKey && l.ok)
-      .map((l) => l.itemId),
+      .map((l) => `${l.itemId}:${l.kind}`),
   );
 
   const queue: WaQueueItem[] = [];
@@ -482,9 +481,10 @@ export function buildTodayQueue(
     const due = parseLocalYmd(dueKey);
 
     if (settings.sendOnDay && dueKey === todayKey) {
-      if (!sentKeys.has(item.id)) {
+      const key = `${item.id}:onday`;
+      if (!sentKeys.has(key)) {
         queue.push({
-          id: `${item.id}:onday`,
+          id: key,
           itemId: item.id,
           folderId: item.folderId,
           name: item.name,
@@ -502,12 +502,12 @@ export function buildTodayQueue(
     }
 
     if (settings.sendBefore && settings.daysBefore > 0) {
-      // Aviso 1 vez, só no exato dia "daysBefore" antes do vencimento
-      // (não numa janela 1..daysBefore — evita lembrete repetido a cada dia).
+      // Janela 1..daysBefore (não só o dia exato): quem está "Perto"
+      // e ainda não recebeu o aviso entra na fila (inclui atraso/recuperação).
       const daysLeft = differenceInCalendarDays(due, parseLocalYmd(todayKey));
-      if (daysLeft === settings.daysBefore) {
-        if (!sentKeys.has(item.id)) {
-          const key = `${item.id}:before`;
+      if (daysLeft >= 1 && daysLeft <= settings.daysBefore) {
+        const key = `${item.id}:before`;
+        if (!sentKeys.has(key)) {
           queue.push({
             id: key,
             itemId: item.id,

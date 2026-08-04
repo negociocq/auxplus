@@ -15,21 +15,16 @@ import {
   extractResellerCreditsBought,
   getResellerCreditsBought,
   stripResellerMarker,
-  withResellerCreditsBought,
   withResellerCreditsBoughtDelta,
 } from "@/lib/resellerCredits";
 import type { ItemPayment } from "@/types";
 import {
   fixUtf8Mojibake,
   isIptvTestOrTrialUser,
-  listIptvResellerLogs,
   parseIptvExpToDateTime,
-  resolveIptvResellerPanelId,
   resolveTestAccessLinks,
-  type IptvPanelCreds,
   type IptvRemoteUser,
   type IptvReseller,
-  type IptvResellerMovement,
 } from "@/lib/iptvPanelApi";
 import { ymdOnly, parseLocalYmd } from "@/lib/whatsappAutomation";
 import { supabase } from "@/integrations/supabase/client";
@@ -727,168 +722,6 @@ export function syncIptvResellersToFolder(
   }
 
   return { data: next, created, updated, skipped };
-}
-
-/**
- * Busca as movimentações (Logs de Movimentações) de cada revendedor e devolve
- * um mapa `username(lowercase) → total de créditos já recarregados`.
- * Falha de um revendedor é ignorada (mantém o valor atual do item).
- */
-export async function buildResellerMovementCredits(
-  creds: IptvPanelCreds,
-  resellers: IptvReseller[],
-): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
-  await Promise.all(
-    resellers.map(async (r) => {
-      const username = String(r.username || "").trim().toLowerCase();
-      if (!username) return;
-      const id = resolveIptvResellerPanelId(r);
-      if (id == null) return;
-      try {
-        const moves = await listIptvResellerLogs(creds, id);
-        const sum = moves.reduce((s, m) => s + (Number(m.credits) || 0), 0);
-        if (sum > 0) map.set(username, Math.floor(sum));
-      } catch {
-        /* sem logs acessíveis para este revendedor */
-      }
-    }),
-  );
-  return map;
-}
-
-/**
- * Aplica o histórico (créditos comprados somados das movimentações) nos itens
- * de revendedores da pasta. Só altera quando o total difere do valor atual.
- */
-export function applyResellerCreditsToFolder(
-  data: AppData,
-  folderId: string,
-  movementCredits: Map<string, number>,
-): AppData {
-  if (!movementCredits.size) return data;
-  let changed = false;
-  const items = data.items.map((i) => {
-    if (i.folderId !== folderId || i.isActive === false) return i;
-    const key = String(i.itemId || "").trim().toLowerCase();
-    if (!key) return i;
-    const total = movementCredits.get(key);
-    if (total == null) return i;
-    if (getResellerCreditsBought(i) === total) return i;
-    changed = true;
-    return withResellerCreditsBought(i, total);
-  });
-  return changed ? { ...data, items } : data;
-}
-
-/**
- * Busca as movimentações (recargas) de cada revendedor e devolve
- * `username(lowercase) → lista de recargas`.
- */
-export async function buildResellerMovementLogs(
-  creds: IptvPanelCreds,
-  resellers: IptvReseller[],
-): Promise<Map<string, IptvResellerMovement[]>> {
-  const map = new Map<string, IptvResellerMovement[]>();
-  await Promise.all(
-    resellers.map(async (r) => {
-      const username = String(r.username || "").trim().toLowerCase();
-      if (!username) return;
-      const id = resolveIptvResellerPanelId(r);
-      if (id == null) return;
-      try {
-        const moves = await listIptvResellerLogs(creds, id);
-        if (moves.length) map.set(username, moves);
-      } catch {
-        /* sem logs acessíveis para este revendedor */
-      }
-    }),
-  );
-  return map;
-}
-
-/**
- * Soma o valor (faturado) das recargas por mês ("yyyy-mm") para alimentar a
- * Receita por mês. Recargas "AuxPlus PIX" ficam de fora (o app já as registra).
- */
-export function sumMovementsByMonth(
-  movementLogs: Map<string, IptvResellerMovement[]>,
-): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const list of movementLogs.values()) {
-    for (const m of list) {
-      if (/AuxPlus PIX/i.test(m.obs || "")) continue;
-      const amount = Math.round((Number(m.faturado) || 0) * 100) / 100;
-      if (amount <= 0) continue;
-      const ymd = movementDateToYmd(m.at);
-      if (!ymd) continue;
-      const ym = ymd.slice(0, 7);
-      out[ym] = (out[ym] || 0) + amount;
-    }
-  }
-  return out;
-}
-
-function movementDateToYmd(at: string): string | null {
-  const m = String(at || "")
-    .trim()
-    .match(/^(\d{4})-(\d{2})-(\d{2})|^(\d{2})\/(\d{2})\/(\d{4})/);
-  if (!m) return null;
-  if (m[1]) return `${m[1]}-${m[2]}-${m[3]}`;
-  return `${m[6]}-${m[5]}-${m[4]}`;
-}
-
-/**
- * Aplica as movimentações (recargas) de cada revendedor nos itens da pasta:
- * - recalcula os créditos comprados (soma das recargas)
- * - grava cada recarga como pagamento (data + valor) → alimenta a Receita por mês
- *
- * Recargas "AuxPlus PIX" ficam de fora porque o app já registra esses valores
- * como pagamento no momento da liberação (evita contar em dobro).
- */
-export function applyResellerMovementsToFolder(
-  data: AppData,
-  folderId: string,
-  movementLogs: Map<string, IptvResellerMovement[]>,
-): AppData {
-  if (!movementLogs.size) return data;
-  let changed = false;
-  const items = data.items.map((i) => {
-    if (i.folderId !== folderId || i.isActive === false) return i;
-    const key = String(i.itemId || "").trim().toLowerCase();
-    const list = key ? movementLogs.get(key) : undefined;
-    if (!list || !list.length) return i;
-
-    const total = Math.floor(
-      list.reduce((s, m) => s + (Number(m.credits) || 0), 0),
-    );
-    let next = withResellerCreditsBought(i, total);
-    if (getResellerCreditsBought(i) !== total) changed = true;
-
-    // Recargas já gravadas (PIX liberado pelo app etc.) — dedupe por data+valor
-    const seen = new Set(
-      getRecordedPayments(i).map(
-        (p) =>
-          `${String(p.paidAt).slice(0, 10)}|${Math.round(
-            Number(p.amount) * 100,
-          )}`,
-      ),
-    );
-    for (const m of list) {
-      if (/AuxPlus PIX/i.test(m.obs || "")) continue;
-      const amount = Math.round((Number(m.faturado) || 0) * 100) / 100;
-      if (amount <= 0) continue;
-      const paidAt = movementDateToYmd(m.at);
-      if (!paidAt) continue;
-      const k = `${paidAt}|${Math.round(amount * 100)}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      next = appendItemPayment(next, { paidAt, amount });
-      changed = true;
-    }
-    return next;
-  });
-  return changed ? { ...data, items } : data;
 }
 
 export type SyncPanelTestsResult = {

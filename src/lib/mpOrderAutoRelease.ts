@@ -309,8 +309,6 @@ export async function releasePaidMpOrder(
       notifyUniplayCreditsChanged({
         spent: Math.max(1, Number(order.credits) || 1),
         source: "pix_test_activate",
-        label: "Teste ativado (PIX)",
-        detail: username,
       });
       toast.success(`Pagamento confirmado · plano liberado (${username})`);
       return;
@@ -373,8 +371,6 @@ export async function releasePaidMpOrder(
       notifyUniplayCreditsChanged({
         spent: credits,
         source: "pix_reseller_credits",
-        label: "Recarga de revendedor (PIX)",
-        detail: `${username} · ${credits} créditos`,
       });
       const phone = String(order.phone || item?.phone || "").replace(/\D/g, "");
       const sent = await sendWa(
@@ -491,8 +487,6 @@ export async function releasePaidMpOrder(
       notifyUniplayCreditsChanged({
         spent: option.credits,
         source: "pix_renew",
-        label: "Renovação (PIX)",
-        detail: item?.name || item?.itemId || undefined,
       });
     }
     const phone = String(order.phone || item.phone || "").replace(/\D/g, "");

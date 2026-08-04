@@ -5,10 +5,6 @@ export type UniplayCreditsChangedDetail = {
   /** Créditos consumidos nesta operação (opcional, só informativo). */
   spent?: number;
   source?: string;
-  /** Rótulo curto p/ o log de créditos (ex.: "Renovação (PIX)"). */
-  label?: string;
-  /** Detalhe humano (ex.: usuário/cliente). */
-  detail?: string;
 };
 
 export function notifyUniplayCreditsChanged(

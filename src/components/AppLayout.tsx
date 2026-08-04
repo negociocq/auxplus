@@ -67,8 +67,8 @@ export function AppLayout() {
   } = usePwaInstall();
   useWhatsappAutoSend(user, data);
   useLocalAlerts(user, data);
-  useCreditLog(user);
   useMpOrderAutoRelease(user, data, setData);
+  useCreditLog(user);
   const navigate = useNavigate();
   const location = useLocation();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -502,8 +502,8 @@ export function AppLayout() {
           </button>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <NotificationBell />
             <HeaderUniplayCredits user={user} hideBalance={hideBalance} />
+            <NotificationBell />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

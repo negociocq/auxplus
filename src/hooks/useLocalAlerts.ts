@@ -116,18 +116,21 @@ export function useLocalAlerts(user: User | null, data: AppData) {
           // 1× por dia, a partir do horário configurado (ex.: 08:00)
           const dueKey = `${todayKey()}@${settings.dueTodayTime}`;
           if (settings.lastNotified.dueKey !== dueKey) {
-            await showLocalAlert({
-              title:
-                dueCount === 1
-                  ? "1 vencimento hoje"
-                  : `${dueCount} vencimentos hoje`,
-              body:
-                dueCount === 1
-                  ? "Há 1 item com vencimento hoje nas suas pastas."
-                  : `Há ${dueCount} itens com vencimento hoje nas suas pastas.`,
-              tag: "auxplus-due-today",
-              url: "/dashboard",
-            }, { userId });
+            await showLocalAlert(
+              {
+                title:
+                  dueCount === 1
+                    ? "1 vencimento hoje"
+                    : `${dueCount} vencimentos hoje`,
+                body:
+                  dueCount === 1
+                    ? "Há 1 item com vencimento hoje nas suas pastas."
+                    : `Há ${dueCount} itens com vencimento hoje nas suas pastas.`,
+                tag: "auxplus-due-today",
+                url: "/dashboard",
+              },
+              { userId },
+            );
             patchNotificationLastNotified(userId, { dueKey });
             settings = loadNotificationSettings(userId);
           }
@@ -175,12 +178,15 @@ export function useLocalAlerts(user: User | null, data: AppData) {
                 prev.startsWith(`${todayKey()}:below:${thr}:`) &&
                 prev === userKey;
               if (!sameLevel) {
-                await showLocalAlert({
-                  title: "Créditos UniPlay baixos",
-                  body: `Seu saldo está em ${credits} (abaixo de ${thr}).`,
-                  tag: "auxplus-user-credits",
-                  url: "/automations",
-                }, { userId });
+                await showLocalAlert(
+                  {
+                    title: "Créditos UniPlay baixos",
+                    body: `Seu saldo está em ${credits} (abaixo de ${thr}).`,
+                    tag: "auxplus-user-credits",
+                    url: "/automations",
+                  },
+                  { userId },
+                );
                 patchNotificationLastNotified(userId, {
                   userCreditsKey: userKey,
                 });
@@ -223,15 +229,18 @@ export function useLocalAlerts(user: User | null, data: AppData) {
                   .join(", ");
                 const extra =
                   low.length > 4 ? ` e mais ${low.length - 4}` : "";
-                await showLocalAlert({
-                  title:
-                    low.length === 1
-                      ? "Revendedor com créditos baixos"
-                      : `${low.length} revendedores com créditos baixos`,
-                  body: `${names}${extra} com ≤ ${thr} crédito(s).`,
-                  tag: "auxplus-reseller-credits",
-                  url: "/automations",
-                }, { userId });
+                await showLocalAlert(
+                  {
+                    title:
+                      low.length === 1
+                        ? "Revendedor com créditos baixos"
+                        : `${low.length} revendedores com créditos baixos`,
+                    body: `${names}${extra} com ≤ ${thr} crédito(s).`,
+                    tag: "auxplus-reseller-credits",
+                    url: "/automations",
+                  },
+                  { userId },
+                );
                 patchNotificationLastNotified(userId, { resellerKey });
               }
             }
@@ -286,12 +295,15 @@ export function useLocalAlerts(user: User | null, data: AppData) {
               : alert.role === "client"
                 ? "Cliente"
                 : "Contato";
-          await showLocalAlert({
-            title: "Pessoa no atendimento",
-            body: `${roleLabel} pediu atendentes · ${phoneLabel}`,
-            tag: `auxplus-wa-human-${alert.id}`,
-            url: "/whatsapp",
-          }, { userId });
+          await showLocalAlert(
+            {
+              title: "Pessoa no atendimento",
+              body: `${roleLabel} pediu atendentes · ${phoneLabel}`,
+              tag: `auxplus-wa-human-${alert.id}`,
+              url: "/whatsapp",
+            },
+            { userId },
+          );
           seenIds.push(alert.id);
         }
         if (seenIds.length) {

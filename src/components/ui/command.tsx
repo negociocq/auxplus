@@ -22,7 +22,10 @@ Command.displayName = CommandPrimitive.displayName;
 
 const CommandDialog = ({ children, ...props }: DialogProps) => (
   <Dialog {...props}>
-    <DialogContent className="overflow-hidden p-0 shadow-lg">
+    {/* Mobile: painel ancorado no topo (e não bottom-sheet) para ficar acima do
+        teclado virtual — campo de busca sempre visível enquanto digita.
+        Escopado em max-[639px] para não afetar o modal centralizado do desktop. */}
+    <DialogContent className="overflow-hidden p-0 shadow-lg max-[639px]:inset-x-0 max-[639px]:top-[4vh] max-[639px]:bottom-auto max-[639px]:max-h-[80dvh] max-[639px]:data-[state=open]:slide-in-from-top max-[639px]:data-[state=closed]:slide-out-to-top">
       <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
         {children}
       </Command>

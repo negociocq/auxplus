@@ -1,8 +1,8 @@
-export type FolderType = "Cliente" | "Dívida";
+export type FolderType = "Cliente" | "Produto" | "Dívida";
 
 /** Pastas que entram no lucro (receita). Dívida = gasto. */
 export function isRevenueFolderType(type: FolderType): boolean {
-  return type === "Cliente";
+  return type === "Cliente" || type === "Produto";
 }
 
 export function isExpenseFolderType(type: FolderType): boolean {

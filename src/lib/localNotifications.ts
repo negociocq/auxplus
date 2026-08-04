@@ -9,6 +9,12 @@ export type LocalAlertPayload = {
   url?: string;
 };
 
+export type ShowLocalAlertOpts = {
+  toastFallback?: boolean;
+  /** Dono da notificação — grava também no sino do topo (central). */
+  userId?: string;
+};
+
 export function notificationPermission(): NotificationPermission | "unsupported" {
   if (typeof window === "undefined" || !("Notification" in window)) {
     return "unsupported";
@@ -33,24 +39,19 @@ export async function requestNotificationPermission(): Promise<
 
 export async function showLocalAlert(
   payload: LocalAlertPayload,
-  opts?: { toastFallback?: boolean; userId?: string },
+  opts?: ShowLocalAlertOpts,
 ): Promise<boolean> {
+  // Todo alerta que chega ao mobile também cai no sino do topo do app.
+  if (opts?.userId) {
+    pushNotification(opts.userId, {
+      title: payload.title,
+      body: payload.body,
+      tag: payload.tag,
+      url: payload.url,
+    });
+  }
   const permission = notificationPermission();
   const url = payload.url || "/dashboard";
-
-  // Toda notificação enviada ao mobile também entra na central (sino do topo).
-  if (opts?.userId) {
-    try {
-      pushNotification(opts.userId, {
-        title: payload.title,
-        body: payload.body,
-        tag: payload.tag,
-        url,
-      });
-    } catch {
-      /* registro da central falhou — segue o alerta normal */
-    }
-  }
 
   if (permission === "granted") {
     try {
