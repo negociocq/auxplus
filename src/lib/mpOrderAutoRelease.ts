@@ -4,6 +4,7 @@
  */
 import { toast } from "sonner";
 import type { AppData, Item, User } from "@/types";
+import { supabase } from "@/integrations/supabase/client";
 import { formatBrDate } from "@/lib/format";
 import {
   loadAutomationsConfig,
@@ -66,6 +67,62 @@ import { isRevenueFolderType } from "@/types";
 export const MP_ORDERS_CHANGED_EVENT = "auxplus:mp-orders-changed";
 
 const releasingIds = new Set<string>();
+
+/**
+ * Trava atômica de liberação (por pedido). Só um lado — cliente ou servidor
+ * (mp-webhook) — pode liberar o mesmo PIX. O `insert` com chave única é o
+ * compare-and-set: quem inserir primeiro vence; o outro lado desiste.
+ * Travas velhas (> TTL, ex.: crash) são removidas para permitir retry.
+ */
+const CLAIM_TTL_MS = 2 * 60 * 1000;
+const claimKey = (orderId: string) => `mp_claim_${orderId}`;
+
+async function acquireReleaseClaim(
+  orderId: string,
+  claimer: string,
+): Promise<boolean> {
+  const key = claimKey(orderId);
+  const now = Date.now();
+  try {
+    const { data: existing } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", key)
+      .maybeSingle();
+    const existingAt = Number(
+      (existing?.value as { at?: number } | undefined)?.at || 0,
+    );
+    if (existing && Number.isFinite(existingAt) && now - existingAt < CLAIM_TTL_MS) {
+      return false; // outro processo está liberando (ou já liberou)
+    }
+    if (existing) {
+      // trava velha (crash) → remove para poder assumir
+      await supabase.from("platform_settings").delete().eq("key", key);
+    }
+    const ins = await supabase
+      .from("platform_settings")
+      .insert({
+        key,
+        value: { at: now, claimer },
+        updated_at: new Date().toISOString(),
+      })
+      .select("key");
+    return Array.isArray(ins.data) && ins.data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function releaseClaim(orderId: string) {
+  try {
+    await supabase
+      .from("platform_settings")
+      .delete()
+      .eq("key", claimKey(orderId));
+  } catch {
+    /* TTL limpa a trava */
+  }
+}
 
 export type MpReleaseCtx = {
   user: User;
@@ -183,7 +240,10 @@ export async function releasePaidMpOrder(
 ): Promise<void> {
   const { user, items, setData } = ctx;
   if (releasingIds.has(order.id)) return;
-  const latest = loadMpOrders(user.id).find((o) => o.id === order.id) || order;
+  // Sincroniza nuvem → local para enxergar liberação/trava do servidor
+  // (mp-webhook) antes de liberar — evita renovar o mesmo PIX 2×.
+  await loadMpOrdersRemote(user.id).catch(() => undefined);
+  let latest = loadMpOrders(user.id).find((o) => o.id === order.id) || order;
   if (latest.status === "released" || latest.releasedAt) return;
   // Servidor (mp-webhook) já está liberando — evita renovar 2×
   if (latest.error === "__releasing__") {
@@ -191,6 +251,25 @@ export async function releasePaidMpOrder(
     if (Date.now() - t < 2 * 60 * 1000) return;
   }
   if (latest.status !== "approved") return;
+
+  // TRAVA ATÔMICA: só um lado (cliente ou servidor) pode liberar o pedido.
+  const gotClaim = await acquireReleaseClaim(order.id, "client");
+  if (!gotClaim) return; // o outro lado já está liberando (ou já liberou)
+
+  // Re-checa após adquirir a trava (pode ter sido liberado no meio do caminho).
+  latest = loadMpOrders(user.id).find((o) => o.id === order.id) || latest;
+  if (latest.status === "released" || latest.releasedAt) {
+    await releaseClaim(order.id);
+    return;
+  }
+
+  // Marca liberação em andamento na nuvem (mesma trava legada do servidor).
+  await persistOrders(
+    user.id,
+    patchMpOrder(loadMpOrders(user.id), order.id, {
+      error: "__releasing__",
+    }),
+  );
 
   releasingIds.add(order.id);
   const config = loadAutomationsConfig(user.id);
@@ -512,6 +591,7 @@ export async function releasePaidMpOrder(
         error: msg,
       }),
     );
+    await releaseClaim(order.id);
     const username = String(
       order.panelUsername ||
         items.find((i) => i.id === order.itemRefId)?.itemId ||

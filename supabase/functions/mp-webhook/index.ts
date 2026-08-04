@@ -26,6 +26,9 @@ const corsHeaders: Record<string, string> = {
 const PANEL_ORIGIN = "https://searchdefense.top";
 const UPSTREAM = "https://gesapioffice.com/api";
 const RELEASING_MARK = "__releasing__";
+/** Trava atômica de liberação (por pedido): só um lado libera o PIX. */
+const CLAIM_TTL_MS = 2 * 60 * 1000;
+const claimKey = (orderId: string) => `mp_claim_${orderId}`;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -576,6 +579,59 @@ async function saveOrders(
   await putSetting(client, `mp_orders_user_${userId}`, { orders: trimmed });
 }
 
+/**
+ * Trava atômica de liberação (por pedido): `insert` com chave única é o
+ * compare-and-set — quem inserir primeiro vence, o outro lado desiste.
+ * Travas velhas (> TTL, ex.: crash) são removidas para permitir retry.
+ */
+async function acquireReleaseClaim(
+  client: ReturnType<typeof createClient>,
+  orderId: string,
+  claimer: string,
+): Promise<boolean> {
+  const key = claimKey(orderId);
+  const now = Date.now();
+  try {
+    const { data: existing } = await client
+      .from("platform_settings")
+      .select("value")
+      .eq("key", key)
+      .maybeSingle();
+    const existingAt = Number(
+      (existing?.value as { at?: number } | undefined)?.at || 0,
+    );
+    if (existing && Number.isFinite(existingAt) && now - existingAt < CLAIM_TTL_MS) {
+      return false; // outro processo está liberando (ou já liberou)
+    }
+    if (existing) {
+      // trava velha (crash) → remove para poder assumir
+      await client.from("platform_settings").delete().eq("key", key);
+    }
+    const ins = await client
+      .from("platform_settings")
+      .insert({
+        key,
+        value: { at: now, claimer },
+        updated_at: new Date().toISOString(),
+      })
+      .select("key");
+    return Array.isArray(ins.data) && ins.data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function releaseClaim(
+  client: ReturnType<typeof createClient>,
+  orderId: string,
+) {
+  try {
+    await client.from("platform_settings").delete().eq("key", claimKey(orderId));
+  } catch {
+    /* TTL limpa a trava */
+  }
+}
+
 async function claimOrder(
   client: ReturnType<typeof createClient>,
   found: FoundOrder,
@@ -586,6 +642,9 @@ async function claimOrder(
     const t = Date.parse(String(order.updatedAt || "")) || 0;
     if (Date.now() - t < 2 * 60 * 1000) return null;
   }
+  // Trava atômica: só um lado (webhook ou cliente) pode liberar o pedido.
+  const gotClaim = await acquireReleaseClaim(client, order.id, "server");
+  if (!gotClaim) return null;
   const now = new Date().toISOString();
   const next = orders.map((o) =>
     o.id === order.id
@@ -928,6 +987,7 @@ async function processApprovedPayment(
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha ao liberar";
     await markOrderError(client, found.userId, claimed.id, msg);
+    await releaseClaim(client, claimed.id);
     // Avisa cliente
     try {
       const phone = String(claimed.phone || "").replace(/\D/g, "");

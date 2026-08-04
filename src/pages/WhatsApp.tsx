@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   Wallet,
   Headset,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBrDate } from "@/lib/format";
@@ -119,6 +121,7 @@ export default function WhatsAppPage() {
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [logs, setLogs] = useState<WaSendLog[]>([]);
   const [limitsOpen, setLimitsOpen] = useState(false);
+  const [showSent, setShowSent] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<
     null | "messageBefore" | "messageOnDay" | "limits"
   >(null);
@@ -203,6 +206,28 @@ export default function WhatsAppPage() {
     const day = format(new Date(), "yyyy-MM-dd");
     return logs.filter((l) => l.day === day && l.ok).length;
   }, [logs]);
+
+  /** Quem já recebeu hoje (log ok), com nome/vencimento resolvidos do item. */
+  const sentToday = useMemo(() => {
+    const day = format(new Date(), "yyyy-MM-dd");
+    return logs
+      .filter((l) => l.day === day && l.ok)
+      .slice()
+      .sort((a, b) => (b.sentAt || "").localeCompare(a.sentAt || ""))
+      .map((l) => {
+        const item = myItems.find(
+          (i) =>
+            (i.itemId &&
+              i.itemId.trim().toLowerCase() === l.itemId.trim().toLowerCase()) ||
+            (i.phone && i.phone === l.phone),
+        );
+        return {
+          log: l,
+          name: item?.name || l.itemId || maskPhone(l.phone),
+          dueDate: item?.dueDate,
+        };
+      });
+  }, [logs, myItems]);
 
   const clearTodaySent = () => {
     if (!user) return;
@@ -1073,14 +1098,31 @@ export default function WhatsAppPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {sentTodayCount > 0 ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={clearTodaySent}
-                  >
-                    Recolocar enviados na fila
-                  </Button>
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={clearTodaySent}
+                    >
+                      Recolocar enviados na fila
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSent((v) => !v)}
+                    >
+                      {showSent ? (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                      {showSent
+                        ? "Ocultar enviados"
+                        : `Ver enviados (${sentTodayCount})`}
+                    </Button>
+                  </>
                 ) : null}
                 <Button
                   type="button"
@@ -1160,6 +1202,40 @@ export default function WhatsAppPage() {
                 })}
               </ul>
             )}
+
+            {showSent && sentTodayCount > 0 ? (
+              <div className="space-y-2 border-t border-border/70 pt-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Já enviados hoje ({sentToday.length})
+                </p>
+                <ul className="space-y-1.5">
+                  {sentToday.map((r, i) => (
+                    <li
+                      key={`${r.log.itemId}-${r.log.sentAt}-${i}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{r.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {r.dueDate
+                            ? `vence ${formatBrDate(r.dueDate)}`
+                            : "sem vencimento"}{" "}
+                          · {maskPhone(r.log.phone)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant="outline">
+                          {r.log.kind === "before" ? "Antecipado" : "Hoje"}
+                        </Badge>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {format(new Date(r.log.sentAt), "HH:mm")}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </section>
         </TabsContent>
 
