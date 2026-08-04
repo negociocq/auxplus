@@ -20,6 +20,7 @@ import {
 import {
   clearNotifications,
   getNotifications,
+  loadNotificationsRemote,
   markAllNotificationsRead,
   markNotificationRead,
   subscribeNotifications,
@@ -61,16 +62,41 @@ export function NotificationBell() {
     setUnread(unreadNotificationsCount(userId));
   };
 
+  // Puxa da nuvem (notificações vinculadas à conta) para refletir o que foi
+  // gerado em qualquer outro dispositivo logado. Roda no mount e por polling.
   useEffect(() => {
+    if (!userId) {
+      refresh();
+      return;
+    }
     refresh();
+    let cancelled = false;
+    const sync = async () => {
+      await loadNotificationsRemote(userId).catch(() => undefined);
+      if (!cancelled) refresh();
+    };
+    void sync();
+    const id = window.setInterval(() => void sync(), 45_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void sync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     const off = subscribeNotifications(refresh);
-    return off;
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      off();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const handleOpen = (isOpen: boolean) => {
     setOpen(isOpen);
-    if (isOpen) refresh();
+    if (isOpen) {
+      refresh();
+      if (userId) void loadNotificationsRemote(userId).catch(() => undefined).then(() => refresh());
+    }
   };
 
   const select = (n: InAppNotification) => {

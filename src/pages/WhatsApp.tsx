@@ -817,7 +817,7 @@ export default function WhatsAppPage() {
               <div>
                 <p className="text-sm font-medium">Antes do vencimento</p>
                 <p className="text-xs text-muted-foreground">
-                  Inclui quem vence daqui 1 até X dias (e ainda não foi avisado)
+                  Envia 1 vez, no exato dia X antes do vencimento
                 </p>
               </div>
               <Switch
