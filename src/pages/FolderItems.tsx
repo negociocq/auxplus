@@ -10,6 +10,7 @@ import {
   ChartColumn,
   ChevronDown,
   ChevronUp,
+  History,
   Loader2,
   MoreVertical,
   Package,
@@ -154,11 +155,16 @@ import {
   getLastIssuedIptvToken,
   listIptvResellers,
   listIptvUsers,
+  type IptvResellerMovement,
 } from "@/lib/iptvPanelApi";
 import {
+  applyResellerMovementsToFolder,
+  buildResellerMovementLogs,
+  sumMovementsByMonth,
   syncIptvResellersToFolder,
   syncIptvUsersToFolder,
 } from "@/lib/iptvAutomation";
+import { ResellerMovementsDialog } from "@/components/shared/ResellerMovementsDialog";
 import {
   excludeFromSync,
   excludedUsernamesForFolder,
@@ -319,6 +325,9 @@ export default function FolderItems() {
     useState("");
   const [uniplayLinked, setUniplayLinked] = useState(false);
   const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(8.5);
+  const [movementsOpen, setMovementsOpen] = useState(false);
+  const [movementsUsername, setMovementsUsername] = useState("");
+  const [movesByMonth, setMovesByMonth] = useState<Record<string, number>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folder = data.folders.find(
@@ -352,6 +361,67 @@ export default function FolderItems() {
   /** Botão de sync só com UniPlay conectada. */
   const uniplaySyncEnabled = uniplaySyncMode != null && uniplayLinked;
   const isResellerFolder = uniplaySyncMode === "resellers";
+
+  const openMovements = (item: Item) => {
+    setMovementsUsername(item.itemId);
+    setMovementsOpen(true);
+  };
+
+  /** Aplica as movimentações no item (créditos + receitas por mês). */
+  const applyMovementsItem = (moves: IptvResellerMovement[]) => {
+    const uname = String(movementsUsername || "").trim().toLowerCase();
+    if (!folder || !uname) return;
+    setData((prev) =>
+      applyResellerMovementsToFolder(
+        prev,
+        folder.id,
+        new Map<string, IptvResellerMovement[]>([[uname, moves]]),
+      ),
+    );
+    toast.success("Recargas aplicadas (créditos + receitas por mês)");
+    setMovementsOpen(false);
+  };
+
+  // Receita por mês: busca as movimentações dos revendedores ao abrir a pasta
+  useEffect(() => {
+    if (!user || !isResellerFolder || !uniplayLinked) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const cfg = await loadAutomationsConfigRemote(user.id).catch(() =>
+          loadAutomationsConfig(user.id),
+        );
+        const plat = await loadIptvPlatformConfig();
+        const ensured = await ensureIptvToken({
+          apiBaseUrl: plat.apiBaseUrl || cfg.iptvApiBaseUrl,
+          bearerToken: cfg.iptvBearerToken?.trim() || "",
+          username: cfg.iptvUsername?.trim() || undefined,
+          password: cfg.iptvPassword || undefined,
+          defaultPackage: plat.packageId || "1",
+          regPassword: plat.regPassword || undefined,
+          apiProxyUrl: plat.apiProxyUrl || undefined,
+        });
+        const creds = {
+          apiBaseUrl: plat.apiBaseUrl || cfg.iptvApiBaseUrl,
+          bearerToken: ensured.token,
+          username: cfg.iptvUsername?.trim() || undefined,
+          password: cfg.iptvPassword || undefined,
+          defaultPackage: plat.packageId.trim() || "1",
+          regPassword: plat.regPassword?.trim() || undefined,
+          apiProxyUrl: plat.apiProxyUrl?.trim() || undefined,
+        };
+        const rows = await listIptvResellers(creds);
+        const logs = await buildResellerMovementLogs(creds, rows);
+        if (!cancelled) setMovesByMonth(sumMovementsByMonth(logs));
+      } catch {
+        if (!cancelled) setMovesByMonth({});
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isResellerFolder, uniplayLinked]);
 
   const formatItemAmount = (value: number) =>
     isResellerFolder
@@ -414,6 +484,13 @@ export default function FolderItems() {
             iptvBearerToken: issued,
           });
         }
+        // Traz todo o histórico de recargas e recalcula créditos + receitas/mês
+        let movementLogs = new Map<string, IptvResellerMovement[]>();
+        try {
+          movementLogs = await buildResellerMovementLogs(creds, rows);
+        } catch {
+          /* recálculo opcional */
+        }
         setData((prev) => {
           const result = syncIptvResellersToFolder(prev, folder.id, rows, {
             excludedUsernames: excluded,
@@ -421,11 +498,18 @@ export default function FolderItems() {
           created = result.created;
           updated = result.updated;
           skipped = result.skipped;
-          return result.data;
+          return movementLogs.size
+            ? applyResellerMovementsToFolder(
+                result.data,
+                folder.id,
+                movementLogs,
+              )
+            : result.data;
         });
         toast.success(
           `Revendedores: ${updated} atualizado(s) · ${created} novo(s)` +
-            (skipped ? ` · ${skipped} sem mudança` : ""),
+            (skipped ? ` · ${skipped} sem mudança` : "") +
+            (movementLogs.size ? ` · créditos e receitas recalculados` : ""),
         );
       } else {
         const users = await listIptvUsers(creds, { activeOnly: true });
@@ -545,11 +629,20 @@ export default function FolderItems() {
   }, [folderItems]);
 
   const chartData = useMemo(
-    () =>
-      isResellerFolder
-        ? sumRecordedPaymentsByMonth(folderItems, chartYear)
-        : sumPaymentsByMonth(folderItems, chartYear),
-    [chartYear, folderItems, isResellerFolder],
+    () => {
+      const monthKey = (idx: number) =>
+        `${chartYear}-${String(idx + 1).padStart(2, "0")}`;
+      if (isResellerFolder) {
+        return sumRecordedPaymentsByMonth(folderItems, chartYear).map(
+          (row, idx) => ({
+            ...row,
+            total: row.total + (movesByMonth[monthKey(idx)] || 0),
+          }),
+        );
+      }
+      return sumPaymentsByMonth(folderItems, chartYear);
+    },
+    [chartYear, folderItems, isResellerFolder, movesByMonth],
   );
 
   const annualBalance = useMemo(
@@ -1195,6 +1288,15 @@ export default function FolderItems() {
                                 <Pencil className="h-4 w-4" />
                                 Editar
                               </DropdownMenuItem>
+                              {isResellerFolder ? (
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={() => openMovements(item)}
+                                >
+                                  <History className="h-4 w-4" />
+                                  Movimentações
+                                </DropdownMenuItem>
+                              ) : null}
                               <DropdownMenuItem
                                 className="gap-2"
                                 onClick={() =>
@@ -1432,6 +1534,15 @@ export default function FolderItems() {
                             <Pencil className="h-4 w-4" />
                             Editar
                           </DropdownMenuItem>
+                          {isResellerFolder ? (
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => openMovements(item)}
+                            >
+                              <History className="h-4 w-4" />
+                              Movimentações
+                            </DropdownMenuItem>
+                          ) : null}
                           <DropdownMenuItem
                             className="gap-2"
                             onClick={() =>
@@ -1822,6 +1933,17 @@ export default function FolderItems() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ResellerMovementsDialog
+        open={movementsOpen}
+        onOpenChange={(open) => {
+          if (!open) setMovementsOpen(false);
+        }}
+        user={user}
+        username={movementsUsername || undefined}
+        displayName={folder?.name}
+        onApply={applyMovementsItem}
+      />
 
       {/* Status charts sheet */}
       <Sheet open={showStatusSlide} onOpenChange={setShowStatusSlide}>

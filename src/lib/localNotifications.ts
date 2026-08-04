@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { pushNotification } from "@/lib/notificationsCenter";
 
 export type LocalAlertPayload = {
   title: string;
@@ -32,10 +33,24 @@ export async function requestNotificationPermission(): Promise<
 
 export async function showLocalAlert(
   payload: LocalAlertPayload,
-  opts?: { toastFallback?: boolean },
+  opts?: { toastFallback?: boolean; userId?: string },
 ): Promise<boolean> {
   const permission = notificationPermission();
   const url = payload.url || "/dashboard";
+
+  // Toda notificação enviada ao mobile também entra na central (sino do topo).
+  if (opts?.userId) {
+    try {
+      pushNotification(opts.userId, {
+        title: payload.title,
+        body: payload.body,
+        tag: payload.tag,
+        url,
+      });
+    } catch {
+      /* registro da central falhou — segue o alerta normal */
+    }
+  }
 
   if (permission === "granted") {
     try {

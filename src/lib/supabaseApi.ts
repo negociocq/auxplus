@@ -43,7 +43,7 @@ function normalizeFolderType(raw: unknown, name: string): Folder["type"] {
   if (t === "Dívida" || t === "Divida") return "Dívida";
   // Migração: pasta "Dívidas" antiga vinha como Produto
   if (/^d[ií]vidas?$/i.test(name.trim())) return "Dívida";
-  if (t === "Produto") return "Produto";
+  // Pasta "Produto" não existe mais — vira Cliente
   return "Cliente";
 }
 

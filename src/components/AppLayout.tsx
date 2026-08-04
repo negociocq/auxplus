@@ -30,6 +30,7 @@ import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { useWhatsappAutoSend } from "@/hooks/useWhatsappAutoSend";
 import { useLocalAlerts } from "@/hooks/useLocalAlerts";
 import { useMpOrderAutoRelease } from "@/hooks/useMpOrderAutoRelease";
+import { useCreditLog } from "@/hooks/useCreditLog";
 import { fileToAvatarDataUrl, saveLocalAvatar } from "@/lib/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -49,6 +50,7 @@ import {
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { HeaderUniplayCredits } from "@/components/layout/HeaderUniplayCredits";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BrandLogo } from "@/components/shared/BrandLogo";
 import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -65,6 +67,7 @@ export function AppLayout() {
   } = usePwaInstall();
   useWhatsappAutoSend(user, data);
   useLocalAlerts(user, data);
+  useCreditLog(user);
   useMpOrderAutoRelease(user, data, setData);
   const navigate = useNavigate();
   const location = useLocation();
@@ -499,6 +502,7 @@ export function AppLayout() {
           </button>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            <NotificationBell />
             <HeaderUniplayCredits user={user} hideBalance={hideBalance} />
             <Tooltip>
               <TooltipTrigger asChild>

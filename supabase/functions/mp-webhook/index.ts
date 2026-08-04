@@ -415,7 +415,13 @@ async function addResellerCredits(
   if (!Number.isFinite(idRes) || idRes <= 0) {
     throw new Error("Revendedor sem ID numérico");
   }
-  const sale = Math.min(100, Math.max(0.01, Math.round(saleBrl * 100) / 100));
+  // UniPlay: `sale` = valor POR CRÉDITO. O total (saleBrl) ÷ créditos vira o
+  // unitário — senão a UniPlay registra total ×10 (ex.: 10×85 = 850 em vez de 85).
+  const unitPrice = saleBrl / Math.max(1, Math.floor(Number(credits) || 1));
+  const sale = Math.min(
+    100,
+    Math.max(0.01, Math.round(unitPrice * 100) / 100),
+  );
   const actionBody = JSON.stringify({
     action: 0,
     credits: Math.floor(credits),

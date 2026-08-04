@@ -14,6 +14,7 @@ import {
 } from "@/lib/iptvPanelApi";
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
 import { onUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
+import { setLastCreditBalance } from "@/lib/creditLog";
 import {
   Tooltip,
   TooltipContent,
@@ -79,6 +80,7 @@ export function HeaderUniplayCredits({ user, hideBalance }: Props) {
         if (!cancelled) {
           setCredits(bal.credits);
           setConnected(true);
+          setLastCreditBalance(user.id, bal.credits);
         }
       } catch {
         if (!cancelled) {

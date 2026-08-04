@@ -3,8 +3,16 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
 
-const Dialog = DialogPrimitive.Root;
+/**
+ * Todo modal abre e, no celular, o botão Voltar fecha em vez de sair da página.
+ * Também vale no navegador (voltar fecha o modal).
+ */
+function Dialog({ open, onOpenChange, ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  useDialogHistoryBack(Boolean(open), () => onOpenChange?.(false), "app-modal");
+  return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props} />;
+}
 
 const DialogTrigger = DialogPrimitive.Trigger;
 

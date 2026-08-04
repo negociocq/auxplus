@@ -73,7 +73,13 @@ import {
   ensureIptvToken,
   fetchIptvPanelCredits,
   formatIptvCredits,
+  listIptvResellers,
+  type IptvPanelCreds,
 } from "@/lib/iptvPanelApi";
+import {
+  buildResellerMovementLogs,
+  sumMovementsByMonth,
+} from "@/lib/iptvAutomation";
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
 import { onUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -124,6 +130,9 @@ export default function Dashboard() {
   const [loadingCredits, setLoadingCredits] = useState(false);
   const [resellersFolderId, setResellersFolderId] = useState("");
   const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(8.5);
+  const [resellerMovesByMonth, setResellerMovesByMonth] = useState<
+    Record<string, number>
+  >({});
 
   useEffect(() => {
     if (!user) {
@@ -195,6 +204,49 @@ export default function Dashboard() {
       offCredits();
     };
   }, [user]);
+
+  // Movimentações de revendedores → Receita por mês (sem depender de sincronizar)
+  useEffect(() => {
+    if (!user || !resellersFolderId || !uniplayConnected) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const cfg = await loadAutomationsConfigRemote(user.id).catch(() =>
+          loadAutomationsConfig(user.id),
+        );
+        const plat = await loadIptvPlatformConfig();
+        const ensured = await ensureIptvToken({
+          apiBaseUrl: plat.apiBaseUrl || cfg.iptvApiBaseUrl,
+          bearerToken: cfg.iptvBearerToken?.trim() || "",
+          username: cfg.iptvUsername || undefined,
+          password: cfg.iptvPassword || undefined,
+          defaultPackage: plat.packageId || "1",
+          regPassword: plat.regPassword || undefined,
+          apiProxyUrl: plat.apiProxyUrl || undefined,
+        });
+        const creds: IptvPanelCreds = {
+          apiBaseUrl: plat.apiBaseUrl || cfg.iptvApiBaseUrl,
+          bearerToken: ensured.token,
+          username: cfg.iptvUsername || undefined,
+          password: cfg.iptvPassword || undefined,
+          defaultPackage: plat.packageId.trim() || "1",
+          regPassword: plat.regPassword?.trim() || undefined,
+          apiProxyUrl: plat.apiProxyUrl?.trim() || undefined,
+        };
+        const rows = await listIptvResellers(creds);
+        const logs = await buildResellerMovementLogs(creds, rows);
+        if (!cancelled) setResellerMovesByMonth(sumMovementsByMonth(logs));
+      } catch {
+        if (!cancelled) setResellerMovesByMonth({});
+      }
+    };
+    void run();
+    const off = onUniplayCreditsChanged(() => void run());
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [user, resellersFolderId, uniplayConnected]);
 
   const folders = useMemo(
     () =>
@@ -385,10 +437,22 @@ export default function Dashboard() {
   }, [chartFolderId, myItems, revenueFolderIds]);
 
   const monthlyChart = useMemo(() => {
+    const monthKey = (idx: number) =>
+      `${chartYear}-${String(idx + 1).padStart(2, "0")}`;
+    // Acrescenta as movimentações (recargas) de revendedores a cada mês
+    const applyMoves = (
+      rows: { name: string; total: number; itens: number }[],
+    ) =>
+      rows.map((row, idx) => ({
+        ...row,
+        total: row.total + (resellerMovesByMonth[monthKey(idx)] || 0),
+      }));
     const isResellerFolder =
       Boolean(resellersFolderId) && chartFolderId === resellersFolderId;
     if (isResellerFolder) {
-      return sumRecordedPaymentsByMonth(chartItems, chartYear);
+      return applyMoves(
+        sumRecordedPaymentsByMonth(chartItems, chartYear),
+      );
     }
     if (chartFolderId === "all" && resellersFolderId) {
       const clients = chartItems.filter(
@@ -398,7 +462,9 @@ export default function Dashboard() {
         (i) => i.folderId === resellersFolderId,
       );
       const a = sumPaymentsByMonth(clients, chartYear);
-      const b = sumRecordedPaymentsByMonth(resellers, chartYear);
+      const b = applyMoves(
+        sumRecordedPaymentsByMonth(resellers, chartYear),
+      );
       return a.map((row, idx) => ({
         name: row.name,
         total: row.total + (b[idx]?.total || 0),
@@ -406,7 +472,13 @@ export default function Dashboard() {
       }));
     }
     return sumPaymentsByMonth(chartItems, chartYear);
-  }, [chartYear, chartItems, chartFolderId, resellersFolderId]);
+  }, [
+    chartYear,
+    chartItems,
+    chartFolderId,
+    resellersFolderId,
+    resellerMovesByMonth,
+  ]);
 
   const annualBalance = useMemo(() => {
     const isResellerFolder =
@@ -456,7 +528,6 @@ export default function Dashboard() {
   const byType = useMemo(() => {
     const map: Record<FolderType, Folder[]> = {
       Cliente: [],
-      Produto: [],
       Dívida: [],
     };
     for (const f of folders) map[f.type].push(f);
@@ -664,10 +735,9 @@ export default function Dashboard() {
         >
           <TabsList className="bg-background/80">
             <TabsTrigger value="Cliente">Clientes</TabsTrigger>
-            <TabsTrigger value="Produto">Produtos</TabsTrigger>
             <TabsTrigger value="Dívida">Dívidas</TabsTrigger>
           </TabsList>
-          {(["Cliente", "Produto", "Dívida"] as FolderType[]).map((t) => (
+          {(["Cliente", "Dívida"] as FolderType[]).map((t) => (
             <TabsContent key={t} value={t} className="mt-4">
               {byType[t].length === 0 ? (
                 <EmptyState
@@ -1107,11 +1177,9 @@ export default function Dashboard() {
           <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
             <StatCard
               label="Pastas"
-              value={num(byType.Cliente.length + byType.Produto.length)}
+              value={num(byType.Cliente.length)}
               icon={FolderKanban}
-              hint={text(
-                `${byType.Cliente.length} clientes · ${byType.Produto.length} produtos`,
-              )}
+              hint={text(`${byType.Cliente.length} clientes`)}
               delay={0.02}
             />
             <StatCard
@@ -1426,7 +1494,6 @@ export default function Dashboard() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Cliente">Cliente</SelectItem>
-                  <SelectItem value="Produto">Produto</SelectItem>
                   <SelectItem value="Dívida">Dívida</SelectItem>
                 </SelectContent>
               </Select>

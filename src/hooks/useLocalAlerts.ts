@@ -127,7 +127,7 @@ export function useLocalAlerts(user: User | null, data: AppData) {
                   : `Há ${dueCount} itens com vencimento hoje nas suas pastas.`,
               tag: "auxplus-due-today",
               url: "/dashboard",
-            });
+            }, { userId });
             patchNotificationLastNotified(userId, { dueKey });
             settings = loadNotificationSettings(userId);
           }
@@ -180,7 +180,7 @@ export function useLocalAlerts(user: User | null, data: AppData) {
                   body: `Seu saldo está em ${credits} (abaixo de ${thr}).`,
                   tag: "auxplus-user-credits",
                   url: "/automations",
-                });
+                }, { userId });
                 patchNotificationLastNotified(userId, {
                   userCreditsKey: userKey,
                 });
@@ -231,7 +231,7 @@ export function useLocalAlerts(user: User | null, data: AppData) {
                   body: `${names}${extra} com ≤ ${thr} crédito(s).`,
                   tag: "auxplus-reseller-credits",
                   url: "/automations",
-                });
+                }, { userId });
                 patchNotificationLastNotified(userId, { resellerKey });
               }
             }
@@ -291,7 +291,7 @@ export function useLocalAlerts(user: User | null, data: AppData) {
             body: `${roleLabel} pediu atendentes · ${phoneLabel}`,
             tag: `auxplus-wa-human-${alert.id}`,
             url: "/whatsapp",
-          });
+          }, { userId });
           seenIds.push(alert.id);
         }
         if (seenIds.length) {

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
 import { format } from "date-fns";
 import {
   Cable,
@@ -28,6 +27,8 @@ import { formatBrDate } from "@/lib/format";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { ResellerMovementsDialog } from "@/components/shared/ResellerMovementsDialog";
+import { CreditLogView } from "@/components/shared/CreditLogView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,7 +78,9 @@ import {
   nextDueAfterRenew,
   patchIptvJob,
   saveIptvJobs,
+  applyResellerMovementsToFolder,
   applyResellerRechargeToItem,
+  buildResellerMovementLogs,
   syncIptvResellersToFolder,
   type IptvJob,
 } from "@/lib/iptvAutomation";
@@ -89,6 +92,7 @@ import {
   notifyUniplayCreditsChanged,
   onUniplayCreditsChanged,
 } from "@/lib/uniplayCreditsSync";
+import { setLastCreditBalance } from "@/lib/creditLog";
 import {
   activatePartnerApp,
   addIptvResellerCredits,
@@ -123,6 +127,7 @@ import {
   type IptvPanelCreds,
   type IptvRenewOption,
   type IptvReseller,
+  type IptvResellerMovement,
   type PartnerAppId,
   type SmartAppEntry,
 } from "@/lib/iptvPanelApi";
@@ -138,6 +143,24 @@ import { openPanelWindow } from "@/lib/panelKeepAlive";
 import { SUPABASE_URL } from "@/integrations/supabase/client";
 import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
+
+/**
+ * Teste "done" sem vencimento que ficou velho demais = fantasma
+ * (foi gerado via WhatsApp/bot mas não existe mais no painel). Deve sumir.
+ */
+function isStaleTestPhantom(
+  job: Pick<
+    IptvJob,
+    "status" | "dueDate" | "createdAt" | "updatedAt" | "testHours"
+  >,
+): boolean {
+  if (job.status === "pending" || job.status === "doing") return false;
+  if (String(job.dueDate || "").trim()) return false; // tem vencimento — outra regra decide
+  const at = Date.parse(String(job.createdAt || job.updatedAt || "")) || 0;
+  if (!at) return false;
+  const life = Math.max(1, Number(job.testHours) || 6) * 3_600_000;
+  return Date.now() - at > Math.max(life * 1.5, 12 * 3_600_000);
+}
 
 function statusLabel(s: IptvJob["status"]) {
   switch (s) {
@@ -185,6 +208,10 @@ export default function Automations() {
   const [syncingResellers, setSyncingResellers] = useState(false);
   const [resellersQ, setResellersQ] = useState("");
   const [creditTarget, setCreditTarget] = useState<IptvReseller | null>(null);
+  const [movementsOpen, setMovementsOpen] = useState(false);
+  const [movementsReseller, setMovementsReseller] = useState<IptvReseller | null>(
+    null,
+  );
   const [creditAmount, setCreditAmount] = useState(String(IPTV_RESELLER_CREDITS_MIN));
   const [addingCredits, setAddingCredits] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -495,7 +522,7 @@ export default function Automations() {
       });
   }, [data.items, myFolders]);
 
-  /** Ativos: Longe / Perto de vencer (vencidos ficam de fora) */
+  /** Ativos: Longe / Perto de vencer */
   const activeClients = useMemo(
     () =>
       clients.filter(
@@ -503,6 +530,18 @@ export default function Automations() {
           c.status === "Longe de Vencer" || c.status === "Perto de Vencer",
       ),
     [clients],
+  );
+
+  /** Vencidos: com vencimento passado */
+  const overdueClients = useMemo(
+    () => clients.filter((c) => c.status === "Já Vencido"),
+    [clients],
+  );
+
+  /** Lista visível: longe + perto + vencidos */
+  const listableClients = useMemo(
+    () => [...activeClients, ...overdueClients],
+    [activeClients, overdueClients],
   );
 
   const filtered = useMemo(() => {
@@ -514,7 +553,7 @@ export default function Automations() {
       if (status === "Longe de Vencer") return 1;
       return 2;
     };
-    return activeClients
+    return listableClients
       .filter((i) => {
         if (term.length < 2) return true;
         return (
@@ -531,7 +570,7 @@ export default function Automations() {
         return da.localeCompare(db);
       })
       .slice(0, showClientsList && term.length < 2 ? 100 : 50);
-  }, [activeClients, q, showClientsList]);
+  }, [listableClients, q, showClientsList]);
 
   const jobMatchesQuery = (job: IptvJob, query: string) => {
     const qn = query.trim().toLowerCase();
@@ -577,6 +616,8 @@ export default function Automations() {
             if (Number.isFinite(due) && due - now > 2 * 86_400_000) {
               return false;
             }
+          } else if (isStaleTestPhantom(j)) {
+            return false;
           }
         }
         return term.length < 2 || jobMatchesQuery(j, jobsQ);
@@ -616,6 +657,8 @@ export default function Automations() {
         return false;
       }
     }
+    // Fantasma: "done" sem vencimento que já expirou → não mostra
+    if (isStaleTestPhantom(j)) return false;
     return true;
   };
   const testLog = useMemo(() => {
@@ -648,6 +691,8 @@ export default function Automations() {
       if (dueRaw) {
         const due = Date.parse(dueRaw.replace(" ", "T"));
         if (Number.isFinite(due) && due - now > 2 * 86_400_000) return false;
+      } else if (isStaleTestPhantom(j)) {
+        return false;
       }
       return true;
     });
@@ -674,31 +719,6 @@ export default function Automations() {
         ? clients.find((c) => c.id === detailClientId) || null
         : null,
     [detailClientId, clients],
-  );
-
-  useDialogHistoryBack(!!detailJob, () => setDetailJobId(null), "test-detail");
-  useDialogHistoryBack(
-    !!detailClient,
-    () => setDetailClientId(null),
-    "client-detail",
-  );
-  useDialogHistoryBack(
-    !!renewTargetId || !!renewTargetJobId,
-    () => {
-      setRenewTargetId(null);
-      setRenewTargetJobId(null);
-    },
-    "renew-dialog",
-  );
-  useDialogHistoryBack(
-    testDialogOpen,
-    () => setTestDialogOpen(false),
-    "test-create",
-  );
-  useDialogHistoryBack(
-    !!creditTarget,
-    () => setCreditTarget(null),
-    "credits-dialog",
   );
 
   useEffect(() => {
@@ -807,6 +827,9 @@ export default function Automations() {
         bearerToken: ensured.token,
       });
       setPanelCredits(bal.credits);
+      if (user && typeof bal.credits === "number") {
+        setLastCreditBalance(user.id, bal.credits);
+      }
     } catch (e) {
       if (!silent) {
         toast.error(
@@ -859,11 +882,16 @@ export default function Automations() {
     try {
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
-      const rows = await listIptvResellers({
-        ...panelCreds(),
-        bearerToken: ensured.token,
-      });
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
+      const rows = await listIptvResellers(creds);
       setResellers(rows);
+      // Traz todo o histórico de recargas e recalcula créditos + receitas por mês
+      let movementLogs = new Map<string, IptvResellerMovement[]>();
+      try {
+        movementLogs = await buildResellerMovementLogs(creds, rows);
+      } catch {
+        /* recálculo opcional */
+      }
       let created = 0;
       let updated = 0;
       let skipped = 0;
@@ -876,11 +904,18 @@ export default function Automations() {
         created = result.created;
         updated = result.updated;
         skipped = result.skipped;
-        return result.data;
+        return movementLogs.size
+          ? applyResellerMovementsToFolder(
+              result.data,
+              syncResellersFolderId,
+              movementLogs,
+            )
+          : result.data;
       });
       toast.success(
         `Revendedores: ${updated} atualizado(s) · ${created} novo(s)` +
-          (skipped ? ` · ${skipped} sem mudança` : ""),
+          (skipped ? ` · ${skipped} sem mudança` : "") +
+          (movementLogs.size ? ` · créditos e receitas recalculados` : ""),
       );
     } catch (e) {
       toast.error(
@@ -894,6 +929,36 @@ export default function Automations() {
   const openAddCredits = (reseller: IptvReseller) => {
     setCreditTarget(reseller);
     setCreditAmount(String(IPTV_RESELLER_CREDITS_MIN));
+  };
+
+  const openMovements = (reseller: IptvReseller) => {
+    setMovementsReseller(reseller);
+    setMovementsOpen(true);
+  };
+
+  const movementsResellerId = movementsReseller
+    ? resolveIptvResellerPanelId(movementsReseller)
+    : null;
+
+  /** Aplica as movimentações no item do revendedor (créditos + receitas por mês). */
+  const applyResellerMovementsItem = (moves: IptvResellerMovement[]) => {
+    const uname = String(movementsReseller?.username || "").trim().toLowerCase();
+    const folderId =
+      syncResellersFolderId ||
+      loadAutomationsConfig(user?.id || "0").syncResellersFolderId;
+    if (!folderId || !uname) {
+      toast.message("Vincule a pasta de revendedores para aplicar no item");
+      return;
+    }
+    setData((prev) =>
+      applyResellerMovementsToFolder(
+        prev,
+        folderId,
+        new Map<string, IptvResellerMovement[]>([[uname, moves]]),
+      ),
+    );
+    toast.success("Recargas aplicadas (créditos + receitas por mês)");
+    setMovementsOpen(false);
   };
 
   const creditAmountNum = Math.floor(Number(creditAmount));
@@ -972,7 +1037,12 @@ export default function Automations() {
         `${amount} crédito(s) enviados para ${creditTarget.username || creditTarget.name || "revendedor"}`,
       );
       setCreditTarget(null);
-      notifyUniplayCreditsChanged({ spent: amount, source: "reseller_manual" });
+      notifyUniplayCreditsChanged({
+        spent: amount,
+        source: "reseller_manual",
+        label: "Recarga de revendedor",
+        detail: `${creditTarget?.username || creditTarget?.name || "revendedor"} · ${amount} créditos`,
+      });
       void refreshResellers(true);
       void refreshPanelCredits(true);
     } catch (e) {
@@ -1299,6 +1369,8 @@ export default function Automations() {
       notifyUniplayCreditsChanged({
         spent: option.credits,
         source: "renew_manual",
+        label: "Renovação",
+        detail: item.name,
       });
       void refreshPanelCredits(true);
       toast.success(
@@ -1835,7 +1907,12 @@ export default function Automations() {
       });
       persistJobs(nextJobs);
       setDetailJobId(job.id);
-      notifyUniplayCreditsChanged({ spent: 1, source: "create_test" });
+      notifyUniplayCreditsChanged({
+        spent: 1,
+        source: "create_test",
+        label: "Teste criado",
+        detail: createdUser || job.clientName || job.panelUsername || undefined,
+      });
       void refreshPanelCredits(true);
       toast.success(
         createdUser
@@ -2006,6 +2083,8 @@ export default function Automations() {
       notifyUniplayCreditsChanged({
         spent: option.credits,
         source: "test_activate",
+        label: "Teste ativado (plano)",
+        detail: job.clientName || job.panelUsername || undefined,
       });
       void refreshPanelCredits(true);
       toast.success(
@@ -2780,9 +2859,9 @@ export default function Automations() {
                   Clientes
                 </h2>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Longe e perto de vencer
-                  {activeClients.length > 0 ? ` · ${activeClients.length}` : ""}
-                  {" · vencidos ficam de fora"}
+                  Longe e perto de vencer: {activeClients.length}
+                  <span className="mx-1.5 text-muted-foreground/40">·</span>
+                  Vencidos: {overdueClients.length}
                 </p>
               </div>
               <Button
@@ -2820,7 +2899,7 @@ export default function Automations() {
               </p>
             ) : filtered.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Nenhum cliente ativo (longe/perto) para essa busca.
+                Nenhum cliente para essa busca.
               </p>
             ) : (
               <ul className="space-y-1.5">
@@ -2836,6 +2915,11 @@ export default function Automations() {
                       <p className="truncate text-[11px] text-muted-foreground">
                         {maskUser(item.itemId)}
                         {item.dueDate ? ` · ${formatBrDate(item.dueDate)}` : ""}
+                        {item.status === "Já Vencido" ? (
+                          <span className="ml-1.5 font-semibold text-destructive">
+                            · Vencido
+                          </span>
+                        ) : null}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-1">
@@ -2998,6 +3082,18 @@ export default function Automations() {
                                 ? `${maskNum(formatIptvCredits(r.credits))} créd.`
                                 : "—"}
                             </Badge>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1"
+                              disabled={!uniplayConnected}
+                              onClick={() => openMovements(r)}
+                              title={`Movimentações de ${r.name || r.username}`}
+                            >
+                              <History className="h-3.5 w-3.5" />
+                              Mov.
+                            </Button>
                             <Button
                               type="button"
                               size="sm"
@@ -3250,7 +3346,15 @@ export default function Automations() {
                       </Badge>
                     ) : null}
                   </TabsTrigger>
+                  <TabsTrigger value="creditos" className="gap-1.5">
+                    <Coins className="h-3.5 w-3.5" />
+                    Créditos
+                  </TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="creditos" className="mt-0 space-y-4">
+                  <CreditLogView />
+                </TabsContent>
 
                 <TabsContent value="renovacoes" className="mt-0 space-y-4">
                   <section className="ax-surface space-y-3 p-4">
@@ -3879,6 +3983,18 @@ export default function Automations() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ResellerMovementsDialog
+        open={movementsOpen}
+        onOpenChange={(open) => {
+          if (!open) setMovementsOpen(false);
+        }}
+        user={user}
+        username={movementsReseller?.username}
+        displayName={movementsReseller?.name || movementsReseller?.username}
+        resellerId={movementsResellerId}
+        onApply={applyResellerMovementsItem}
+      />
 
       <Dialog
         open={!!renewTargetId || !!renewTargetJobId}
