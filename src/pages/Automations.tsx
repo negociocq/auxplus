@@ -21,10 +21,12 @@ import {
   Search,
   Smartphone,
   Trash2,
+  Unplug,
+  UserCircle,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatBrDate } from "@/lib/format";
+import { formatBrDate, formatMoney } from "@/lib/format";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -110,6 +112,7 @@ import {
   IPTV_RESELLER_CREDITS_MIN,
   IPTV_TEST_HOURS,
   listIptvResellers,
+  listIptvResellerLogs,
   listIptvUsers,
   parseIptvExpToDateTime,
   resolveTestAccessLinks,
@@ -123,6 +126,7 @@ import {
   type IptvPanelCreds,
   type IptvRenewOption,
   type IptvReseller,
+  type IptvResellerMovement,
   type PartnerAppId,
   type SmartAppEntry,
 } from "@/lib/iptvPanelApi";
@@ -150,6 +154,20 @@ function statusLabel(s: IptvJob["status"]) {
     case "failed":
       return "Falhou";
   }
+}
+
+/** Formata a data/hora das movimentações (aceita ISO e dd/mm/aaaa). */
+function formatMovementAt(raw?: string): string {
+  if (!raw) return "—";
+  const s = String(raw).trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}:\d{2}(?::\d{2})?))?$/.exec(
+    s,
+  );
+  if (m) {
+    const d = `${m[3]}/${m[2]}/${m[1]}`;
+    return m[4] ? `${d} ${m[4]}` : d;
+  }
+  return s;
 }
 
 export default function Automations() {
@@ -201,6 +219,16 @@ export default function Automations() {
   const [testLogQ, setTestLogQ] = useState("");
   const [uniplaySubTab, setUniplaySubTab] = useState("conexao");
   const [logsSubTab, setLogsSubTab] = useState("renovacoes");
+  /** Histórico de recargas de revendedores (movimentações do painel UniPlay) */
+  const [movementRows, setMovementRows] = useState<
+    {
+      resellerName: string;
+      resellerUsername: string;
+      move: IptvResellerMovement;
+    }[]
+  >([]);
+  const [movementQ, setMovementQ] = useState("");
+  const [loadingMovements, setLoadingMovements] = useState(false);
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
   const [clientDetailAccess, setClientDetailAccess] = useState<{
@@ -495,13 +523,18 @@ export default function Automations() {
       });
   }, [data.items, myFolders]);
 
-  /** Ativos: Longe / Perto de vencer (vencidos ficam de fora) */
+  /** Ativos: Longe / Perto de vencer (contagem sem vencidos) */
   const activeClients = useMemo(
     () =>
       clients.filter(
         (c) =>
           c.status === "Longe de Vencer" || c.status === "Perto de Vencer",
       ),
+    [clients],
+  );
+  /** Vencidos também aparecem na lista — para renovação manual */
+  const overdueClients = useMemo(
+    () => clients.filter((c) => c.status === "Já Vencido"),
     [clients],
   );
 
@@ -514,7 +547,7 @@ export default function Automations() {
       if (status === "Longe de Vencer") return 1;
       return 2;
     };
-    return activeClients
+    return [...activeClients, ...overdueClients]
       .filter((i) => {
         if (term.length < 2) return true;
         return (
@@ -531,7 +564,7 @@ export default function Automations() {
         return da.localeCompare(db);
       })
       .slice(0, showClientsList && term.length < 2 ? 100 : 50);
-  }, [activeClients, q, showClientsList]);
+  }, [activeClients, overdueClients, q, showClientsList]);
 
   const jobMatchesQuery = (job: IptvJob, query: string) => {
     const qn = query.trim().toLowerCase();
@@ -848,6 +881,102 @@ export default function Automations() {
     } finally {
       setLoadingResellers(false);
     }
+  };
+
+  /** Recargas de todos os revendedores (Logs de Movimentações) para a aba Logs. */
+  const refreshResellerMovements = async (silent = false) => {
+    if (!uniplayConnected) {
+      setMovementRows([]);
+      return;
+    }
+    setLoadingMovements(true);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
+      const resellerList = await listIptvResellers(creds);
+      const agg: {
+        resellerName: string;
+        resellerUsername: string;
+        move: IptvResellerMovement;
+      }[] = [];
+      await Promise.all(
+        resellerList.map(async (r) => {
+          const id = resolveIptvResellerPanelId(r);
+          if (id == null) return;
+          try {
+            const moves = await listIptvResellerLogs(creds, id);
+            const name = String(r.name || r.username || r.id || "");
+            const uname = String(r.username || "");
+            for (const move of moves) {
+              agg.push({ resellerName: name, resellerUsername: uname, move });
+            }
+          } catch {
+            /* movimentações inacessíveis para este revendedor */
+          }
+        }),
+      );
+      agg.sort(
+        (a, b) =>
+          (Date.parse(b.move.at) || 0) - (Date.parse(a.move.at) || 0),
+      );
+      setMovementRows(agg);
+      if (!silent) {
+        toast.success(
+          agg.length
+            ? `${agg.length} movimento(s) de recarga carregados`
+            : "Nenhuma movimentação de recarga encontrada",
+        );
+      }
+    } catch (e) {
+      if (!silent) {
+        toast.error(
+          e instanceof Error ? e.message : "Falha ao carregar movimentações",
+        );
+      }
+    } finally {
+      setLoadingMovements(false);
+    }
+  };
+
+  // Carrega o histórico de recargas ao abrir a sub-aba (uma vez por conexão)
+  useEffect(() => {
+    if (
+      logsSubTab === "recargas" &&
+      uniplayConnected &&
+      movementRows.length === 0
+    ) {
+      void refreshResellerMovements(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logsSubTab, uniplayConnected]);
+
+  /** Desconecta a conta UniPlay: limpa credenciais/token (local + nuvem). */
+  const disconnectUniplay = async () => {
+    if (!user) return;
+    if (
+      !window.confirm(
+        "Desconectar a conta UniPlay? O usuário e a senha salvos serão removidos. Você pode conectar de novo depois.",
+      )
+    ) {
+      return;
+    }
+    const next: AutomationsConfig = {
+      ...config,
+      iptvUsername: "",
+      iptvPassword: "",
+      iptvBearerToken: "",
+    };
+    setConfig(next);
+    saveAutomationsConfig(user.id, next);
+    void saveAutomationsConfigRemote(user.id, next).catch(() => undefined);
+    setPanelUser("");
+    setPanelPass("");
+    setBearer("");
+    setResellers([]);
+    setMovementRows([]);
+    setPanelCredits(null);
+    toast.success("Conta UniPlay desconectada");
   };
 
   const syncResellersNow = async () => {
@@ -1486,12 +1615,12 @@ export default function Automations() {
   };
 
   const focusActivateApp = (scope: ActivateAppScope) => {
+    // Não zera a busca: o que o usuário digitou permanece até ele apagar
+    // manualmente. Só esconde a lista para focar no Ativar app.
     if (scope === "clientes") {
       setShowClientsList(false);
-      setQ("");
     } else {
       setShowTestsList(false);
-      setJobsQ("");
     }
     // Espera o bloco Ativar app montar (só aparece com username)
     window.setTimeout(() => {
@@ -2030,6 +2159,25 @@ export default function Automations() {
       scope === "clientes"
         ? "Botão App no cliente"
         : "Botão App no teste";
+    // Indica qual cliente (da lista) é dono do usuário preenchido no formulário
+    const matchClient =
+      scope === "clientes" && form.username.trim()
+        ? clients.find(
+            (c) =>
+              c.itemId.trim().toLowerCase() ===
+              form.username.trim().toLowerCase(),
+          )
+        : null;
+    // Idem para a aba Testes: mostra o teste/contato correspondente
+    const matchTest =
+      scope === "testes" && form.username.trim()
+        ? jobs.find(
+            (j) =>
+              j.kind === "test" &&
+              j.panelUsername.trim().toLowerCase() ===
+                form.username.trim().toLowerCase(),
+          )
+        : null;
     return (
             <section
               id={`ativar-app-${scope}`}
@@ -2064,6 +2212,33 @@ export default function Automations() {
                   </Button>
                 ) : null}
               </div>
+
+              {matchClient || matchTest ? (
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border border-primary/20 bg-primary/[0.07] px-2.5 py-1.5 text-xs text-muted-foreground">
+                  <UserCircle className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  {matchClient ? (
+                    <>
+                      <span className="font-semibold text-foreground">
+                        {matchClient.name}
+                      </span>
+                      <span className="truncate">{matchClient.itemId}</span>
+                      {matchClient.dueDate ? (
+                        <span>· vence {formatBrDate(matchClient.dueDate)}</span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-foreground">
+                        {matchTest?.clientName || matchTest?.panelUsername}
+                      </span>
+                      <span className="truncate">{matchTest?.panelUsername}</span>
+                      {matchTest?.dueDate ? (
+                        <span>· vence {formatBrDate(matchTest.dueDate)}</span>
+                      ) : null}
+                    </>
+                  )}
+                </p>
+              ) : null}
 
               <div className="grid gap-2 sm:grid-cols-3">
                 <div className="space-y-1">
@@ -2467,12 +2642,12 @@ export default function Automations() {
                 <>
                   <TabsTrigger value="ativos" className="gap-1.5">
                     Clientes
-                    {activeClients.length > 0 ? (
+                    {activeClients.length > 0 || overdueClients.length > 0 ? (
                       <Badge
                         variant="secondary"
                         className="ml-0.5 h-5 px-1.5 text-[10px]"
                       >
-                        {activeClients.length}
+                        {activeClients.length + overdueClients.length}
                       </Badge>
                     ) : null}
                   </TabsTrigger>
@@ -2633,6 +2808,18 @@ export default function Automations() {
                   <ExternalLink className="h-3.5 w-3.5" />
                   Painel
                 </Button>
+                {uniplayConnected ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => void disconnectUniplay()}
+                  >
+                    <Unplug className="h-3.5 w-3.5" />
+                    Desconectar
+                  </Button>
+                ) : null}
               </div>
 
             </form>
@@ -2782,7 +2969,11 @@ export default function Automations() {
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
                   Longe e perto de vencer
                   {activeClients.length > 0 ? ` · ${activeClients.length}` : ""}
-                  {" · vencidos ficam de fora"}
+                  {overdueClients.length
+                    ? ` · ${overdueClients.length} vencido${
+                        overdueClients.length === 1 ? "" : "s"
+                      }`
+                    : ""}
                 </p>
               </div>
               <Button
@@ -2887,9 +3078,8 @@ export default function Automations() {
             )}
           </section>
 
-          {activateForms.clientes.username.trim()
-            ? renderActivateAppSection("clientes")
-            : null}
+          {/* Sempre visível: limpar a busca só limpa os dados do formulário */}
+          {renderActivateAppSection("clientes")}
             </TabsContent>
 
             <TabsContent value="revendedores" className="mt-0 space-y-4">
@@ -3211,12 +3401,11 @@ export default function Automations() {
             )}
           </section>
 
-          {activateForms.testes.username.trim()
-            ? renderActivateAppSection(
-                "testes",
-                "Informe o MAC e ative o app.",
-              )
-            : null}
+          {/* Sempre visível: limpar a busca só limpa os dados do formulário */}
+          {renderActivateAppSection(
+            "testes",
+            "Informe o MAC e ative o app.",
+          )}
             </TabsContent>
 
             <TabsContent value="logs" className="mt-0 space-y-4">
@@ -3247,6 +3436,18 @@ export default function Automations() {
                         className="ml-0.5 h-5 px-1.5 text-[10px]"
                       >
                         {testLogCount}
+                      </Badge>
+                    ) : null}
+                  </TabsTrigger>
+                  <TabsTrigger value="recargas" className="gap-1.5">
+                    <Coins className="h-3.5 w-3.5" />
+                    Recargas
+                    {movementRows.length > 0 ? (
+                      <Badge
+                        variant="secondary"
+                        className="ml-0.5 h-5 px-1.5 text-[10px]"
+                      >
+                        {movementRows.length}
                       </Badge>
                     ) : null}
                   </TabsTrigger>
@@ -3599,6 +3800,108 @@ export default function Automations() {
                           : "Nenhum teste ainda. Clique em Atualizar do painel."}
                       </p>
                     )}
+                  </section>
+                </TabsContent>
+
+                <TabsContent value="recargas" className="mt-0 space-y-4">
+                  <section className="ax-surface space-y-3 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <h2 className="text-sm font-semibold tracking-tight">
+                          Recargas de revendedores
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          Histórico a partir das movimentações da UniPlay
+                          {movementRows.length > 0
+                            ? ` · ${movementRows.length} registro(s)`
+                            : ""}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        disabled={loadingMovements || !uniplayConnected}
+                        onClick={() => void refreshResellerMovements(false)}
+                      >
+                        {loadingMovements ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                        Atualizar
+                      </Button>
+                    </div>
+
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={movementQ}
+                        onChange={(e) => setMovementQ(e.target.value)}
+                        placeholder="Filtrar por revendedor, usuário ou obs…"
+                        className="h-9 pl-8"
+                      />
+                    </div>
+
+                    {loadingMovements && movementRows.length === 0 ? (
+                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Carregando movimentações…
+                      </p>
+                    ) : movementRows.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma movimentação de recarga ainda. Toque em{" "}
+                        <b>Atualizar</b>.
+                      </p>
+                    ) : (() => {
+                        const qn = movementQ.trim().toLowerCase();
+                        const list = movementRows.filter(
+                          (r) =>
+                            !qn ||
+                            r.resellerName.toLowerCase().includes(qn) ||
+                            r.resellerUsername.toLowerCase().includes(qn) ||
+                            String(r.move.toUser || "").toLowerCase().includes(qn) ||
+                            String(r.move.fromUser || "").toLowerCase().includes(qn) ||
+                            String(r.move.obs || "").toLowerCase().includes(qn),
+                        );
+                        return list.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhuma movimentação para essa busca.
+                          </p>
+                        ) : (
+                          <ul className="space-y-1.5">
+                            {list.slice(0, 300).map((r, i) => (
+                              <li
+                                key={`${r.resellerUsername}-${String(r.move.id)}-${i}`}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2 text-sm"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate font-medium leading-tight">
+                                    {r.resellerName || r.resellerUsername}
+                                  </p>
+                                  <p className="truncate text-[11px] text-muted-foreground">
+                                    {formatMovementAt(r.move.at)}
+                                    {r.move.toUser || r.move.fromUser
+                                      ? ` · ${r.move.fromUser || "?"} → ${
+                                          r.move.toUser || "?"
+                                        }`
+                                      : ""}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-[11px]">
+                                  <Badge variant="outline" className="tabular-nums">
+                                    {Number(r.move.credits) || 0} créd.
+                                  </Badge>
+                                  <Badge variant="outline" className="tabular-nums">
+                                    {formatMoney(Number(r.move.faturado) || 0)}
+                                  </Badge>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        );
+                      })()}
                   </section>
                 </TabsContent>
               </Tabs>
