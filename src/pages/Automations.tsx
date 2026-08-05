@@ -26,7 +26,7 @@ import {
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatBrDate, formatMoney } from "@/lib/format";
+import { formatBrDate } from "@/lib/format";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -112,7 +112,6 @@ import {
   IPTV_RESELLER_CREDITS_MIN,
   IPTV_TEST_HOURS,
   listIptvResellers,
-  listIptvResellerLogs,
   listIptvUsers,
   parseIptvExpToDateTime,
   resolveTestAccessLinks,
@@ -126,7 +125,6 @@ import {
   type IptvPanelCreds,
   type IptvRenewOption,
   type IptvReseller,
-  type IptvResellerMovement,
   type PartnerAppId,
   type SmartAppEntry,
 } from "@/lib/iptvPanelApi";
@@ -154,20 +152,6 @@ function statusLabel(s: IptvJob["status"]) {
     case "failed":
       return "Falhou";
   }
-}
-
-/** Formata a data/hora das movimentações (aceita ISO e dd/mm/aaaa). */
-function formatMovementAt(raw?: string): string {
-  if (!raw) return "—";
-  const s = String(raw).trim();
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}:\d{2}(?::\d{2})?))?$/.exec(
-    s,
-  );
-  if (m) {
-    const d = `${m[3]}/${m[2]}/${m[1]}`;
-    return m[4] ? `${d} ${m[4]}` : d;
-  }
-  return s;
 }
 
 export default function Automations() {
@@ -215,20 +199,7 @@ export default function Automations() {
   const [testNota, setTestNota] = useState("");
   const [syncingTests, setSyncingTests] = useState(false);
   const [jobsQ, setJobsQ] = useState("");
-  const [renewQ, setRenewQ] = useState("");
-  const [testLogQ, setTestLogQ] = useState("");
   const [uniplaySubTab, setUniplaySubTab] = useState("conexao");
-  const [logsSubTab, setLogsSubTab] = useState("renovacoes");
-  /** Histórico de recargas de revendedores (movimentações do painel UniPlay) */
-  const [movementRows, setMovementRows] = useState<
-    {
-      resellerName: string;
-      resellerUsername: string;
-      move: IptvResellerMovement;
-    }[]
-  >([]);
-  const [movementQ, setMovementQ] = useState("");
-  const [loadingMovements, setLoadingMovements] = useState(false);
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
   const [clientDetailAccess, setClientDetailAccess] = useState<{
@@ -618,25 +589,6 @@ export default function Automations() {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, showTestsList && term.length < 2 ? 100 : 50);
   }, [jobs, jobsQ, showTestsList, clientUsernameSet]);
-  const openRenewJobs = useMemo(
-    () =>
-      jobs.filter(
-        (j) =>
-          j.kind === "renew" &&
-          (j.status === "pending" || j.status === "doing") &&
-          jobMatchesQuery(j, renewQ),
-      ),
-    [jobs, renewQ],
-  );
-  const renewLog = useMemo(() => {
-    const list = jobs.filter(
-      (j) =>
-        j.kind === "renew" &&
-        (j.status === "done" || j.status === "failed") &&
-        jobMatchesQuery(j, renewQ),
-    );
-    return list.slice(0, renewQ.trim() ? 150 : 80);
-  }, [jobs, renewQ]);
   const isRealTestJob = (j: (typeof jobs)[number]) => {
     if (j.kind !== "test") return false;
     const u = j.panelUsername.trim().toLowerCase();
@@ -651,17 +603,6 @@ export default function Automations() {
     }
     return true;
   };
-  const testLog = useMemo(() => {
-    const list = jobs
-      .filter((j) => isRealTestJob(j) && jobMatchesQuery(j, testLogQ))
-      .slice()
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    return list.slice(0, testLogQ.trim() ? 300 : 200);
-  }, [jobs, testLogQ, clientUsernameSet]);
-  const testLogCount = useMemo(
-    () => jobs.filter(isRealTestJob).length,
-    [jobs, clientUsernameSet],
-  );
   const testJobsCount = useMemo(
     () => jobs.filter(isRealTestJob).length,
     [jobs, clientUsernameSet],
@@ -688,14 +629,6 @@ export default function Automations() {
     persistJobs(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, clientUsernameSet, jobs.length]);
-  const renewLogCount = useMemo(
-    () =>
-      jobs.filter(
-        (j) =>
-          j.kind === "renew" && (j.status === "done" || j.status === "failed"),
-      ).length,
-    [jobs],
-  );
 
   const detailJob = useMemo(
     () => (detailJobId ? jobs.find((j) => j.id === detailJobId) || null : null),
@@ -883,74 +816,6 @@ export default function Automations() {
     }
   };
 
-  /** Recargas de todos os revendedores (Logs de Movimentações) para a aba Logs. */
-  const refreshResellerMovements = async (silent = false) => {
-    if (!uniplayConnected) {
-      setMovementRows([]);
-      return;
-    }
-    setLoadingMovements(true);
-    try {
-      const ensured = await ensureIptvToken(panelCreds());
-      if (ensured.renewed) persistToken(ensured.token);
-      const creds = { ...panelCreds(), bearerToken: ensured.token };
-      const resellerList = await listIptvResellers(creds);
-      const agg: {
-        resellerName: string;
-        resellerUsername: string;
-        move: IptvResellerMovement;
-      }[] = [];
-      await Promise.all(
-        resellerList.map(async (r) => {
-          const id = resolveIptvResellerPanelId(r);
-          if (id == null) return;
-          try {
-            const moves = await listIptvResellerLogs(creds, id);
-            const name = String(r.name || r.username || r.id || "");
-            const uname = String(r.username || "");
-            for (const move of moves) {
-              agg.push({ resellerName: name, resellerUsername: uname, move });
-            }
-          } catch {
-            /* movimentações inacessíveis para este revendedor */
-          }
-        }),
-      );
-      agg.sort(
-        (a, b) =>
-          (Date.parse(b.move.at) || 0) - (Date.parse(a.move.at) || 0),
-      );
-      setMovementRows(agg);
-      if (!silent) {
-        toast.success(
-          agg.length
-            ? `${agg.length} movimento(s) de recarga carregados`
-            : "Nenhuma movimentação de recarga encontrada",
-        );
-      }
-    } catch (e) {
-      if (!silent) {
-        toast.error(
-          e instanceof Error ? e.message : "Falha ao carregar movimentações",
-        );
-      }
-    } finally {
-      setLoadingMovements(false);
-    }
-  };
-
-  // Carrega o histórico de recargas ao abrir a sub-aba (uma vez por conexão)
-  useEffect(() => {
-    if (
-      logsSubTab === "recargas" &&
-      uniplayConnected &&
-      movementRows.length === 0
-    ) {
-      void refreshResellerMovements(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logsSubTab, uniplayConnected]);
-
   /** Desconecta a conta UniPlay: limpa credenciais/token (local + nuvem). */
   const disconnectUniplay = async () => {
     if (!user) return;
@@ -974,7 +839,6 @@ export default function Automations() {
     setPanelPass("");
     setBearer("");
     setResellers([]);
-    setMovementRows([]);
     setPanelCredits(null);
     toast.success("Conta UniPlay desconectada");
   };
@@ -3408,504 +3272,6 @@ export default function Automations() {
           )}
             </TabsContent>
 
-            <TabsContent value="logs" className="mt-0 space-y-4">
-              <Tabs
-                value={logsSubTab}
-                onValueChange={setLogsSubTab}
-                className="space-y-4"
-              >
-                <TabsList className="h-auto flex-wrap bg-background/80">
-                  <TabsTrigger value="renovacoes" className="gap-1.5">
-                    <CalendarPlus className="h-3.5 w-3.5" />
-                    Renovações
-                    {renewLogCount > 0 ? (
-                      <Badge
-                        variant="secondary"
-                        className="ml-0.5 h-5 px-1.5 text-[10px]"
-                      >
-                        {renewLogCount}
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger value="teste" className="gap-1.5">
-                    <FlaskConical className="h-3.5 w-3.5" />
-                    Teste
-                    {testLogCount > 0 ? (
-                      <Badge
-                        variant="secondary"
-                        className="ml-0.5 h-5 px-1.5 text-[10px]"
-                      >
-                        {testLogCount}
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger value="recargas" className="gap-1.5">
-                    <Coins className="h-3.5 w-3.5" />
-                    Recargas
-                    {movementRows.length > 0 ? (
-                      <Badge
-                        variant="secondary"
-                        className="ml-0.5 h-5 px-1.5 text-[10px]"
-                      >
-                        {movementRows.length}
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="renovacoes" className="mt-0 space-y-4">
-                  <section className="ax-surface space-y-3 p-4">
-                    <div className="min-w-0">
-                      <h2 className="text-sm font-semibold tracking-tight">
-                        Renovações e extensões
-                      </h2>
-                      <p className="text-xs text-muted-foreground">
-                        Planos renovados ou estendidos · sincroniza na conta
-                        {renewLogCount > 0
-                          ? ` · ${renewLogCount} registro(s)`
-                          : ""}
-                      </p>
-                    </div>
-
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={renewQ}
-                        onChange={(e) => setRenewQ(e.target.value)}
-                        placeholder="Buscar renovação (nome, usuário…)"
-                        className="h-9 pl-8"
-                      />
-                    </div>
-
-                    {openRenewJobs.length > 0 ? (
-                      <div className="space-y-1.5">
-                        <p className="text-[11px] font-medium text-muted-foreground">
-                          Em andamento
-                        </p>
-                        <ul className="space-y-1.5">
-                          {openRenewJobs.map((job) => (
-                            <li
-                              key={job.id}
-                              className="space-y-2 rounded-md border px-2.5 py-2 text-sm"
-                            >
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="font-medium leading-tight">
-                                    {job.clientName}
-                                  </p>
-                                  <p className="text-[11px] text-muted-foreground">
-                                    {maskUser(job.panelUsername)} · +
-                                    {job.months}{" "}
-                                    {job.months === 1 ? "mês" : "meses"}
-                                  </p>
-                                </div>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "text-[10px]",
-                                    job.status === "doing" &&
-                                      "border-primary/40 bg-primary/10 text-primary",
-                                  )}
-                                >
-                                  {statusLabel(job.status)}
-                                </Badge>
-                              </div>
-                              <div className="flex flex-wrap gap-1">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className="h-8"
-                                  onClick={() => void startInPanel(job)}
-                                  disabled={busyId === job.id}
-                                >
-                                  {busyId === job.id ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <ClipboardCopy className="h-3.5 w-3.5" />
-                                  )}
-                                  Abrir painel
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="secondary"
-                                  className="h-8"
-                                  onClick={() => completeJob(job)}
-                                  disabled={busyId === job.id}
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                  Concluí
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-8"
-                                  onClick={() => failJob(job)}
-                                >
-                                  Falhou
-                                </Button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-
-                    {renewLog.length > 0 ? (
-                      <ul className="space-y-2">
-                        {renewLog.map((job) => {
-                          const extend =
-                            /estend/i.test(job.note || "") ||
-                            /estend/i.test(job.clientName || "");
-                          return (
-                            <li
-                              key={job.id}
-                              className="rounded-md border px-3 py-2.5 text-sm"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="min-w-0 truncate font-medium leading-tight">
-                                  {job.clientName}
-                                </p>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "shrink-0 text-[10px]",
-                                    job.status === "done" &&
-                                      "border-success/40 bg-success/10 text-success",
-                                    job.status === "failed" &&
-                                      "border-destructive/40 bg-destructive/10 text-destructive",
-                                  )}
-                                >
-                                  {job.status === "done"
-                                    ? extend
-                                      ? "Estendido"
-                                      : "Renovado"
-                                    : statusLabel(job.status)}
-                                </Badge>
-                              </div>
-                              <dl className="mt-2 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
-                                <div>
-                                  <dt className="inline text-muted-foreground/80">
-                                    Usuário:{" "}
-                                  </dt>
-                                  <dd className="inline font-mono text-foreground/80">
-                                    {maskUser(job.panelUsername)}
-                                  </dd>
-                                </div>
-                                <div>
-                                  <dt className="inline text-muted-foreground/80">
-                                    Plano:{" "}
-                                  </dt>
-                                  <dd className="inline text-foreground/80">
-                                    +{job.months}{" "}
-                                    {job.months === 1 ? "mês" : "meses"}
-                                  </dd>
-                                </div>
-                                <div>
-                                  <dt className="inline text-muted-foreground/80">
-                                    Novo vencimento:{" "}
-                                  </dt>
-                                  <dd className="inline text-foreground/80">
-                                    {job.dueDate
-                                      ? formatBrDate(job.dueDate)
-                                      : "—"}
-                                  </dd>
-                                </div>
-                                <div>
-                                  <dt className="inline text-muted-foreground/80">
-                                    {extend ? "Estendido em: " : "Renovado em: "}
-                                  </dt>
-                                  <dd className="inline text-foreground/80">
-                                    {format(
-                                      new Date(job.updatedAt),
-                                      "dd/MM/yyyy HH:mm",
-                                    )}
-                                  </dd>
-                                </div>
-                              </dl>
-                              {job.note ? (
-                                <p className="mt-1.5 text-[11px] text-muted-foreground">
-                                  {job.note}
-                                </p>
-                              ) : null}
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="secondary"
-                                  className="h-8"
-                                  onClick={() => openJobDetail(job)}
-                                >
-                                  Detalhes
-                                </Button>
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : null}
-
-                    {openRenewJobs.length === 0 && renewLog.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        {renewQ.trim()
-                          ? "Nenhum resultado para essa busca."
-                          : "Nenhuma renovação ou extensão registrada ainda."}
-                      </p>
-                    ) : null}
-                  </section>
-                </TabsContent>
-
-                <TabsContent value="teste" className="mt-0 space-y-4">
-                  <section className="ax-surface space-y-3 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <h2 className="text-sm font-semibold tracking-tight">
-                          Testes gerados
-                        </h2>
-                        <p className="text-xs text-muted-foreground">
-                          Painel + WhatsApp + AuxPlus
-                          {testLogCount > 0
-                            ? ` · ${testLogCount} registro(s)`
-                            : ""}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-8"
-                        disabled={
-                          (!bearer.trim() &&
-                            !(panelUser.trim() && panelPass)) ||
-                          syncingTests ||
-                          Boolean(busyId)
-                        }
-                        onClick={() => void refreshPanelTests()}
-                      >
-                        {syncingTests ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        )}
-                        Atualizar do painel
-                      </Button>
-                    </div>
-
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={testLogQ}
-                        onChange={(e) => setTestLogQ(e.target.value)}
-                        placeholder="Buscar teste (nome, usuário…)"
-                        className="h-9 pl-8"
-                      />
-                    </div>
-
-                    {testLog.length > 0 ? (
-                      <ul className="space-y-2">
-                        {testLog.map((job) => (
-                          <li
-                            key={job.id}
-                            className="rounded-md border px-3 py-2.5 text-sm"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="min-w-0 truncate font-medium leading-tight">
-                                {job.clientName}
-                              </p>
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "shrink-0 text-[10px]",
-                                  job.status === "done" &&
-                                    "border-success/40 bg-success/10 text-success",
-                                  job.status === "failed" &&
-                                    "border-destructive/40 bg-destructive/10 text-destructive",
-                                )}
-                              >
-                                {job.status === "done"
-                                  ? "Gerado"
-                                  : statusLabel(job.status)}
-                              </Badge>
-                            </div>
-                            <dl className="mt-2 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
-                              <div>
-                                <dt className="inline text-muted-foreground/80">
-                                  Usuário:{" "}
-                                </dt>
-                                <dd className="inline font-mono text-foreground/80">
-                                  {maskUser(job.panelUsername)}
-                                </dd>
-                              </div>
-                              <div>
-                                <dt className="inline text-muted-foreground/80">
-                                  Duração:{" "}
-                                </dt>
-                                <dd className="inline text-foreground/80">
-                                  {job.testHours}h
-                                </dd>
-                              </div>
-                              <div>
-                                <dt className="inline text-muted-foreground/80">
-                                  Vencimento:{" "}
-                                </dt>
-                                <dd className="inline text-foreground/80">
-                                  {job.dueDate
-                                    ? formatBrDate(job.dueDate)
-                                    : "—"}
-                                </dd>
-                              </div>
-                              <div>
-                                <dt className="inline text-muted-foreground/80">
-                                  Gerado em:{" "}
-                                </dt>
-                                <dd className="inline text-foreground/80">
-                                  {format(
-                                    new Date(job.updatedAt),
-                                    "dd/MM/yyyy HH:mm",
-                                  )}
-                                </dd>
-                              </div>
-                            </dl>
-                            {job.note ? (
-                              <p
-                                className={cn(
-                                  "mt-1.5 text-[11px]",
-                                  job.status === "failed"
-                                    ? "text-destructive"
-                                    : "text-muted-foreground",
-                                )}
-                              >
-                                {job.note}
-                              </p>
-                            ) : null}
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                className="h-8"
-                                onClick={() => openJobDetail(job)}
-                              >
-                                Detalhes
-                              </Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        {testLogQ.trim()
-                          ? "Nenhum resultado para essa busca."
-                          : "Nenhum teste ainda. Clique em Atualizar do painel."}
-                      </p>
-                    )}
-                  </section>
-                </TabsContent>
-
-                <TabsContent value="recargas" className="mt-0 space-y-4">
-                  <section className="ax-surface space-y-3 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <h2 className="text-sm font-semibold tracking-tight">
-                          Recargas de revendedores
-                        </h2>
-                        <p className="text-xs text-muted-foreground">
-                          Histórico a partir das movimentações da UniPlay
-                          {movementRows.length > 0
-                            ? ` · ${movementRows.length} registro(s)`
-                            : ""}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8"
-                        disabled={loadingMovements || !uniplayConnected}
-                        onClick={() => void refreshResellerMovements(false)}
-                      >
-                        {loadingMovements ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        )}
-                        Atualizar
-                      </Button>
-                    </div>
-
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={movementQ}
-                        onChange={(e) => setMovementQ(e.target.value)}
-                        placeholder="Filtrar por revendedor, usuário ou obs…"
-                        className="h-9 pl-8"
-                      />
-                    </div>
-
-                    {loadingMovements && movementRows.length === 0 ? (
-                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Carregando movimentações…
-                      </p>
-                    ) : movementRows.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhuma movimentação de recarga ainda. Toque em{" "}
-                        <b>Atualizar</b>.
-                      </p>
-                    ) : (() => {
-                        const qn = movementQ.trim().toLowerCase();
-                        const list = movementRows.filter(
-                          (r) =>
-                            !qn ||
-                            r.resellerName.toLowerCase().includes(qn) ||
-                            r.resellerUsername.toLowerCase().includes(qn) ||
-                            String(r.move.toUser || "").toLowerCase().includes(qn) ||
-                            String(r.move.fromUser || "").toLowerCase().includes(qn) ||
-                            String(r.move.obs || "").toLowerCase().includes(qn),
-                        );
-                        return list.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">
-                            Nenhuma movimentação para essa busca.
-                          </p>
-                        ) : (
-                          <ul className="space-y-1.5">
-                            {list.slice(0, 300).map((r, i) => (
-                              <li
-                                key={`${r.resellerUsername}-${String(r.move.id)}-${i}`}
-                                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2 text-sm"
-                              >
-                                <div className="min-w-0">
-                                  <p className="truncate font-medium leading-tight">
-                                    {r.resellerName || r.resellerUsername}
-                                  </p>
-                                  <p className="truncate text-[11px] text-muted-foreground">
-                                    {formatMovementAt(r.move.at)}
-                                    {r.move.toUser || r.move.fromUser
-                                      ? ` · ${r.move.fromUser || "?"} → ${
-                                          r.move.toUser || "?"
-                                        }`
-                                      : ""}
-                                  </p>
-                                </div>
-                                <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-[11px]">
-                                  <Badge variant="outline" className="tabular-nums">
-                                    {Number(r.move.credits) || 0} créd.
-                                  </Badge>
-                                  <Badge variant="outline" className="tabular-nums">
-                                    {formatMoney(Number(r.move.faturado) || 0)}
-                                  </Badge>
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        );
-                      })()}
-                  </section>
-                </TabsContent>
-              </Tabs>
-            </TabsContent>
               </>
             ) : null}
           </Tabs>

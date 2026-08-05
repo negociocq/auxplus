@@ -18,6 +18,7 @@ import NotFound from "./pages/NotFound";
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const FolderItems = lazy(() => import("./pages/FolderItems"));
 const Tickets = lazy(() => import("./pages/Tickets"));
+const Logs = lazy(() => import("./pages/Logs"));
 const WhatsApp = lazy(() => import("./pages/WhatsApp"));
 const Automations = lazy(() => import("./pages/Automations"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -57,6 +58,7 @@ const App = () => (
                     <Route path="/tickets" element={<Tickets />} />
                     <Route path="/whatsapp" element={<WhatsApp />} />
                     <Route path="/automations" element={<Automations />} />
+                    <Route path="/logs" element={<Logs />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route
                       path="/change-password"

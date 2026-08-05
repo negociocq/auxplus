@@ -6,6 +6,7 @@ import {
   Eye,
   EyeOff,
   FolderKanban,
+  History,
   KeyRound,
   LifeBuoy,
   Download,
@@ -168,7 +169,7 @@ export function AppLayout() {
     { to: "/dashboard", label: "Pastas", icon: FolderKanban },
     { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
     { to: "/automations", label: "Automações", icon: Workflow },
-    { to: "/tickets", label: "Tickets", icon: LifeBuoy },
+    { to: "/logs", label: "Logs", icon: History },
     { to: "/settings", label: "Configuração", icon: Settings },
   ];
   const adminLinks = [
@@ -461,6 +462,22 @@ export function AppLayout() {
                 </button>,
               )
             : null}
+          {wrapFooterTooltip(
+            isAdminArea ? "Tickets admin" : "Tickets",
+            <button
+              type="button"
+              className={cn(footerActionClass, "mb-1")}
+              onClick={() => navigate(isAdminArea ? "/admin/tickets" : "/tickets")}
+              aria-label="Tickets"
+            >
+              <LifeBuoy className="h-4 w-4 shrink-0 opacity-90" />
+              {!collapsed ? (
+                <span className="truncate">
+                  {isAdminArea ? "Tickets admin" : "Tickets"}
+                </span>
+              ) : null}
+            </button>,
+          )}
           {wrapFooterTooltip(
             "Sair",
             <button

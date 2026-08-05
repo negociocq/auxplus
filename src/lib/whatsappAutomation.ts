@@ -517,10 +517,10 @@ export function buildTodayQueue(
     }
 
     if (settings.sendBefore && settings.daysBefore > 0) {
-      // Janela 1..daysBefore (não só o dia exato): quem está "Perto"
-      // e ainda não recebeu o aviso entra na fila (inclui atraso/recuperação).
+      // Só no DIA EXATO (daysBefore dias antes) — não na janela 1..daysBefore,
+      // senão o lembrete repete todo dia enquanto o cliente está "Perto".
       const daysLeft = differenceInCalendarDays(due, parseLocalYmd(todayKey));
-      if (daysLeft >= 1 && daysLeft <= settings.daysBefore) {
+      if (daysLeft === settings.daysBefore) {
         const key = `${item.id}:before`;
         if (!sentKeys.has(key)) {
           queue.push({
