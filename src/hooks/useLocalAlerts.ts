@@ -19,6 +19,11 @@ import {
   patchNotificationLastNotified,
 } from "@/lib/notificationSettings";
 import {
+  fmtCreditValue,
+  getLastCreditBalance,
+  setLastCreditBalance,
+} from "@/lib/creditLog";
+import {
   setAppBadgeCount,
   showLocalAlert,
 } from "@/lib/localNotifications";
@@ -138,7 +143,6 @@ export function useLocalAlerts(user: User | null, data: AppData) {
 
         const needIptv =
           settings.userCreditsEnabled || settings.resellerCreditsEnabled;
-        if (!needIptv) return;
 
         const cfg = await loadAutomationsConfigRemote(userId).catch(() =>
           loadAutomationsConfig(userId),
@@ -165,10 +169,37 @@ export function useLocalAlerts(user: User | null, data: AppData) {
           apiProxyUrl: plat.apiProxyUrl || undefined,
         };
 
-        if (settings.userCreditsEnabled) {
+        // Detecta recarga: quando o saldo de créditos SOBE, avisa. Você compra
+        // créditos por fora e quem criou sua conta carrega — aqui só observa.
+        let balance: number | null = null;
+        try {
+          const bal = await fetchIptvPanelCredits(creds);
+          if (typeof bal.credits === "number" && Number.isFinite(bal.credits)) {
+            balance = bal.credits;
+            const last = getLastCreditBalance(userId);
+            if (last != null && balance > last) {
+              const gained = Math.round((balance - last) * 10) / 10;
+              await showLocalAlert(
+                {
+                  title: "Créditos recarregados",
+                  body: `Você recarregou ${fmtCreditValue(gained)} crédito(s). Saldo: ${fmtCreditValue(last)} → ${fmtCreditValue(balance)}.`,
+                  tag: `auxplus-credits-up-${todayKey()}:${balance}`,
+                  url: "/automations",
+                },
+                { userId },
+              );
+            }
+            setLastCreditBalance(userId, balance);
+          }
+        } catch {
+          /* painel indisponível — segue sem saldo */
+        }
+
+        if (!needIptv) return;
+
+        if (settings.userCreditsEnabled && balance != null) {
           try {
-            const bal = await fetchIptvPanelCredits(creds);
-            const credits = bal.credits;
+            const credits = balance;
             const thr = settings.userCreditsThreshold;
             if (typeof credits === "number" && credits < thr) {
               const userKey = `${todayKey()}:below:${thr}:${credits}`;
