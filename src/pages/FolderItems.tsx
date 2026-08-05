@@ -15,6 +15,8 @@ import {
   Package,
   Pencil,
   Plus,
+  Power,
+  PowerOff,
   RefreshCw,
   PhoneOff,
   Search,
@@ -163,7 +165,10 @@ import {
   excludeFromSync,
   excludedUsernamesForFolder,
   includeInSync,
+  isFolderSyncDisabled,
+  loadSyncDisabledRemote,
   loadSyncExclusionsRemote,
+  setFolderSyncDisabled,
 } from "@/lib/syncExclusions";
 
 type DueMode = "com" | "sem";
@@ -314,6 +319,9 @@ export default function FolderItems() {
   const [farDays, setFarDays] = useState(3);
   const [whatsMsg, setWhatsMsg] = useState("");
   const [syncingUniplay, setSyncingUniplay] = useState(false);
+  const [syncDisabled, setSyncDisabled] = useState(() =>
+    user ? isFolderSyncDisabled(user.id, folderId) : false,
+  );
   const [syncFolderIdCloud, setSyncFolderIdCloud] = useState("");
   const [syncResellersFolderIdCloud, setSyncResellersFolderIdCloud] =
     useState("");
@@ -334,7 +342,12 @@ export default function FolderItems() {
       setResellerCreditPriceBrl(cfg.resellerCreditPriceBrl || 8.5);
     });
     void loadSyncExclusionsRemote(user.id);
-  }, [user]);
+    void loadSyncDisabledRemote(user.id).then(() => {
+      setSyncDisabled(
+        user ? isFolderSyncDisabled(user.id, folderId) : false,
+      );
+    });
+  }, [user, folderId]);
 
   const uniplaySyncMode = useMemo(() => {
     if (!user || !folder || folder.type !== "Cliente") {
@@ -458,6 +471,17 @@ export default function FolderItems() {
       setSyncingUniplay(false);
     }
   };
+
+  // Sync automático: ao abrir a pasta, se é pasta de sync UniPlay e Sync ON.
+  // Com Sync OFF, não sincroniza sozinho (o botão manual continua funcionando).
+  useEffect(() => {
+    if (!user || !folder) return;
+    if (!uniplaySyncMode || !uniplayLinked || syncDisabled) return;
+    const t = window.setTimeout(() => void syncUniplay(), 400);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folder?.id, uniplaySyncMode, uniplayLinked, syncDisabled]);
+
   const settings = data.folderSettings.find((s) => s.folderId === folderId);
   const nearDueDays = settings?.nearDueDays ?? 3;
   const farDueDays = settings?.farDueDays ?? nearDueDays;
@@ -798,20 +822,44 @@ export default function FolderItems() {
               {showTools ? "Ocultar Conteúdo" : "Mostrar Conteúdo"}
             </Button>
             {uniplaySyncEnabled ? (
-              <Button
-                variant="secondary"
-                disabled={syncingUniplay}
-                onClick={() => void syncUniplay()}
-              >
-                {syncingUniplay ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-                {uniplaySyncMode === "resellers"
-                  ? "Sincronizar revendedores"
-                  : "Sincronizar UniPlay"}
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  disabled={syncingUniplay}
+                  onClick={() => void syncUniplay()}
+                >
+                  {syncingUniplay ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  {uniplaySyncMode === "resellers"
+                    ? "Sincronizar revendedores"
+                    : "Sincronizar UniPlay"}
+                </Button>
+                <Button
+                  type="button"
+                  variant={syncDisabled ? "secondary" : "outline"}
+                  onClick={() => {
+                    if (!user) return;
+                    const next = !syncDisabled;
+                    setFolderSyncDisabled(user.id, folder.id, next);
+                    setSyncDisabled(next);
+                  }}
+                  title={
+                    syncDisabled
+                      ? "Reativar sincronização automática"
+                      : "Desativar sincronização automática (para editar à mão)"
+                  }
+                >
+                  {syncDisabled ? (
+                    <PowerOff className="h-4 w-4" />
+                  ) : (
+                    <Power className="h-4 w-4" />
+                  )}
+                  Sync {syncDisabled ? "OFF" : "ON"}
+                </Button>
+              </>
             ) : null}
             <Button onClick={() => setShowStatusSlide(true)}>
               <ChartColumn className="h-4 w-4" />

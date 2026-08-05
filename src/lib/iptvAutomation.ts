@@ -495,6 +495,9 @@ export function syncIptvUsersToFolder(
           patch.name = fixedLocal;
         }
       }
+      // Telefone só preenche se vazio no AuxPlus — nunca sobrescreve o editado
+      const remotePhone = String(remote.phone || "").trim();
+      if (remotePhone && !(existing.phone || "").trim()) patch.phone = remotePhone;
       if (Object.keys(patch).length === 0) {
         skipped += 1;
         continue;
@@ -507,7 +510,7 @@ export function syncIptvUsersToFolder(
         itemId: username,
         name,
         dueDate,
-        phone: "",
+        phone: String(remote.phone || "").trim(),
         price: 0,
         isActive: true,
       });
@@ -657,7 +660,8 @@ export function syncIptvResellersToFolder(
       const patch: Partial<typeof existing> = {};
       if (existing.dueDate) patch.dueDate = dueDate;
       if (name && name !== (existing.name || "").trim()) patch.name = name;
-      if (phone && phone !== (existing.phone || "").trim()) patch.phone = phone;
+      // Telefone só preenche se vazio no AuxPlus — nunca sobrescreve o editado
+      if (phone && !(existing.phone || "").trim()) patch.phone = phone;
       if (credits != null && credits !== existing.price) patch.price = credits;
       // Inicia histórico editável com o saldo atual (só na 1ª vez)
       if (

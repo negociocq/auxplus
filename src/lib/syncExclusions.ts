@@ -124,3 +124,90 @@ export function excludedUsernamesForFolder(
     (loadMap(userId)[folderId] || []).map((u) => u.trim().toLowerCase()),
   );
 }
+
+/**
+ * Sincronização automática por pasta (ligar/desligar).
+ * Desliga o sync da pasta sem apagar nada — útil para editar itens à mão.
+ */
+const DISABLED_KEY = "auxplus-sync-disabled";
+const disabledDbKey = (userId: string) => `sync_disabled_user_${userId}`;
+
+type DisabledMap = Record<string, boolean>;
+
+function loadDisabled(userId: string): DisabledMap {
+  try {
+    const raw = localStorage.getItem(`${DISABLED_KEY}:${userId}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as DisabledMap;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDisabled(userId: string, map: DisabledMap) {
+  try {
+    localStorage.setItem(`${DISABLED_KEY}:${userId}`, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
+async function persistDisabledRemote(userId: string, map: DisabledMap) {
+  if (!supabase || !userId) return;
+  try {
+    await supabase.from("platform_settings").upsert(
+      {
+        key: disabledDbKey(userId),
+        value: map,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+  } catch {
+    /* local já salvo */
+  }
+}
+
+/** Baixa o estado do sync por pasta (nuvem → local). */
+export async function loadSyncDisabledRemote(userId: string): Promise<void> {
+  if (!supabase || !userId) return;
+  try {
+    const { data, error } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", disabledDbKey(userId))
+      .maybeSingle();
+    if (error || !data?.value) return;
+    const remote =
+      typeof data.value === "string"
+        ? (JSON.parse(data.value) as DisabledMap)
+        : (data.value as DisabledMap);
+    saveDisabled(userId, {
+      ...loadDisabled(userId),
+      ...(remote && typeof remote === "object" ? remote : {}),
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Sync desativado para esta pasta? (padrão: ativado) */
+export function isFolderSyncDisabled(
+  userId: string,
+  folderId: string,
+): boolean {
+  return loadDisabled(userId)[folderId] === true;
+}
+
+export function setFolderSyncDisabled(
+  userId: string,
+  folderId: string,
+  disabled: boolean,
+) {
+  const map = loadDisabled(userId);
+  if (disabled) map[folderId] = true;
+  else delete map[folderId];
+  saveDisabled(userId, map);
+  void persistDisabledRemote(userId, map);
+}
