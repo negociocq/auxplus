@@ -2031,6 +2031,8 @@ Deno.serve(async (req) => {
       macCheckInId?: string;
       /** Último aviso “atendimento humano” (anti-spam). */
       humanBusyAt?: string;
+      /** Já avisou o cliente sobre o atendimento humano (1× por sessão). */
+      humanBusySent?: boolean;
       updatedAt?: string;
     };
     type TestConsumed = {
@@ -2248,6 +2250,7 @@ Deno.serve(async (req) => {
       sessions[phone] = {
         ...(sessions[phone] || {}),
         state: "human",
+        humanBusySent: false,
         updatedAt: new Date().toISOString(),
       };
       await persistState();
@@ -2337,17 +2340,17 @@ Deno.serve(async (req) => {
     }
 
     if (isHumanPaused(phone)) {
-      // Avisa o cliente (no máx. 1× a cada 10 min) — evita “sumiu o bot”
+      // Avisa o cliente UMA vez por atendimento humano (não repete a cada
+      // mensagem que ele mandar enquanto o atendente estiver assumido).
       const prev = sessions[phone] || {
         state: "human",
         updatedAt: new Date().toISOString(),
       };
-      const lastBusy = Date.parse(String(prev.humanBusyAt || "")) || 0;
-      if (Date.now() - lastBusy > 10 * 60 * 1000) {
+      if (!prev.humanBusySent) {
         sessions[phone] = {
           ...prev,
           state: "human",
-          humanBusyAt: new Date().toISOString(),
+          humanBusySent: true,
           updatedAt: new Date().toISOString(),
         };
         await persistState();
@@ -3096,6 +3099,7 @@ Deno.serve(async (req) => {
         sessions[phone] = {
           ...sess,
           state: "human",
+          humanBusySent: false,
           updatedAt: new Date().toISOString(),
         };
         await persistState();
@@ -3552,6 +3556,7 @@ Deno.serve(async (req) => {
         sessions[phone] = {
           state: "human",
           role: "reseller",
+          humanBusySent: false,
           updatedAt: new Date().toISOString(),
         };
         await persistState();
@@ -3706,6 +3711,7 @@ Deno.serve(async (req) => {
           state: "human",
           role: "client",
           itemRefId: String(clientItem.id),
+          humanBusySent: false,
           updatedAt: new Date().toISOString(),
         };
         await persistState();

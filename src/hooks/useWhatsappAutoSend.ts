@@ -15,6 +15,7 @@ import {
   saveSendLog,
   sendEvolutionText,
   syncWhatsappAccountData,
+  wasItemSentToday,
   type WaSendLog,
 } from "@/lib/whatsappAutomation";
 import {
@@ -122,6 +123,8 @@ export function useWhatsappAutoSend(user: User | null, data: AppData) {
           if (cancelled) break;
           const liveSettings = loadWhatsappSettings(user.id);
           if (!liveSettings.enabled) break;
+          // Dedup na hora: se já foi enviado hoje, pula (fila pode estar velha)
+          if (wasItemSentToday(user.id, item.itemId, item.kind)) continue;
 
           const gate = canSendMore(liveSettings, loadSendLog(user.id));
           if (!gate.ok) {

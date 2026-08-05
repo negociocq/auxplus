@@ -446,6 +446,21 @@ export function isPastSendTime(sendTime: string, now = new Date()) {
   return now.getTime() >= target.getTime();
 }
 
+/**
+ * Já enviou este item hoje com sucesso? Dedup robusto contra fila defasada:
+ * re-checa o log na hora do envio (não confia só na fila montada antes).
+ */
+export function wasItemSentToday(
+  userId: string,
+  itemId: string,
+  kind: string,
+): boolean {
+  const day = format(new Date(), "yyyy-MM-dd");
+  return loadSendLog(userId).some(
+    (l) => l.day === day && l.ok && l.itemId === itemId && l.kind === kind,
+  );
+}
+
 /** Monta fila do dia (lembretes elegíveis pela regra de dias). */
 export function buildTodayQueue(
   settings: WhatsappAutomationSettings,

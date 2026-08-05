@@ -71,6 +71,7 @@ import {
   type EvolutionRuntimeConfig,
   type WaConnectionStatus,
   type WhatsappAutomationSettings,
+  wasItemSentToday,
   type WaQueueItem,
   type WaSendLog,
 } from "@/lib/whatsappAutomation";
@@ -476,6 +477,8 @@ export default function WhatsAppPage() {
     let sent = 0;
     try {
       for (const item of queue) {
+        // Dedup na hora: se já foi enviado hoje, pula (fila pode estar defasada)
+        if (wasItemSentToday(user.id, item.itemId, item.kind)) continue;
         const gate = canSendMore(settings, loadSendLog(user.id));
         if (!gate.ok) {
           toast.message(gate.reason || "Parado pelos limites de segurança");
