@@ -1,40 +1,44 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { format } from "date-fns";
 import {
-  Cable,
   CalendarPlus,
   CheckCircle2,
   ClipboardCopy,
   Coins,
-  ExternalLink,
   Eye,
   EyeOff,
   FlaskConical,
-  History,
+  Headset,
   Loader2,
-  MonitorPlay,
   Plus,
-  QrCode,
   RefreshCw,
-  Save,
   Search,
   Smartphone,
   Trash2,
-  Unplug,
   UserCircle,
   Users,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBrDate } from "@/lib/format";
+import { normSearch } from "@/lib/utils";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
+import { useUniplayConnection } from "@/hooks/useUniplayConnection";
+import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -50,47 +54,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PixRenewPanel } from "@/components/whatsapp/PixRenewPanel";
+import { WhatsappBotPanel } from "@/components/whatsapp/WhatsappBotPanel";
 import {
-  isUniplayConnected,
   loadAutomationsConfig,
   loadAutomationsConfigRemote,
-  saveAutomationsConfig,
-  saveAutomationsConfigRemote,
-  type AutomationsConfig,
 } from "@/lib/automationsConfig";
-import {
-  DEFAULT_IPTV_PANEL_URL,
-  defaultIptvPlatformConfig,
-  instanceNameForUser,
-  isEvolutionConfigured,
-  loadEvolutionPlatformConfig,
-  loadIptvPlatformConfig,
-  type IptvPlatformConfig,
-} from "@/lib/platformApi";
 import {
   applyPanelDueToItem,
   applyRenewalToItem,
+  applyResellerRechargeToItem,
   copyText,
   createIptvJob,
   loadIptvJobs,
   loadIptvJobsRemote,
   mergePanelTestsIntoJobs,
   mergeWhatsAppLogSources,
-  nextDueAfterRenew,
   patchIptvJob,
   saveIptvJobs,
-  applyResellerRechargeToItem,
   syncIptvResellersToFolder,
   type IptvJob,
 } from "@/lib/iptvAutomation";
-import {
-  loadMpOrdersRemote,
-} from "@/lib/mercadoPagoOrders";
+import { loadMpOrdersRemote } from "@/lib/mercadoPagoOrders";
 import { loadWaBotStateRemote } from "@/lib/whatsappBotConfig";
-import {
-  notifyUniplayCreditsChanged,
-  onUniplayCreditsChanged,
-} from "@/lib/uniplayCreditsSync";
+import { notifyUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
 import {
   activatePartnerApp,
   addIptvResellerCredits,
@@ -99,7 +86,6 @@ import {
   createIptvTest,
   deleteSmartApp,
   ensureIptvToken,
-  fetchIptvPanelCredits,
   fetchIptvUserPassword,
   findIptvUserByUsername,
   formatIptvCredits,
@@ -121,7 +107,6 @@ import {
   removeLocalPartnerApp,
   renewIptvUser,
   setDeviceNickname,
-  tokenExpiresInSec,
   type IptvPanelCreds,
   type IptvRenewOption,
   type IptvReseller,
@@ -133,61 +118,62 @@ import {
   sendEvolutionText,
 } from "@/lib/whatsappAutomation";
 import {
-  assertMpAccessToken,
-  pingMercadoPago,
-} from "@/lib/mercadoPagoApi";
-import { openPanelWindow } from "@/lib/panelKeepAlive";
-import { SUPABASE_URL } from "@/integrations/supabase/client";
+  instanceNameForUser,
+  isEvolutionConfigured,
+  loadEvolutionPlatformConfig,
+} from "@/lib/platformApi";
 import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
 
-function statusLabel(s: IptvJob["status"]) {
-  switch (s) {
-    case "pending":
-      return "Pendente";
-    case "doing":
-      return "No painel";
-    case "done":
-      return "Concluído";
-    case "failed":
-      return "Falhou";
-  }
-}
+type ActivateAppScope = "clientes" | "testes";
+type ActivateAppForm = {
+  appId: PartnerAppId;
+  username: string;
+  password: string;
+  device: string;
+  nickname: string;
+  showPass: boolean;
+  registered: SmartAppEntry[];
+};
 
-export default function Automations() {
+export default function UniPlay() {
   const { user, data, setData } = useApp();
   const {
     hidden: hideSensitive,
     user: maskUser,
     num: maskNum,
   } = useHideBalance();
-  const [config, setConfig] = useState<AutomationsConfig>(() =>
-    loadAutomationsConfig(user?.id || "0"),
-  );
-  const [platform, setPlatform] = useState<IptvPlatformConfig>(
-    defaultIptvPlatformConfig(),
-  );
-  const [bearer, setBearer] = useState(config.iptvBearerToken);
-  const [panelUser, setPanelUser] = useState(config.iptvUsername);
-  const [panelPass, setPanelPass] = useState(config.iptvPassword);
-  const [showPass, setShowPass] = useState(false);
-  const [tokenInfo, setTokenInfo] = useState("");
-  const [refreshingToken, setRefreshingToken] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const uni = useUniplayConnection(user);
+  const {
+    ready,
+    uniplayConnected,
+    bearer,
+    panelUser,
+    panelPass,
+    platform,
+    config,
+    renewMonths,
+    testHours,
+    syncResellersFolderId,
+    panelCredits,
+    setRenewMonths,
+    setTestHours,
+    panelCreds,
+    persistToken,
+    refreshPanelCredits,
+  } = uni;
+
+  const [tab, setTab] = useState("clientes");
   const [jobs, setJobs] = useState<IptvJob[]>([]);
   const [q, setQ] = useState("");
-  const [renewMonths, setRenewMonths] = useState(config.renewMonths);
-  const [testHours, setTestHours] = useState(config.testHours);
-  const [syncFolderId, setSyncFolderId] = useState(config.syncFolderId);
-  const [syncResellersFolderId, setSyncResellersFolderId] = useState(
-    config.syncResellersFolderId,
-  );
   const [resellers, setResellers] = useState<IptvReseller[]>([]);
   const [loadingResellers, setLoadingResellers] = useState(false);
   const [syncingResellers, setSyncingResellers] = useState(false);
   const [resellersQ, setResellersQ] = useState("");
   const [creditTarget, setCreditTarget] = useState<IptvReseller | null>(null);
-  const [creditAmount, setCreditAmount] = useState(String(IPTV_RESELLER_CREDITS_MIN));
+  const [creditAmount, setCreditAmount] = useState(
+    String(IPTV_RESELLER_CREDITS_MIN),
+  );
   const [addingCredits, setAddingCredits] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [renewTargetId, setRenewTargetId] = useState<string | null>(null);
@@ -199,7 +185,6 @@ export default function Automations() {
   const [testNota, setTestNota] = useState("");
   const [syncingTests, setSyncingTests] = useState(false);
   const [jobsQ, setJobsQ] = useState("");
-  const [uniplaySubTab, setUniplaySubTab] = useState("conexao");
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
   const [clientDetailAccess, setClientDetailAccess] = useState<{
@@ -221,16 +206,6 @@ export default function Automations() {
     hours: number;
     dueDate: string | null;
   } | null>(null);
-  type ActivateAppScope = "clientes" | "testes";
-  type ActivateAppForm = {
-    appId: PartnerAppId;
-    username: string;
-    password: string;
-    device: string;
-    nickname: string;
-    showPass: boolean;
-    registered: SmartAppEntry[];
-  };
   const emptyActivateForm = (): ActivateAppForm => ({
     appId: "prime",
     username: "",
@@ -264,17 +239,8 @@ export default function Automations() {
       [scope]: { ...prev[scope], ...patch },
     }));
   };
-  const [mpAccessToken, setMpAccessToken] = useState(config.mpAccessToken);
-  const [mpPayerEmail, setMpPayerEmail] = useState(config.mpPayerEmail);
-  const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(
-    config.resellerCreditPriceBrl,
-  );
-  const [showMpToken, setShowMpToken] = useState(false);
-  const [savingMp, setSavingMp] = useState(false);
-  const [testingMp, setTestingMp] = useState(false);
-  const [panelCredits, setPanelCredits] = useState<number | null>(null);
-  const [loadingCredits, setLoadingCredits] = useState(false);
 
+  // Carrega jobs (cache local) + mescla com a nuvem (regras/log em qualquer PC)
   useEffect(() => {
     if (!user) return;
     setJobs(loadIptvJobs(user.id));
@@ -295,56 +261,8 @@ export default function Automations() {
         saveIptvJobs(user.id, merged);
       }
     })();
-    void loadIptvPlatformConfig().then(setPlatform);
-    // Conta UniPlay vem da nuvem (todos os PCs) + cache local
-    void loadAutomationsConfigRemote(user.id).then((next) => {
-      setConfig(next);
-      setBearer(next.iptvBearerToken);
-      setPanelUser(next.iptvUsername);
-      setPanelPass(next.iptvPassword);
-      setRenewMonths(next.renewMonths);
-      setTestHours(next.testHours);
-      setSyncFolderId(next.syncFolderId);
-      setSyncResellersFolderId(next.syncResellersFolderId);
-      setMpAccessToken(next.mpAccessToken);
-      setMpPayerEmail(next.mpPayerEmail);
-      setResellerCreditPriceBrl(next.resellerCreditPriceBrl);
-    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  const uniplayConnected = useMemo(
-    () =>
-      isUniplayConnected({
-        iptvBearerToken: bearer,
-        iptvUsername: panelUser,
-        iptvPassword: panelPass,
-      }),
-    [bearer, panelUser, panelPass],
-  );
-
-  useEffect(() => {
-    const left = bearer ? tokenExpiresInSec(bearer) : null;
-    if (left == null) {
-      setTokenInfo(bearer ? "Token sem prazo legível" : "Sem conexão");
-      return;
-    }
-    if (left <= 0) setTokenInfo("Sessão expirada — clique em Conectar");
-    else {
-      const h = Math.floor(left / 3600);
-      const m = Math.floor((left % 3600) / 60);
-      setTokenInfo(`Conectado · ~${h}h ${m}min`);
-    }
-  }, [bearer]);
-
-  useEffect(() => {
-    if (!uniplayConnected) {
-      setUniplaySubTab("conexao");
-      setResellers([]);
-      return;
-    }
-    // Ao conectar, abre Ativos (Conexão fica como 3ª aba)
-    setUniplaySubTab((tab) => (tab === "conexao" ? "ativos" : tab));
-  }, [uniplayConnected]);
 
   const uniplayPrefetchKey = useRef("");
   // Prefetch contagens ao abrir UniPlay (não precisa entrar em cada aba)
@@ -427,45 +345,6 @@ export default function Automations() {
     data.items,
   ]);
 
-  // Renova o Bearer sozinho a cada 15 min (se usuário/senha salvos)
-  useEffect(() => {
-    if (!user || !config.iptvAutoRefreshToken) return;
-    if (!panelUser.trim() || !panelPass) return;
-
-    const tick = async () => {
-      try {
-        const cur = loadAutomationsConfig(user.id);
-        const plat = await loadIptvPlatformConfig();
-        const { token, renewed } = await ensureIptvToken({
-          apiBaseUrl: plat.apiBaseUrl,
-          bearerToken: cur.iptvBearerToken,
-          username: panelUser,
-          password: panelPass,
-          defaultPackage: plat.packageId || "1",
-          regPassword: plat.regPassword || undefined,
-          apiProxyUrl: plat.apiProxyUrl || undefined,
-        });
-        if (renewed || (token && token !== cur.iptvBearerToken)) {
-          setBearer(token);
-          setConfig((c) => ({ ...c, iptvBearerToken: token }));
-          saveAutomationsConfig(user.id, {
-            ...loadAutomationsConfig(user.id),
-            iptvBearerToken: token,
-            iptvUsername: panelUser.trim(),
-            iptvPassword: panelPass,
-          });
-          if (renewed) toast.message("Sessão UniPlay renovada");
-        }
-      } catch {
-        /* silencioso no intervalo */
-      }
-    };
-
-    void tick();
-    const id = window.setInterval(() => void tick(), 15 * 60 * 1000);
-    return () => window.clearInterval(id);
-  }, [user, config.iptvAutoRefreshToken, panelUser, panelPass]);
-
   const myFolders = useMemo(
     () =>
       data.folders.filter(
@@ -511,6 +390,7 @@ export default function Automations() {
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
+    const nq = normSearch(q);
     // Oculto por padrão; busca (≥2) ou "Mostrar lista" revela
     if (!showClientsList && term.length < 2) return [];
     const rank = (status?: string | null) => {
@@ -522,9 +402,9 @@ export default function Automations() {
       .filter((i) => {
         if (term.length < 2) return true;
         return (
-          i.name.toLowerCase().includes(term) ||
-          i.itemId.toLowerCase().includes(term) ||
-          (i.phone || "").includes(term)
+          normSearch(i.name).includes(nq) ||
+          normSearch(i.itemId).includes(nq) ||
+          normSearch(i.phone || "").includes(nq)
         );
       })
       .sort((a, b) => {
@@ -538,17 +418,17 @@ export default function Automations() {
   }, [activeClients, overdueClients, q, showClientsList]);
 
   const jobMatchesQuery = (job: IptvJob, query: string) => {
-    const qn = query.trim().toLowerCase();
+    const qn = normSearch(query);
     if (!qn) return true;
-    const hay = [
-      job.clientName,
-      job.panelUsername,
-      job.note,
-      job.panelPassword || "",
-      job.kind === "renew" ? "renovação" : "teste",
-    ]
-      .join(" ")
-      .toLowerCase();
+    const hay = normSearch(
+      [
+        job.clientName,
+        job.panelUsername,
+        job.note,
+        job.panelPassword || "",
+        job.kind === "renew" ? "renovação" : "teste",
+      ].join(" "),
+    );
     return hay.includes(qn);
   };
 
@@ -605,6 +485,7 @@ export default function Automations() {
   };
   const testJobsCount = useMemo(
     () => jobs.filter(isRealTestJob).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [jobs, clientUsernameSet],
   );
 
@@ -667,121 +548,39 @@ export default function Automations() {
     "credits-dialog",
   );
 
+  // Busca senha ao carregar usuário em cada formulário (clientes / testes).
+  // Antes dos guards: hook sempre roda, em toda renderização.
   useEffect(() => {
-    if (!uniplayConnected || !user) {
-      setPanelCredits(null);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      setLoadingCredits(true);
-      try {
-        const creds: IptvPanelCreds = {
-          apiBaseUrl: platform.apiBaseUrl || config.iptvApiBaseUrl,
-          bearerToken: bearer.trim(),
-          regPassword: platform.regPassword.trim() || undefined,
-          defaultPackage: platform.packageId.trim() || "1",
-          username: panelUser.trim() || undefined,
-          password: panelPass || undefined,
-          apiProxyUrl: platform.apiProxyUrl?.trim() || undefined,
-        };
-        const ensured = await ensureIptvToken(creds);
-        if (ensured.renewed && user) {
-          setBearer(ensured.token);
-          const cur = loadAutomationsConfig(user.id);
-          saveAutomationsConfig(user.id, {
-            ...cur,
-            iptvBearerToken: ensured.token,
-          });
-          setConfig((c) => ({ ...c, iptvBearerToken: ensured.token }));
-        }
-        const bal = await fetchIptvPanelCredits({
-          ...creds,
-          bearerToken: ensured.token,
-        });
-        if (!cancelled) setPanelCredits(bal.credits);
-      } catch {
-        /* silencioso — badge some se falhar */
-      } finally {
-        if (!cancelled) setLoadingCredits(false);
-      }
-    };
-    void load();
-    const id = window.setInterval(() => void load(), 60_000);
-    const offCredits = onUniplayCreditsChanged(() => {
-      if (!cancelled) void load();
-    });
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-      offCredits();
-    };
-  }, [
-    uniplayConnected,
-    user,
-    bearer,
-    platform.apiBaseUrl,
-    platform.apiProxyUrl,
-    platform.regPassword,
-    platform.packageId,
-    config.iptvApiBaseUrl,
-    panelUser,
-    panelPass,
-  ]);
+    const want = activateForms.clientes.username.trim();
+    if (want.length < 3) return;
+    if (!bearer.trim() && !(panelUser.trim() && panelPass)) return;
+    if (activateForms.clientes.password.trim()) return;
+    const t = window.setTimeout(() => {
+      void lookupIptvPassword("clientes", want, { silent: true });
+    }, 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activateForms.clientes.username]);
+
+  useEffect(() => {
+    const want = activateForms.testes.username.trim();
+    if (want.length < 3) return;
+    if (!bearer.trim() && !(panelUser.trim() && panelPass)) return;
+    if (activateForms.testes.password.trim()) return;
+    const t = window.setTimeout(() => {
+      void lookupIptvPassword("testes", want, { silent: true });
+    }, 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activateForms.testes.username]);
 
   if (!user) return null;
+  if (!ready) return <LoadingScreen />;
+  if (!uniplayConnected) return <Navigate to="/conexoes" replace />;
 
   const persistJobs = (next: IptvJob[]) => {
     setJobs(next);
     saveIptvJobs(user.id, next);
-  };
-
-  const persistConfig = (next: AutomationsConfig) => {
-    setConfig(next);
-    saveAutomationsConfig(user.id, next);
-  };
-
-  const panelCreds = (): IptvPanelCreds => ({
-    apiBaseUrl: platform.apiBaseUrl || config.iptvApiBaseUrl,
-    bearerToken: bearer.trim(),
-    regPassword: platform.regPassword.trim() || undefined,
-    defaultPackage: platform.packageId.trim() || "1",
-    username: panelUser.trim() || undefined,
-    password: panelPass || undefined,
-    apiProxyUrl: platform.apiProxyUrl?.trim() || undefined,
-  });
-
-  const persistToken = (token: string) => {
-    if (!user || !token) return;
-    setBearer(token);
-    const cur = loadAutomationsConfig(user.id);
-    saveAutomationsConfig(user.id, { ...cur, iptvBearerToken: token });
-    setConfig((c) => ({ ...c, iptvBearerToken: token }));
-  };
-
-  const refreshPanelCredits = async (silent = true) => {
-    if (!uniplayConnected) {
-      setPanelCredits(null);
-      return;
-    }
-    setLoadingCredits(true);
-    try {
-      const ensured = await ensureIptvToken(panelCreds());
-      if (ensured.renewed) persistToken(ensured.token);
-      const bal = await fetchIptvPanelCredits({
-        ...panelCreds(),
-        bearerToken: ensured.token,
-      });
-      setPanelCredits(bal.credits);
-    } catch (e) {
-      if (!silent) {
-        toast.error(
-          e instanceof Error ? e.message : "Não foi possível ler os créditos",
-        );
-      }
-    } finally {
-      setLoadingCredits(false);
-    }
   };
 
   const refreshResellers = async (silent = false) => {
@@ -816,36 +615,9 @@ export default function Automations() {
     }
   };
 
-  /** Desconecta a conta UniPlay: limpa credenciais/token (local + nuvem). */
-  const disconnectUniplay = async () => {
-    if (!user) return;
-    if (
-      !window.confirm(
-        "Desconectar a conta UniPlay? O usuário e a senha salvos serão removidos. Você pode conectar de novo depois.",
-      )
-    ) {
-      return;
-    }
-    const next: AutomationsConfig = {
-      ...config,
-      iptvUsername: "",
-      iptvPassword: "",
-      iptvBearerToken: "",
-    };
-    setConfig(next);
-    saveAutomationsConfig(user.id, next);
-    void saveAutomationsConfigRemote(user.id, next).catch(() => undefined);
-    setPanelUser("");
-    setPanelPass("");
-    setBearer("");
-    setResellers([]);
-    setPanelCredits(null);
-    toast.success("Conta UniPlay desconectada");
-  };
-
   const syncResellersNow = async () => {
     if (!syncResellersFolderId) {
-      toast.error("Escolha a pasta de revendedores em Conexão");
+      toast.error("Escolha a pasta de revendedores em Conexões");
       return;
     }
     setSyncingResellers(true);
@@ -977,87 +749,6 @@ export default function Automations() {
     }
   };
 
-  const refreshTokenNow = async () => {
-    if (!panelUser.trim() || !panelPass) {
-      toast.error("Salve usuário e senha da sua conta UniPlay");
-      return;
-    }
-    setRefreshingToken(true);
-    try {
-      const plat = await loadIptvPlatformConfig();
-      setPlatform(plat);
-      const { token, renewed } = await ensureIptvToken(
-        {
-          apiBaseUrl: plat.apiBaseUrl,
-          bearerToken: "",
-          username: panelUser.trim(),
-          password: panelPass,
-          defaultPackage: plat.packageId || "1",
-          regPassword: plat.regPassword || undefined,
-          apiProxyUrl: plat.apiProxyUrl || undefined,
-        },
-        10 ** 9,
-      );
-      persistToken(token);
-      setUniplaySubTab("ativos");
-      toast.success(renewed ? "UniPlay conectado" : "Sessão atualizada");
-      void refreshPanelCredits(true);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao conectar");
-    } finally {
-      setRefreshingToken(false);
-    }
-  };
-
-  const onSavePanel = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!panelUser.trim() || !panelPass) {
-      toast.error("Informe usuário e senha da sua conta");
-      return;
-    }
-    setSaving(true);
-    const next: AutomationsConfig = {
-      ...config,
-      iptvBearerToken: bearer.trim(),
-      iptvUsername: panelUser.trim(),
-      iptvPassword: panelPass,
-      renewMonths,
-      testHours,
-      syncFolderId,
-      syncResellersFolderId,
-      iptvAutoRefreshToken: true,
-      mpAccessToken: mpAccessToken.trim(),
-      mpPayerEmail: mpPayerEmail.trim(),
-      resellerCreditPriceBrl,
-    };
-    setConfig(next);
-    const saved = await saveAutomationsConfigRemote(user.id, next);
-    setSaving(false);
-    setShowPass(false);
-    if (saved.warning) {
-      toast.message("Conta salva neste PC", { description: saved.warning });
-    } else {
-      toast.success("Conta UniPlay salva em todos os dispositivos");
-    }
-    void refreshTokenNow();
-  };
-
-  const openPanel = () => {
-    const url = platform.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL;
-    if (!url) {
-      toast.error(
-        "URL do painel ainda não foi configurada pelo administrador",
-      );
-      return;
-    }
-    try {
-      openPanelWindow(url);
-      toast.message("Painel aberto — faça login se pedir");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao abrir painel");
-    }
-  };
-
   /** Ainda não venceu (hoje ou futuro) → Estender; já passou → Renovar */
   const isClientStillActive = (dueDate?: string | null) => {
     const due = String(dueDate || "").slice(0, 10);
@@ -1164,62 +855,6 @@ export default function Automations() {
           ? `Renovado, mas falhou o WhatsApp: ${e.message}`
           : "Renovado, mas falhou o envio do comprovante",
       );
-    }
-  };
-
-  const saveMercadoPagoConfig = async () => {
-    if (!user) return;
-    let token: string;
-    try {
-      token = assertMpAccessToken(mpAccessToken);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Access Token inválido");
-      return;
-    }
-    if (!mpPayerEmail.trim() || !mpPayerEmail.includes("@")) {
-      toast.error("Informe um e-mail válido (pagador do PIX na API)");
-      return;
-    }
-    setSavingMp(true);
-    setMpAccessToken(token);
-    const next: AutomationsConfig = {
-      ...config,
-      mpAccessToken: token,
-      mpPayerEmail: mpPayerEmail.trim(),
-    };
-    setConfig(next);
-    const saved = await saveAutomationsConfigRemote(user.id, next);
-    setSavingMp(false);
-    setShowMpToken(false);
-    if (saved.warning) {
-      toast.message("Mercado Pago salvo neste PC", {
-        description: saved.warning,
-      });
-    } else {
-      toast.success("Mercado Pago salvo em todos os dispositivos");
-    }
-  };
-
-  const testMercadoPagoConnection = async () => {
-    let token: string;
-    try {
-      token = assertMpAccessToken(mpAccessToken);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Access Token inválido");
-      return;
-    }
-    setTestingMp(true);
-    try {
-      const me = await pingMercadoPago(token);
-      toast.success(
-        me.nickname || me.email
-          ? `Token OK · conta ${me.nickname || me.email}`
-          : "Token OK no Mercado Pago",
-      );
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao testar token");
-    } finally {
-      setTestingMp(false);
     }
   };
 
@@ -1524,35 +1159,10 @@ export default function Automations() {
       silentToast: true,
     });
     if (job.panelUsername?.trim()) {
-      setUniplaySubTab("ativos");
+      setTab("clientes");
       focusActivateApp("clientes");
     }
   };
-
-  // Busca senha ao carregar usuário em cada formulário (clientes / testes)
-  useEffect(() => {
-    const want = activateForms.clientes.username.trim();
-    if (want.length < 3) return;
-    if (!bearer.trim() && !(panelUser.trim() && panelPass)) return;
-    if (activateForms.clientes.password.trim()) return;
-    const t = window.setTimeout(() => {
-      void lookupIptvPassword("clientes", want, { silent: true });
-    }, 700);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activateForms.clientes.username]);
-
-  useEffect(() => {
-    const want = activateForms.testes.username.trim();
-    if (want.length < 3) return;
-    if (!bearer.trim() && !(panelUser.trim() && panelPass)) return;
-    if (activateForms.testes.password.trim()) return;
-    const t = window.setTimeout(() => {
-      void lookupIptvPassword("testes", want, { silent: true });
-    }, 700);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activateForms.testes.username]);
 
   const runActivateApp = async (scope: ActivateAppScope) => {
     const form = activateForms[scope];
@@ -1847,59 +1457,6 @@ export default function Automations() {
     }
   };
 
-  const startInPanel = async (job: IptvJob) => {
-    setBusyId(job.id);
-    try {
-      const ok = await copyText(job.panelUsername);
-      openPanel();
-      persistJobs(
-        patchIptvJob(jobs, job.id, {
-          status: "doing",
-        }),
-      );
-      toast.message(
-        ok
-          ? `Usuário copiado: ${job.panelUsername} — cole no painel`
-          : `Abra o painel e busque: ${job.panelUsername}`,
-      );
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const completeJob = (job: IptvJob) => {
-    setBusyId(job.id);
-    try {
-      if (job.kind === "renew" && job.itemRefId) {
-        const item = data.items.find((i) => i.id === job.itemRefId);
-        if (item) {
-          const updated = applyRenewalToItem(item, job.months);
-          setData({
-            ...data,
-            items: data.items.map((i) =>
-              i.id === item.id ? updated : i,
-            ),
-          });
-          toast.success(
-            `Renovado no AuxPlus até ${formatBrDate(updated.dueDate)}`,
-          );
-        } else {
-          toast.message("Item não encontrado — job só marcado como concluído");
-        }
-      } else {
-        toast.success("Teste marcado como concluído");
-      }
-      persistJobs(patchIptvJob(jobs, job.id, { status: "done" }));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const failJob = (job: IptvJob) => {
-    persistJobs(patchIptvJob(jobs, job.id, { status: "failed" }));
-    toast.message("Marcado como falhou");
-  };
-
   const openJobDetail = (job: IptvJob) => {
     setDetailJobId(job.id);
     // Completa senha/M3U ao abrir (teste ou renovação)
@@ -1952,6 +1509,32 @@ export default function Automations() {
       m3uHost: platform.m3uHost,
       dnsFallback: platform.dnsSmarters,
     });
+
+  const completeJob = (job: IptvJob) => {
+    setBusyId(job.id);
+    try {
+      if (job.kind === "renew" && job.itemRefId) {
+        const item = data.items.find((i) => i.id === job.itemRefId);
+        if (item) {
+          const updated = applyRenewalToItem(item, job.months);
+          setData({
+            ...data,
+            items: data.items.map((i) => (i.id === item.id ? updated : i)),
+          });
+          toast.success(
+            `Renovado no AuxPlus até ${formatBrDate(updated.dueDate)}`,
+          );
+        } else {
+          toast.message("Item não encontrado — job só marcado como concluído");
+        }
+      } else {
+        toast.success("Teste marcado como concluído");
+      }
+      persistJobs(patchIptvJob(jobs, job.id, { status: "done" }));
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const activateTestJob = async (job: IptvJob, option: IptvRenewOption) => {
     if (!job.panelUsername.trim()) {
@@ -2043,787 +1626,385 @@ export default function Automations() {
           )
         : null;
     return (
-            <section
-              id={`ativar-app-${scope}`}
-              className="ax-surface scroll-mt-20 space-y-3 p-4"
+      <section
+        id={`ativar-app-${scope}`}
+        className="ax-surface scroll-mt-20 space-y-3 p-4"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold tracking-tight">Ativar app</h2>
+            {hint ? (
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {hint}
+              </p>
+            ) : null}
+          </div>
+          {form.username.trim() ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 text-xs"
+              disabled={loadingApps || !bearer.trim()}
+              onClick={() => void loadRegisteredApps(scope, form.username)}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold tracking-tight">
-                    Ativar app
-                  </h2>
-                  {hint ? (
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {hint}
-                    </p>
-                  ) : null}
-                </div>
-                {form.username.trim() ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 text-xs"
-                    disabled={loadingApps || !bearer.trim()}
-                    onClick={() => void loadRegisteredApps(scope, form.username)}
-                  >
-                    {loadingApps ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Search className="h-3.5 w-3.5" />
-                    )}
-                    Atualizar
-                  </Button>
+              {loadingApps ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search className="h-3.5 w-3.5" />
+              )}
+              Atualizar
+            </Button>
+          ) : null}
+        </div>
+
+        {matchClient || matchTest ? (
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border border-primary/20 bg-primary/[0.07] px-2.5 py-1.5 text-xs text-muted-foreground">
+            <UserCircle className="h-3.5 w-3.5 shrink-0 text-primary" />
+            {matchClient ? (
+              <>
+                <span className="font-semibold text-foreground">
+                  {matchClient.name}
+                </span>
+                <span className="truncate">{matchClient.itemId}</span>
+                {matchClient.dueDate ? (
+                  <span>· vence {formatBrDate(matchClient.dueDate)}</span>
                 ) : null}
-              </div>
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-foreground">
+                  {matchTest?.clientName || matchTest?.panelUsername}
+                </span>
+                <span className="truncate">{matchTest?.panelUsername}</span>
+                {matchTest?.dueDate ? (
+                  <span>· vence {formatBrDate(matchTest.dueDate)}</span>
+                ) : null}
+              </>
+            )}
+          </p>
+        ) : null}
 
-              {matchClient || matchTest ? (
-                <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border border-primary/20 bg-primary/[0.07] px-2.5 py-1.5 text-xs text-muted-foreground">
-                  <UserCircle className="h-3.5 w-3.5 shrink-0 text-primary" />
-                  {matchClient ? (
-                    <>
-                      <span className="font-semibold text-foreground">
-                        {matchClient.name}
-                      </span>
-                      <span className="truncate">{matchClient.itemId}</span>
-                      {matchClient.dueDate ? (
-                        <span>· vence {formatBrDate(matchClient.dueDate)}</span>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-semibold text-foreground">
-                        {matchTest?.clientName || matchTest?.panelUsername}
-                      </span>
-                      <span className="truncate">{matchTest?.panelUsername}</span>
-                      {matchTest?.dueDate ? (
-                        <span>· vence {formatBrDate(matchTest.dueDate)}</span>
-                      ) : null}
-                    </>
-                  )}
-                </p>
-              ) : null}
-
-              <div className="grid gap-2 sm:grid-cols-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">App</Label>
-                  <Select
-                    value={form.appId}
-                    onValueChange={(v) => {
-                      const next = v as PartnerAppId;
-                      const meta = PARTNER_APPS.find((a) => a.id === next);
-                      const device =
-                        meta?.deviceField === "mac" && form.device
-                          ? formatMacInput(form.device)
-                          : form.device;
-                      patchActivateForm(scope, { appId: next, device });
-                    }}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="App" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PARTNER_APPS.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs" htmlFor={`app-nick-${scope}`}>
-                    Apelido
-                  </Label>
-                  <Input
-                    id={`app-nick-${scope}`}
-                    value={form.nickname}
-                    onChange={(e) =>
-                      patchActivateForm(scope, {
-                        nickname: e.target.value.toUpperCase().slice(0, 32),
-                      })
-                    }
-                    placeholder="SALA, QUARTO…"
-                    className="h-9"
-                    autoComplete="off"
-                    maxLength={32}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs" htmlFor={`app-device-${scope}`}>
-                    {PARTNER_APPS.find((a) => a.id === form.appId)?.deviceField ===
-                    "deviceId"
-                      ? "Device ID"
-                      : "MAC"}
-                  </Label>
-                  <Input
-                    id={`app-device-${scope}`}
-                    value={form.device}
-                    onChange={(e) => {
-                      const el = e.target;
-                      const raw = el.value;
-                      const isMac =
-                        PARTNER_APPS.find((a) => a.id === form.appId)
-                          ?.deviceField === "mac";
-                      if (!isMac) {
-                        patchActivateForm(scope, { device: raw });
-                        return;
-                      }
-                      const caret = el.selectionStart ?? raw.length;
-                      const hexBefore = macHexDigits(raw.slice(0, caret)).length;
-                      const next = formatMacInput(raw);
-                      const nextCaret = macCaretAfterHex(next, hexBefore);
-                      if (next !== form.device) {
-                        patchActivateForm(scope, { device: next });
-                        requestAnimationFrame(() => {
-                          el.setSelectionRange(nextCaret, nextCaret);
-                        });
-                      } else if (raw !== next) {
-                        el.value = next;
-                        el.setSelectionRange(nextCaret, nextCaret);
-                      }
-                    }}
-                    placeholder={
-                      PARTNER_APPS.find((a) => a.id === form.appId)
-                        ?.deviceField === "mac"
-                        ? "aa:bb:cc:dd:ee:ff"
-                        : "Device ID"
-                    }
-                    className="h-9 font-mono text-xs"
-                    autoComplete="off"
-                    spellCheck={false}
-                    inputMode="text"
-                    maxLength={
-                      PARTNER_APPS.find((a) => a.id === form.appId)
-                        ?.deviceField === "mac"
-                        ? 17
-                        : undefined
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs" htmlFor={`app-user-${scope}`}>
-                    Usuário
-                  </Label>
-                  <div className="flex gap-1.5">
-                    <Input
-                      id={`app-user-${scope}`}
-                      type={hideSensitive ? "password" : "text"}
-                      value={form.username}
-                      placeholder={userPlaceholder}
-                      className="h-9 bg-muted/40"
-                      autoComplete="off"
-                      readOnly
-                    />
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      className="h-9 w-9 shrink-0"
-                      disabled={!form.username.trim() || hideSensitive}
-                      aria-label="Copiar usuário"
-                      title="Copiar usuário"
-                      onClick={() => void copyField("Usuário", form.username)}
-                    >
-                      <ClipboardCopy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-1 sm:col-span-2">
-                  <Label className="text-xs" htmlFor={`app-pass-${scope}`}>
-                    Senha
-                  </Label>
-                  <div className="flex gap-1.5">
-                    <div className="relative min-w-0 flex-1">
-                      <Input
-                        id={`app-pass-${scope}`}
-                        type={
-                          hideSensitive || !form.showPass ? "password" : "text"
-                        }
-                        value={form.password}
-                        placeholder={
-                          lookingUpPass
-                            ? "Buscando…"
-                            : "Preenche sozinha pelo App"
-                        }
-                        className="h-9 bg-muted/40 pr-9"
-                        autoComplete="off"
-                        readOnly
-                      />
-                      <button
-                        type="button"
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
-                        onClick={() =>
-                          patchActivateForm(scope, {
-                            showPass: !form.showPass,
-                          })
-                        }
-                        disabled={hideSensitive || lookingUpPass}
-                        aria-label={
-                          form.showPass ? "Ocultar senha" : "Mostrar senha"
-                        }
-                      >
-                        {lookingUpPass ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : form.showPass && !hideSensitive ? (
-                          <EyeOff className="h-3.5 w-3.5" />
-                        ) : (
-                          <Eye className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    </div>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      className="h-9 w-9 shrink-0"
-                      disabled={!form.password.trim() || hideSensitive}
-                      aria-label="Copiar senha"
-                      title="Copiar senha"
-                      onClick={() => void copyField("Senha", form.password)}
-                    >
-                      <ClipboardCopy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="space-y-1">
+            <Label className="text-xs">App</Label>
+            <Select
+              value={form.appId}
+              onValueChange={(v) => {
+                const next = v as PartnerAppId;
+                const meta = PARTNER_APPS.find((a) => a.id === next);
+                const device =
+                  meta?.deviceField === "mac" && form.device
+                    ? formatMacInput(form.device)
+                    : form.device;
+                patchActivateForm(scope, { appId: next, device });
+              }}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="App" />
+              </SelectTrigger>
+              <SelectContent>
+                {PARTNER_APPS.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs" htmlFor={`app-nick-${scope}`}>
+              Apelido
+            </Label>
+            <Input
+              id={`app-nick-${scope}`}
+              value={form.nickname}
+              onChange={(e) =>
+                patchActivateForm(scope, {
+                  nickname: e.target.value.toUpperCase().slice(0, 32),
+                })
+              }
+              placeholder="SALA, QUARTO…"
+              className="h-9"
+              autoComplete="off"
+              maxLength={32}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs" htmlFor={`app-device-${scope}`}>
+              {PARTNER_APPS.find((a) => a.id === form.appId)?.deviceField ===
+              "deviceId"
+                ? "Device ID"
+                : "MAC"}
+            </Label>
+            <Input
+              id={`app-device-${scope}`}
+              value={form.device}
+              onChange={(e) => {
+                const el = e.target;
+                const raw = el.value;
+                const isMac =
+                  PARTNER_APPS.find((a) => a.id === form.appId)
+                    ?.deviceField === "mac";
+                if (!isMac) {
+                  patchActivateForm(scope, { device: raw });
+                  return;
+                }
+                const caret = el.selectionStart ?? raw.length;
+                const hexBefore = macHexDigits(raw.slice(0, caret)).length;
+                const next = formatMacInput(raw);
+                const nextCaret = macCaretAfterHex(next, hexBefore);
+                if (next !== form.device) {
+                  patchActivateForm(scope, { device: next });
+                  requestAnimationFrame(() => {
+                    el.setSelectionRange(nextCaret, nextCaret);
+                  });
+                } else if (raw !== next) {
+                  el.value = next;
+                  el.setSelectionRange(nextCaret, nextCaret);
+                }
+              }}
+              placeholder={
+                PARTNER_APPS.find((a) => a.id === form.appId)?.deviceField ===
+                "mac"
+                  ? "aa:bb:cc:dd:ee:ff"
+                  : "Device ID"
+              }
+              className="h-9 font-mono text-xs"
+              autoComplete="off"
+              spellCheck={false}
+              inputMode="text"
+              maxLength={
+                PARTNER_APPS.find((a) => a.id === form.appId)?.deviceField ===
+                "mac"
+                  ? 17
+                  : undefined
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs" htmlFor={`app-user-${scope}`}>
+              Usuário
+            </Label>
+            <div className="flex gap-1.5">
+              <Input
+                id={`app-user-${scope}`}
+                type={hideSensitive ? "password" : "text"}
+                value={form.username}
+                placeholder={userPlaceholder}
+                className="h-9 bg-muted/40"
+                autoComplete="off"
+                readOnly
+              />
               <Button
                 type="button"
-                className="w-full sm:w-auto"
-                disabled={activatingApp || lookingUpPass || !bearer.trim()}
-                onClick={() => void runActivateApp(scope)}
+                size="icon"
+                variant="outline"
+                className="h-9 w-9 shrink-0"
+                disabled={!form.username.trim() || hideSensitive}
+                aria-label="Copiar usuário"
+                title="Copiar usuário"
+                onClick={() => void copyField("Usuário", form.username)}
               >
-                {activatingApp ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Smartphone className="h-4 w-4" />
-                )}
-                Ativar
+                <ClipboardCopy className="h-3.5 w-3.5" />
               </Button>
-
-              {form.username.trim() ? (
-                loadingApps ? (
-                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            </div>
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <Label className="text-xs" htmlFor={`app-pass-${scope}`}>
+              Senha
+            </Label>
+            <div className="flex gap-1.5">
+              <div className="relative min-w-0 flex-1">
+                <Input
+                  id={`app-pass-${scope}`}
+                  type={
+                    hideSensitive || !form.showPass ? "password" : "text"
+                  }
+                  value={form.password}
+                  placeholder={
+                    lookingUpPass
+                      ? "Buscando…"
+                      : "Preenche sozinha pelo App"
+                  }
+                  className="h-9 bg-muted/40 pr-9"
+                  autoComplete="off"
+                  readOnly
+                />
+                <button
+                  type="button"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
+                  onClick={() =>
+                    patchActivateForm(scope, {
+                      showPass: !form.showPass,
+                    })
+                  }
+                  disabled={hideSensitive || lookingUpPass}
+                  aria-label={
+                    form.showPass ? "Ocultar senha" : "Mostrar senha"
+                  }
+                >
+                  {lookingUpPass ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Carregando aparelhos…
-                  </p>
-                ) : form.registered.length > 0 ? (
-                  <ul className="divide-y rounded-md border">
-                    {form.registered.map((entry) => (
-                      <li
-                        key={String(entry.id)}
-                        className="flex items-center gap-2 px-2.5 py-1.5 text-sm"
-                      >
-                        <Input
-                          value={entry.nickname || ""}
-                          onChange={(e) =>
-                            saveEntryNickname(
-                              scope,
-                              entry,
-                              e.target.value.toUpperCase().slice(0, 32),
-                            )
-                          }
-                          placeholder="Apelido"
-                          className="h-8 w-[7.5rem] shrink-0 text-xs font-medium"
-                          maxLength={32}
-                        />
-                        <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                          <span className="text-foreground/80">
-                            {entry.appLabel}
-                          </span>
-                          <span className="mx-1.5">·</span>
-                          <span className="font-mono">
-                            {entry.mac || entry.idDevice || "—"}
-                          </span>
-                        </div>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
-                          disabled={deletingAppId === entry.id}
-                          onClick={() => void runDeleteSmartApp(scope, entry)}
-                          aria-label="Excluir"
-                        >
-                          {deletingAppId === entry.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Nenhum aparelho cadastrado neste usuário.
-                  </p>
-                )
-              ) : null}
-            </section>
+                  ) : form.showPass && !hideSensitive ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="h-9 w-9 shrink-0"
+                disabled={!form.password.trim() || hideSensitive}
+                aria-label="Copiar senha"
+                title="Copiar senha"
+                onClick={() => void copyField("Senha", form.password)}
+              >
+                <ClipboardCopy className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          className="w-full sm:w-auto"
+          disabled={activatingApp || lookingUpPass || !bearer.trim()}
+          onClick={() => void runActivateApp(scope)}
+        >
+          {activatingApp ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Smartphone className="h-4 w-4" />
+          )}
+          Ativar
+        </Button>
+
+        {form.username.trim() ? (
+          loadingApps ? (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Carregando aparelhos…
+            </p>
+          ) : form.registered.length > 0 ? (
+            <ul className="divide-y rounded-md border">
+              {form.registered.map((entry) => (
+                <li
+                  key={String(entry.id)}
+                  className="flex items-center gap-2 px-2.5 py-1.5 text-sm"
+                >
+                  <Input
+                    value={entry.nickname || ""}
+                    onChange={(e) =>
+                      saveEntryNickname(
+                        scope,
+                        entry,
+                        e.target.value.toUpperCase().slice(0, 32),
+                      )
+                    }
+                    placeholder="Apelido"
+                    className="h-8 w-[7.5rem] shrink-0 text-xs font-medium"
+                    maxLength={32}
+                  />
+                  <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    <span className="text-foreground/80">
+                      {entry.appLabel}
+                    </span>
+                    <span className="mx-1.5">·</span>
+                    <span className="font-mono">
+                      {entry.mac || entry.idDevice || "—"}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                    disabled={deletingAppId === entry.id}
+                    onClick={() => void runDeleteSmartApp(scope, entry)}
+                    aria-label="Excluir"
+                  >
+                    {deletingAppId === entry.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Nenhum aparelho cadastrado neste usuário.
+            </p>
+          )
+        ) : null}
+      </section>
     );
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Automações"
-        description="Conecte as ferramentas que o AuxPlus usa no dia a dia."
+        title="UniPlay"
+        description="Clientes, revendedores, testes, renovações e atendimento do seu painel IPTV."
       />
 
-      <Tabs defaultValue="painel" className="space-y-4">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Escolha a integração
-          </p>
-          <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-background/80 p-1">
-            <TabsTrigger
-              value="painel"
-              className="h-auto flex-col items-start gap-0.5 px-3 py-2 text-left data-[state=active]:shadow-sm sm:min-w-[9.5rem]"
-            >
-              <span className="flex items-center gap-1.5 text-sm font-medium">
-                <MonitorPlay className="h-3.5 w-3.5" />
-                UniPlay
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "ml-0.5 h-5 px-1.5 text-[10px]",
-                    uniplayConnected &&
-                      "border-success/40 bg-success/15 text-success",
-                  )}
-                >
-                  {uniplayConnected ? "OK" : "Off"}
-                </Badge>
-              </span>
-              <span className="text-[11px] font-normal text-muted-foreground">
-                IPTV, testes e créditos
-              </span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="mercado-pago"
-              className="h-auto flex-col items-start gap-0.5 px-3 py-2 text-left data-[state=active]:shadow-sm sm:min-w-[9.5rem]"
-            >
-              <span className="flex items-center gap-1.5 text-sm font-medium">
-                <QrCode className="h-3.5 w-3.5" />
-                Mercado Pago
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "ml-0.5 h-5 px-1.5 text-[10px]",
-                    mpAccessToken.trim() &&
-                      "border-success/40 bg-success/15 text-success",
-                  )}
-                >
-                  {mpAccessToken.trim() ? "OK" : "Off"}
-                </Badge>
-              </span>
-              <span className="text-[11px] font-normal text-muted-foreground">
-                Token para PIX
-              </span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="winbox"
-              className="h-auto flex-col items-start gap-0.5 px-3 py-2 text-left data-[state=active]:shadow-sm sm:min-w-[9.5rem]"
-            >
-              <span className="flex items-center gap-1.5 text-sm font-medium">
-                <Cable className="h-3.5 w-3.5" />
-                Winbox
-                <Badge
-                  variant="outline"
-                  className="ml-0.5 h-5 px-1.5 text-[10px]"
-                >
-                  Off
-                </Badge>
-              </span>
-              <span className="text-[11px] font-normal text-muted-foreground">
-                Em breve
-              </span>
-            </TabsTrigger>
-          </TabsList>
-        </div>
-
-        <TabsContent value="painel" className="mt-0 space-y-4">
-          <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
-            <p className="text-sm font-medium">UniPlay</p>
-            <p className="text-xs text-muted-foreground">
-              {uniplayConnected
-                ? "Conta conectada. Use as abas abaixo para clientes, revendedores, testes e logs."
-                : "Primeiro conecte sua conta UniPlay na aba Conta. Depois liberam as outras funções."}
-            </p>
-          </div>
-
-          {uniplayConnected ? (
-            <div className="ax-surface flex flex-wrap items-center justify-between gap-3 p-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <Coins className="h-4 w-4 shrink-0 text-primary" />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Créditos UniPlay
-                  </p>
-                  <p className="text-lg font-semibold tabular-nums tracking-tight">
-                    {loadingCredits && panelCredits == null
-                      ? "…"
-                      : panelCredits == null
-                        ? "—"
-                        : maskNum(formatIptvCredits(panelCredits))}
-                  </p>
-                </div>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8"
-                disabled={loadingCredits}
-                onClick={() => void refreshPanelCredits(false)}
+      <Tabs
+        value={tab}
+        onValueChange={setTab}
+        className="space-y-4"
+      >
+        <TabsList className="h-auto flex-wrap bg-background/80">
+          <TabsTrigger value="clientes" className="gap-1.5">
+            Clientes
+            {activeClients.length > 0 || overdueClients.length > 0 ? (
+              <Badge
+                variant="secondary"
+                className="ml-0.5 h-5 px-1.5 text-[10px]"
               >
-                {loadingCredits ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-3.5 w-3.5" />
-                )}
-                Atualizar
-              </Button>
-            </div>
-          ) : null}
+                {activeClients.length + overdueClients.length}
+              </Badge>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="revendedores" className="gap-1.5">
+            <Users className="h-3.5 w-3.5" />
+            Revendedores
+            {resellers.length > 0 ? (
+              <Badge
+                variant="secondary"
+                className="ml-0.5 h-5 px-1.5 text-[10px]"
+              >
+                {resellers.length}
+              </Badge>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="testes" className="gap-1.5">
+            <FlaskConical className="h-3.5 w-3.5" />
+            Testes
+            {testJobsCount > 0 ? (
+              <Badge
+                variant="secondary"
+                className="ml-0.5 h-5 px-1.5 text-[10px]"
+              >
+                {testJobsCount}
+              </Badge>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="renovacoes" className="gap-1.5">
+            <Wallet className="h-3.5 w-3.5" />
+            Renovações
+          </TabsTrigger>
+          <TabsTrigger value="atendimento" className="gap-1.5">
+            <Headset className="h-3.5 w-3.5" />
+            Atendimento
+          </TabsTrigger>
+        </TabsList>
 
-          <Tabs
-            value={
-              uniplayConnected
-                ? uniplaySubTab === "renovacoes"
-                  ? "logs"
-                  : uniplaySubTab
-                : "conexao"
-            }
-            onValueChange={(v) =>
-              setUniplaySubTab(v === "renovacoes" ? "logs" : v)
-            }
-            className="space-y-4"
-          >
-            <TabsList className="h-auto flex-wrap bg-background/80">
-              {uniplayConnected ? (
-                <>
-                  <TabsTrigger value="ativos" className="gap-1.5">
-                    Clientes
-                    {activeClients.length > 0 || overdueClients.length > 0 ? (
-                      <Badge
-                        variant="secondary"
-                        className="ml-0.5 h-5 px-1.5 text-[10px]"
-                      >
-                        {activeClients.length + overdueClients.length}
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger value="revendedores" className="gap-1.5">
-                    <Users className="h-3.5 w-3.5" />
-                    Revendedores
-                    {resellers.length > 0 ? (
-                      <Badge
-                        variant="secondary"
-                        className="ml-0.5 h-5 px-1.5 text-[10px]"
-                      >
-                        {resellers.length}
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger value="testes" className="gap-1.5">
-                    <FlaskConical className="h-3.5 w-3.5" />
-                    Testes
-                    {testJobsCount > 0 ? (
-                      <Badge
-                        variant="secondary"
-                        className="ml-0.5 h-5 px-1.5 text-[10px]"
-                      >
-                        {testJobsCount}
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger value="logs" className="gap-1.5">
-                    <History className="h-3.5 w-3.5" />
-                    Logs
-                  </TabsTrigger>
-                  <TabsTrigger value="conexao" className="gap-1.5">
-                    Conta
-                    <Badge
-                      variant="outline"
-                      className="ml-0.5 h-5 px-1.5 text-[10px] border-success/40 bg-success/15 text-success"
-                    >
-                      OK
-                    </Badge>
-                  </TabsTrigger>
-                </>
-              ) : (
-                <TabsTrigger value="conexao" className="gap-1.5">
-                  Conta
-                  <Badge
-                    variant="outline"
-                    className="ml-0.5 h-5 px-1.5 text-[10px]"
-                  >
-                    Off
-                  </Badge>
-                </TabsTrigger>
-              )}
-            </TabsList>
-
-            <TabsContent value="conexao" className="mt-0 space-y-4">
-          <section className="ax-surface space-y-3 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-semibold tracking-tight">
-                  Login UniPlay
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Usuário e senha do painel para conectar o AuxPlus.
-                </p>
-              </div>
-              <span className="truncate text-[11px] text-muted-foreground">
-                {tokenInfo}
-              </span>
-            </div>
-
-            <form onSubmit={onSavePanel} className="space-y-3">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs" htmlFor="iptv-user">
-                    Usuário
-                  </Label>
-                  <Input
-                    id="iptv-user"
-                    name="uniplay-user"
-                    type={hideSensitive ? "password" : "text"}
-                    value={panelUser}
-                    onChange={(e) => setPanelUser(e.target.value)}
-                    placeholder="Login do painel"
-                    className="h-9"
-                    autoComplete="off"
-                    data-1p-ignore
-                    data-lpignore="true"
-                    readOnly={hideSensitive}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs" htmlFor="iptv-pass">
-                    Senha
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="iptv-pass"
-                      name="uniplay-pass"
-                      type={
-                        hideSensitive || !showPass ? "password" : "text"
-                      }
-                      value={panelPass}
-                      onChange={(e) => setPanelPass(e.target.value)}
-                      placeholder="Senha da UniPlay"
-                      autoComplete="off"
-                      data-1p-ignore
-                      data-lpignore="true"
-                      className="h-9 pr-9"
-                      readOnly={hideSensitive}
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
-                      onClick={() => setShowPass((v) => !v)}
-                      disabled={hideSensitive}
-                      aria-label={showPass ? "Ocultar senha" : "Mostrar senha"}
-                    >
-                      {showPass && !hideSensitive ? (
-                        <EyeOff className="h-3.5 w-3.5" />
-                      ) : (
-                        <Eye className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-end gap-1.5">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  className="h-9"
-                  disabled={
-                    refreshingToken || !panelUser.trim() || !panelPass
-                  }
-                  onClick={() => void refreshTokenNow()}
-                >
-                  {refreshingToken ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
-                  Conectar
-                </Button>
-                <Button type="submit" size="sm" className="h-9" disabled={saving}>
-                  <Save className="h-3.5 w-3.5" />
-                  {saving ? "…" : "Salvar"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-9"
-                  onClick={openPanel}
-                  disabled={!(platform.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL)}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Painel
-                </Button>
-                {uniplayConnected ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => void disconnectUniplay()}
-                  >
-                    <Unplug className="h-3.5 w-3.5" />
-                    Desconectar
-                  </Button>
-                ) : null}
-              </div>
-
-            </form>
-          </section>
-
-          {uniplayConnected ? (
-            <section className="ax-surface space-y-3 p-4">
-              <div>
-                <h2 className="text-sm font-semibold tracking-tight">
-                  Pastas de sincronização
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Onde o AuxPlus grava clientes e revendedores vindos da UniPlay.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Pasta de clientes IPTV</Label>
-                <Select
-                  value={syncFolderId || "__none__"}
-                  onValueChange={(v) => {
-                    const nextId = v === "__none__" ? "" : v;
-                    setSyncFolderId(nextId);
-                    if (!user) return;
-                    const cur = loadAutomationsConfig(user.id);
-                    const next = { ...cur, syncFolderId: nextId };
-                    saveAutomationsConfig(user.id, next);
-                    setConfig(next);
-                    toast.message(
-                      nextId
-                        ? "Botão Sincronizar UniPlay liberado nessa pasta"
-                        : "Botão de sincronizar clientes removido",
-                    );
-                  }}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Escolha a pasta de clientes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Nenhuma</SelectItem>
-                    {clientFolders.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  Libera o botão “Sincronizar UniPlay” dentro da pasta.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Pasta de revendedores</Label>
-                <Select
-                  value={syncResellersFolderId || "__none__"}
-                  onValueChange={(v) => {
-                    const nextId = v === "__none__" ? "" : v;
-                    setSyncResellersFolderId(nextId);
-                    if (!user) return;
-                    const cur = loadAutomationsConfig(user.id);
-                    const next = { ...cur, syncResellersFolderId: nextId };
-                    saveAutomationsConfig(user.id, next);
-                    void saveAutomationsConfigRemote(user.id, next);
-                    setConfig(next);
-                    toast.message(
-                      nextId
-                        ? "Pasta de revendedores vinculada"
-                        : "Pasta de revendedores desvinculada",
-                    );
-                  }}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Escolha a pasta de revendedores" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Nenhuma</SelectItem>
-                    {clientFolders.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  Crie uma pasta Cliente (ex.: Revendedores) e vincule aqui.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs" htmlFor="reseller-credit-price">
-                  Valor do crédito (R$)
-                </Label>
-                <Input
-                  id="reseller-credit-price"
-                  type="number"
-                  min={0.01}
-                  step="0.01"
-                  className="h-9 max-w-[12rem]"
-                  value={resellerCreditPriceBrl}
-                  onChange={(e) =>
-                    setResellerCreditPriceBrl(Number(e.target.value))
-                  }
-                  onBlur={() => {
-                    if (!user) return;
-                    const price = Math.max(
-                      0.01,
-                      Number(resellerCreditPriceBrl) || 8.5,
-                    );
-                    setResellerCreditPriceBrl(price);
-                    const cur = loadAutomationsConfig(user.id);
-                    const next = { ...cur, resellerCreditPriceBrl: price };
-                    saveAutomationsConfig(user.id, next);
-                    void saveAutomationsConfigRemote(user.id, next);
-                    setConfig(next);
-                  }}
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Usado no WhatsApp para revendedores. Ex.: R${" "}
-                  {Number(resellerCreditPriceBrl || 8.5).toLocaleString(
-                    "pt-BR",
-                    { minimumFractionDigits: 2 },
-                  )}{" "}
-                  × 10 créditos ={" "}
-                  {(
-                    Math.max(0.01, Number(resellerCreditPriceBrl) || 8.5) * 10
-                  ).toLocaleString("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  })}
-                  .
-                </p>
-              </div>
-            </section>
-          ) : null}
-            </TabsContent>
-
-            {uniplayConnected ? (
-              <>
-            <TabsContent value="ativos" className="mt-0 space-y-4">
+        <TabsContent value="clientes" className="mt-0 space-y-4">
           <section className="ax-surface space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
@@ -2944,134 +2125,134 @@ export default function Automations() {
 
           {/* Sempre visível: limpar a busca só limpa os dados do formulário */}
           {renderActivateAppSection("clientes")}
-            </TabsContent>
+        </TabsContent>
 
-            <TabsContent value="revendedores" className="mt-0 space-y-4">
-              <section className="ax-surface space-y-3 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-sm font-semibold tracking-tight">
-                      Revendedores
-                    </h2>
-                    <p className="text-xs text-muted-foreground">
-                      {syncResellersFolderId
-                        ? `Pasta vinculada: ${
-                            clientFolders.find(
-                              (f) => f.id === syncResellersFolderId,
-                            )?.name || syncResellersFolderId
-                          }`
-                        : "Vincule uma pasta em Conexão para sincronizar"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={loadingResellers}
-                      onClick={() => void refreshResellers(false)}
+        <TabsContent value="revendedores" className="mt-0 space-y-4">
+          <section className="ax-surface space-y-3 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold tracking-tight">
+                  Revendedores
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {syncResellersFolderId
+                    ? `Pasta vinculada: ${
+                        clientFolders.find(
+                          (f) => f.id === syncResellersFolderId,
+                        )?.name || syncResellersFolderId
+                      }`
+                    : "Vincule uma pasta em Conexões para sincronizar"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={loadingResellers}
+                  onClick={() => void refreshResellers(false)}
+                >
+                  {loadingResellers ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Atualizar lista
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    syncingResellers ||
+                    loadingResellers ||
+                    !syncResellersFolderId
+                  }
+                  onClick={() => void syncResellersNow()}
+                >
+                  {syncingResellers ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Users className="h-3.5 w-3.5" />
+                  )}
+                  Sincronizar pasta
+                </Button>
+              </div>
+            </div>
+
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-9 pl-9"
+                value={resellersQ}
+                onChange={(e) => setResellersQ(e.target.value)}
+                placeholder="Filtrar por usuário, nome ou telefone…"
+                autoComplete="off"
+              />
+            </div>
+
+            {loadingResellers && resellers.length === 0 ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando revendedores…
+              </p>
+            ) : resellers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nenhum revendedor na lista. Toque em Atualizar lista.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {resellers
+                  .filter((r) => {
+                    const q = normSearch(resellersQ);
+                    if (!q) return true;
+                    return (
+                      normSearch(r.username).includes(q) ||
+                      normSearch(r.name || "").includes(q) ||
+                      normSearch(r.phone || "").includes(q) ||
+                      normSearch(r.email || "").includes(q)
+                    );
+                  })
+                  .map((r) => (
+                    <li
+                      key={`${r.id}-${r.username}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm"
                     >
-                      {loadingResellers ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-3.5 w-3.5" />
-                      )}
-                      Atualizar lista
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={
-                        syncingResellers ||
-                        loadingResellers ||
-                        !syncResellersFolderId
-                      }
-                      onClick={() => void syncResellersNow()}
-                    >
-                      {syncingResellers ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Users className="h-3.5 w-3.5" />
-                      )}
-                      Sincronizar pasta
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    className="h-9 pl-9"
-                    value={resellersQ}
-                    onChange={(e) => setResellersQ(e.target.value)}
-                    placeholder="Filtrar por usuário, nome ou telefone…"
-                    autoComplete="off"
-                  />
-                </div>
-
-                {loadingResellers && resellers.length === 0 ? (
-                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Carregando revendedores…
-                  </p>
-                ) : resellers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Nenhum revendedor na lista. Toque em Atualizar lista.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {resellers
-                      .filter((r) => {
-                        const q = resellersQ.trim().toLowerCase();
-                        if (!q) return true;
-                        return (
-                          r.username.toLowerCase().includes(q) ||
-                          (r.name || "").toLowerCase().includes(q) ||
-                          (r.phone || "").toLowerCase().includes(q) ||
-                          (r.email || "").toLowerCase().includes(q)
-                        );
-                      })
-                      .map((r) => (
-                        <li
-                          key={`${r.id}-${r.username}`}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm"
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">
+                          {r.name || r.username}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {maskUser(r.username)}
+                          {r.phone ? ` · ${r.phone}` : ""}
+                          {r.email ? ` · ${r.email}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <Badge variant="outline" className="tabular-nums">
+                          {r.credits != null
+                            ? `${maskNum(formatIptvCredits(r.credits))} créd.`
+                            : "—"}
+                        </Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1"
+                          disabled={!uniplayConnected || addingCredits}
+                          onClick={() => openAddCredits(r)}
                         >
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium">
-                              {r.name || r.username}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {maskUser(r.username)}
-                              {r.phone ? ` · ${r.phone}` : ""}
-                              {r.email ? ` · ${r.email}` : ""}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            <Badge variant="outline" className="tabular-nums">
-                              {r.credits != null
-                                ? `${maskNum(formatIptvCredits(r.credits))} créd.`
-                                : "—"}
-                            </Badge>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8 gap-1"
-                              disabled={!uniplayConnected || addingCredits}
-                              onClick={() => openAddCredits(r)}
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                              Créditos
-                            </Button>
-                          </div>
-                        </li>
-                      ))}
-                  </ul>
-                )}
-              </section>
-            </TabsContent>
+                          <Plus className="h-3.5 w-3.5" />
+                          Créditos
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </section>
+        </TabsContent>
 
-            <TabsContent value="testes" className="mt-0 space-y-4">
+        <TabsContent value="testes" className="mt-0 space-y-4">
           <section className="ax-surface space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
@@ -3270,204 +2451,18 @@ export default function Automations() {
             "testes",
             "Informe o MAC e ative o app.",
           )}
-            </TabsContent>
-
-              </>
-            ) : null}
-          </Tabs>
         </TabsContent>
 
-        <TabsContent value="mercado-pago" className="mt-0 space-y-4">
-          <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
-            <p className="text-sm font-medium">Mercado Pago</p>
-            <p className="text-xs text-muted-foreground">
-              Configure o token aqui. O PIX sai pelo WhatsApp. Quando o cliente
-              paga, o servidor libera sozinho (mesmo com o AuxPlus fechado) —
-              basta cadastrar o webhook abaixo no painel do MP.
-            </p>
-          </div>
-
-          <section className="ax-surface space-y-3 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-semibold tracking-tight">
-                  Token da API
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Access Token de produção (não use a Public Key).
-                </p>
-              </div>
-              <Badge variant={mpAccessToken.trim() ? "default" : "outline"}>
-                {mpAccessToken.trim() ? "Configurado" : "Pendente"}
-              </Badge>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="space-y-1 sm:col-span-2">
-                <Label className="text-xs" htmlFor="mp-token">
-                  Access Token (não use a Public Key)
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="mp-token"
-                    type={showMpToken ? "text" : "password"}
-                    value={mpAccessToken}
-                    onChange={(e) => setMpAccessToken(e.target.value)}
-                    onPaste={(e) => {
-                      const text = e.clipboardData.getData("text");
-                      if (!text) return;
-                      e.preventDefault();
-                      setMpAccessToken(text.trim());
-                    }}
-                    placeholder="APP_USR-… (token longo de Produção)"
-                    className="h-9 pr-9"
-                    autoComplete="off"
-                    data-1p-ignore
-                    data-lpignore="true"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted"
-                    onClick={() => setShowMpToken((v) => !v)}
-                    aria-label={
-                      showMpToken ? "Ocultar token" : "Mostrar token"
-                    }
-                  >
-                    {showMpToken ? (
-                      <EyeOff className="h-3.5 w-3.5" />
-                    ) : (
-                      <Eye className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label className="text-xs" htmlFor="mp-email">
-                  E-mail do pagador (API)
-                </Label>
-                <Input
-                  id="mp-email"
-                  type="email"
-                  value={mpPayerEmail}
-                  onChange={(e) => setMpPayerEmail(e.target.value)}
-                  placeholder="seu@email.com"
-                  className="h-9"
-                  autoComplete="off"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Exigido pela API do Mercado Pago na criação do PIX (pode ser o
-                  seu e-mail da conta MP).
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Button
-                type="button"
-                size="sm"
-                className="h-9"
-                disabled={savingMp}
-                onClick={() => void saveMercadoPagoConfig()}
-              >
-                <Save className="h-3.5 w-3.5" />
-                {savingMp ? "…" : "Salvar Mercado Pago"}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="h-9"
-                disabled={testingMp || !mpAccessToken.trim()}
-                onClick={() => void testMercadoPagoConnection()}
-              >
-                {testingMp ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                )}
-                Testar token
-              </Button>
-            </div>
-          </section>
-
-          <section className="ax-surface space-y-3 p-4">
-            <div>
-              <h2 className="text-sm font-semibold tracking-tight">
-                Webhook (liberação automática)
-              </h2>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Com isso, o cliente paga o PIX e o sistema libera renovação /
-                créditos / teste→plano + WhatsApp sem o app precisar estar aberto.
-              </p>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">URL do webhook</Label>
-              <div className="flex flex-wrap gap-1.5">
-                <Input
-                  readOnly
-                  className="h-9 font-mono text-[11px]"
-                  value={`${SUPABASE_URL}/functions/v1/mp-webhook`}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-9"
-                  onClick={() => {
-                    void copyField(
-                      "URL webhook",
-                      `${SUPABASE_URL}/functions/v1/mp-webhook`,
-                    );
-                  }}
-                >
-                  <ClipboardCopy className="h-3.5 w-3.5" />
-                  Copiar
-                </Button>
-              </div>
-            </div>
-            <ol className="list-decimal space-y-1 pl-4 text-[11px] text-muted-foreground">
-              <li>
-                Abra{" "}
-                <a
-                  className="text-primary underline underline-offset-2"
-                  href="https://www.mercadopago.com.br/developers/panel/app"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Mercado Pago → Suas integrações
-                </a>
-              </li>
-              <li>Selecione o app do Access Token (Produção)</li>
-              <li>Webhooks → configurar URL (cole a URL acima)</li>
-              <li>
-                Marque o evento <span className="font-medium">Order (Mercado Pago)</span>
-              </li>
-              <li>Salve. Faça um PIX de teste para validar</li>
-            </ol>
-          </section>
+        <TabsContent value="renovacoes" className="mt-0 space-y-4">
+          <PixRenewPanel />
         </TabsContent>
 
-        <TabsContent value="winbox" className="mt-0 space-y-4">
-          <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
-            <p className="text-sm font-medium">Winbox</p>
-            <p className="text-xs text-muted-foreground">
-              Integração com MikroTik para internet (PPPoE). Ainda não está
-              disponível.
-            </p>
-          </div>
-          <section className="ax-surface space-y-3 p-5">
-            <div className="flex items-start gap-2">
-              <Cable className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <div>
-                <h2 className="font-semibold tracking-tight">Em breve</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Liberação automática via API do RouterOS para clientes de
-                  internet. Por enquanto use só UniPlay e Mercado Pago.
-                </p>
-              </div>
-            </div>
-          </section>
+        <TabsContent value="atendimento" className="mt-0 space-y-4">
+          <WhatsappBotPanel />
         </TabsContent>
       </Tabs>
 
+      {/* Adicionar créditos */}
       <Dialog
         open={!!creditTarget}
         onOpenChange={(open) => {
@@ -3549,6 +2544,7 @@ export default function Automations() {
         </DialogContent>
       </Dialog>
 
+      {/* Renovar / estender */}
       <Dialog
         open={!!renewTargetId || !!renewTargetJobId}
         onOpenChange={(open) => {
@@ -3654,6 +2650,7 @@ export default function Automations() {
         </DialogContent>
       </Dialog>
 
+      {/* Gerar teste */}
       <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -3719,6 +2716,7 @@ export default function Automations() {
         </DialogContent>
       </Dialog>
 
+      {/* Detalhes do cliente */}
       <Dialog
         open={!!detailClient}
         onOpenChange={(open) => {
@@ -3882,6 +2880,7 @@ export default function Automations() {
         </DialogContent>
       </Dialog>
 
+      {/* Detalhes do teste / renovação */}
       <Dialog
         open={!!detailJob}
         onOpenChange={(open) => {

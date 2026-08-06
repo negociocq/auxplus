@@ -184,7 +184,7 @@ export function useLocalAlerts(user: User | null, data: AppData) {
                   title: "Créditos recarregados",
                   body: `Você recarregou ${fmtCreditValue(gained)} crédito(s). Saldo: ${fmtCreditValue(last)} → ${fmtCreditValue(balance)}.`,
                   tag: `auxplus-credits-up-${todayKey()}:${balance}`,
-                  url: "/automations",
+                  url: "/uniplay",
                 },
                 { userId },
               );
@@ -214,7 +214,7 @@ export function useLocalAlerts(user: User | null, data: AppData) {
                     title: "Créditos UniPlay baixos",
                     body: `Seu saldo está em ${credits} (abaixo de ${thr}).`,
                     tag: "auxplus-user-credits",
-                    url: "/automations",
+                    url: "/uniplay",
                   },
                   { userId },
                 );
@@ -268,7 +268,7 @@ export function useLocalAlerts(user: User | null, data: AppData) {
                         : `${low.length} revendedores com créditos baixos`,
                     body: `${names}${extra} com ≤ ${thr} crédito(s).`,
                     tag: "auxplus-reseller-credits",
-                    url: "/automations",
+                    url: "/uniplay",
                   },
                   { userId },
                 );

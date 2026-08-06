@@ -20,7 +20,8 @@ const FolderItems = lazy(() => import("./pages/FolderItems"));
 const Tickets = lazy(() => import("./pages/Tickets"));
 const Logs = lazy(() => import("./pages/Logs"));
 const WhatsApp = lazy(() => import("./pages/WhatsApp"));
-const Automations = lazy(() => import("./pages/Automations"));
+const Conexoes = lazy(() => import("./pages/Conexoes"));
+const UniPlay = lazy(() => import("./pages/UniPlay"));
 const Settings = lazy(() => import("./pages/Settings"));
 const AdminUsers = lazy(() =>
   import("./pages/Admin").then((m) => ({ default: m.AdminUsers })),
@@ -57,7 +58,12 @@ const App = () => (
                     />
                     <Route path="/tickets" element={<Tickets />} />
                     <Route path="/whatsapp" element={<WhatsApp />} />
-                    <Route path="/automations" element={<Automations />} />
+                    <Route path="/conexoes" element={<Conexoes />} />
+                    <Route path="/uniplay" element={<UniPlay />} />
+                    <Route
+                      path="/automations"
+                      element={<Navigate to="/conexoes" replace />}
+                    />
                     <Route path="/logs" element={<Logs />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route

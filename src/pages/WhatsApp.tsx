@@ -1,21 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { differenceInCalendarDays, format } from "date-fns";
 import {
-  Link2,
   Loader2,
   ListOrdered,
   MessageSquareText,
   ChevronDown,
   Power,
-  QrCode,
-  RefreshCw,
   Send,
   ShieldAlert,
-  Unplug,
   Clock3,
-  CheckCircle2,
-  Wallet,
-  Headset,
   Eye,
   EyeOff,
 } from "lucide-react";
@@ -23,6 +16,7 @@ import { toast } from "sonner";
 import { formatBrDate } from "@/lib/format";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
+import { useEvolutionConnection } from "@/hooks/useEvolutionConnection";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,72 +46,29 @@ import {
   buildTodayQueue,
   canSendMore,
   defaultWhatsappAutomation,
-  fetchEvolutionConnectedProfile,
-  fetchEvolutionQr,
-  fetchEvolutionStatus,
   loadSendLog,
   loadWhatsappSettings,
   parseLocalYmd,
-  logoutEvolution,
   nextDelayMs,
   releaseWhatsappSendLock,
   saveSendLog,
   saveWhatsappSettings,
   sendEvolutionText,
-  findEvolutionWebhook,
-  setEvolutionWebhook,
   syncWhatsappAccountData,
-  type EvolutionConnectedProfile,
-  type EvolutionRuntimeConfig,
-  type WaConnectionStatus,
   type WhatsappAutomationSettings,
   wasItemSentToday,
   type WaQueueItem,
   type WaSendLog,
 } from "@/lib/whatsappAutomation";
-import {
-  instanceNameForUser,
-  isEvolutionConfigured,
-  loadEvolutionPlatformConfig,
-  type EvolutionPlatformConfig,
-} from "@/lib/platformApi";
-import { PixRenewPanel } from "@/components/whatsapp/PixRenewPanel";
-import { WhatsappBotPanel } from "@/components/whatsapp/WhatsappBotPanel";
-import {
-  loadWhatsappBotConfigRemote,
-  registerWaInstanceMapping,
-} from "@/lib/whatsappBotConfig";
-import { SUPABASE_URL } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-
-function statusLabel(status: WaConnectionStatus) {
-  switch (status) {
-    case "open":
-      return "Conectado";
-    case "qr":
-      return "Escaneie o QR Code";
-    case "connecting":
-      return "Conectando…";
-    case "error":
-      return "Erro";
-    default:
-      return "Desconectado";
-  }
-}
 
 export default function WhatsAppPage() {
   const { user, data } = useApp();
   const { phone: maskPhone } = useHideBalance();
+  const { status, runtime } = useEvolutionConnection(user);
   const [settings, setSettings] = useState<WhatsappAutomationSettings>(() =>
     defaultWhatsappAutomation(),
   );
-  const [platform, setPlatform] = useState<EvolutionPlatformConfig | null>(
-    null,
-  );
-  const [status, setStatus] = useState<WaConnectionStatus>("disconnected");
-  const [qrBase64, setQrBase64] = useState<string | null>(null);
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [logs, setLogs] = useState<WaSendLog[]>([]);
@@ -126,25 +77,17 @@ export default function WhatsAppPage() {
   const [restoreTarget, setRestoreTarget] = useState<
     null | "messageBefore" | "messageOnDay" | "limits"
   >(null);
-  const [botEnabled, setBotEnabled] = useState(false);
-  const [connectedProfile, setConnectedProfile] =
-    useState<EvolutionConnectedProfile | null>(null);
   const sendingRef = useRef(false);
-  const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!user) return;
     setSettings(loadWhatsappSettings(user.id));
     setLogs(loadSendLog(user.id));
-    void loadEvolutionPlatformConfig().then(setPlatform);
     // Conta (nuvem): mesmas regras/log em localhost e domínio
     void syncWhatsappAccountData(user.id).then(({ settings: s, logs: l }) => {
       setSettings(s);
       setLogs(l);
     });
-    void loadWhatsappBotConfigRemote(user.id).then((c) =>
-      setBotEnabled(c.enabled),
-    );
   }, [user]);
 
   // Mantém a fila alinhada com envios automáticos / outra aba / outros PCs
@@ -163,19 +106,6 @@ export default function WhatsAppPage() {
       window.removeEventListener("focus", sync);
     };
   }, [user]);
-
-  const runtime: EvolutionRuntimeConfig | null = useMemo(() => {
-    if (!user || !platform || !isEvolutionConfigured(platform)) return null;
-    return {
-      apiBaseUrl: platform.apiBaseUrl,
-      apiKey: platform.apiKey,
-      instanceName: instanceNameForUser(
-        platform.instancePrefix,
-        user.id,
-        user.username,
-      ),
-    };
-  }, [platform, user]);
 
   const persist = useCallback(
     (next: WhatsappAutomationSettings) => {
@@ -239,152 +169,6 @@ export default function WhatsAppPage() {
     toast.message("Log de envios de hoje limpo — a fila pode reaparecer");
   };
 
-  const stopPoll = () => {
-    if (pollRef.current) {
-      window.clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
-  const ensureBotInbound = useCallback(
-    async (opts?: { silent?: boolean }) => {
-      if (!runtime || !user) return false;
-      const webhookUrl = `${SUPABASE_URL}/functions/v1/evolution-webhook`;
-      try {
-        await registerWaInstanceMapping(runtime.instanceName, user.id);
-        await setEvolutionWebhook(runtime, webhookUrl);
-        const found = await findEvolutionWebhook(runtime);
-        const okUrl =
-          !found?.url ||
-          found.url.includes("evolution-webhook") ||
-          found.url.includes(webhookUrl);
-        if (!opts?.silent) {
-          if (okUrl) {
-            toast.success("Recebimento do bot ativo", {
-              description:
-                "Mande mensagem do celular do revendedor/cliente para este WhatsApp.",
-            });
-          } else {
-            toast.message("Webhook registrado, confira a Evolution", {
-              description: found?.url || webhookUrl,
-            });
-          }
-        }
-        return true;
-      } catch (e) {
-        console.warn("[whatsapp] webhook/bot inbound", e);
-        if (!opts?.silent) {
-          toast.error("Não deu para ativar o recebimento do bot", {
-            description:
-              e instanceof Error
-                ? e.message
-                : "A Evolution (ngrok/Docker) precisa estar no ar.",
-          });
-        }
-        return false;
-      }
-    },
-    [runtime, user],
-  );
-
-  const loadConnectedProfile = useCallback(async () => {
-    if (!runtime) {
-      setConnectedProfile(null);
-      return;
-    }
-    try {
-      const profile = await fetchEvolutionConnectedProfile(runtime);
-      setConnectedProfile(profile);
-    } catch {
-      setConnectedProfile(null);
-    }
-  }, [runtime]);
-
-  const refreshQr = useCallback(async () => {
-    if (!runtime) {
-      setStatus("disconnected");
-      setQrBase64(null);
-      setConnectedProfile(null);
-      toast.error(
-        "WhatsApp ainda não foi liberado. Peça ao administrador para configurar em Admin → API.",
-      );
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetchEvolutionQr(runtime);
-      setStatus(res.status);
-      setQrBase64(res.base64 || null);
-      setPairingCode(res.pairingCode || null);
-      if (res.status === "open") {
-        toast.success("WhatsApp vinculado");
-        stopPoll();
-        void loadConnectedProfile();
-        void ensureBotInbound({ silent: true });
-      } else {
-        setConnectedProfile(null);
-      }
-    } catch (e) {
-      setStatus("error");
-      setQrBase64(null);
-      setConnectedProfile(null);
-      toast.error(e instanceof Error ? e.message : "Falha ao obter QR Code");
-    } finally {
-      setBusy(false);
-    }
-  }, [runtime, loadConnectedProfile, ensureBotInbound]);
-
-  const checkStatus = useCallback(async () => {
-    if (!runtime) return;
-    try {
-      const st = await fetchEvolutionStatus(runtime);
-      setStatus(st);
-      if (st === "open") {
-        setQrBase64(null);
-        stopPoll();
-        void loadConnectedProfile();
-        void ensureBotInbound({ silent: true });
-      } else {
-        setConnectedProfile(null);
-      }
-    } catch {
-      /* ignore polling errors */
-    }
-  }, [runtime, loadConnectedProfile, ensureBotInbound]);
-
-  useEffect(() => {
-    if (status !== "qr" && status !== "connecting") {
-      stopPoll();
-      return;
-    }
-    stopPoll();
-    pollRef.current = window.setInterval(() => {
-      void checkStatus();
-    }, 4000);
-    return stopPoll;
-  }, [status, checkStatus]);
-
-  useEffect(() => {
-    if (!runtime) return;
-    void checkStatus();
-  }, [runtime, checkStatus]);
-
-  const onDisconnect = async () => {
-    if (!runtime) return;
-    setBusy(true);
-    try {
-      await logoutEvolution(runtime);
-      setStatus("disconnected");
-      setQrBase64(null);
-      setConnectedProfile(null);
-      toast.message("WhatsApp desvinculado");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao desconectar");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const appendLog = (entry: WaSendLog) => {
     if (!user) return;
     setLogs((prev) => {
@@ -420,7 +204,7 @@ export default function WhatsAppPage() {
   const runOne = async (item: WaQueueItem) => {
     if (!user || sendingRef.current) return;
     if (status !== "open") {
-      toast.error("Vincule o WhatsApp pelo QR Code antes de enviar");
+      toast.error("Vincule o WhatsApp pelas Conexões antes de enviar");
       return;
     }
     if (!runtime) {
@@ -460,7 +244,7 @@ export default function WhatsAppPage() {
   const runQueue = async () => {
     if (!user || sendingRef.current) return;
     if (status !== "open") {
-      toast.error("Vincule o WhatsApp pelo QR Code antes de enviar");
+      toast.error("Vincule o WhatsApp pelas Conexões antes de enviar");
       return;
     }
     if (queue.length === 0) {
@@ -559,23 +343,11 @@ export default function WhatsAppPage() {
     <div className="space-y-6">
       <PageHeader
         title="WhatsApp"
-        description="Vincule o número, lembretes, PIX, autoatendimento e envio com intervalos seguros."
+        description="Lembretes automáticos e fila de envio com intervalos seguros."
       />
 
       <Tabs defaultValue="fila" className="space-y-4">
         <TabsList className="h-auto flex-wrap bg-background/80">
-          {status !== "open" ? (
-            <TabsTrigger value="conexao" className="gap-1.5">
-              <QrCode className="h-3.5 w-3.5" />
-              Conexão
-              <Badge
-                variant="outline"
-                className="ml-0.5 h-5 px-1.5 text-[10px]"
-              >
-                …
-              </Badge>
-            </TabsTrigger>
-          ) : null}
           <TabsTrigger value="fila" className="gap-1.5">
             <ListOrdered className="h-3.5 w-3.5" />
             Fila
@@ -584,23 +356,6 @@ export default function WhatsAppPage() {
                 {queue.length}
               </Badge>
             ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="pix" className="gap-1.5">
-            <Wallet className="h-3.5 w-3.5" />
-            PIX
-          </TabsTrigger>
-          <TabsTrigger value="atendimento" className="gap-1.5">
-            <Headset className="h-3.5 w-3.5" />
-            Atendimento
-            <Badge
-              variant="outline"
-              className={cn(
-                "ml-0.5 h-5 px-1.5 text-[10px]",
-                botEnabled && "border-success/40 bg-success/15 text-success",
-              )}
-            >
-              {botEnabled ? "Auto" : "Off"}
-            </Badge>
           </TabsTrigger>
           <TabsTrigger value="lembretes" className="gap-1.5">
             <MessageSquareText className="h-3.5 w-3.5" />
@@ -616,153 +371,163 @@ export default function WhatsAppPage() {
               {settings.enabled ? "Auto" : "Off"}
             </Badge>
           </TabsTrigger>
-          {status === "open" ? (
-            <TabsTrigger value="conexao" className="gap-1.5">
-              <QrCode className="h-3.5 w-3.5" />
-              Conexão
-              <Badge
-                variant="outline"
-                className="ml-0.5 h-5 px-1.5 text-[10px] border-success/40 bg-success/15 text-success"
-              >
-                OK
-              </Badge>
-            </TabsTrigger>
-          ) : null}
         </TabsList>
 
-        <TabsContent value="conexao" className="mt-0 space-y-4">
-          <section className="ax-surface mx-auto max-w-xl space-y-4 p-5">
-            <div className="flex items-start justify-between gap-3">
+        <TabsContent value="fila" className="mt-0 space-y-4">
+          <section className="ax-surface space-y-4 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="flex items-center gap-2 font-semibold tracking-tight">
-                  <QrCode className="h-4 w-4 text-primary" />
-                  Vincular WhatsApp
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Escaneie o QR no WhatsApp do celular (Aparelhos conectados).
+                <h2 className="font-semibold tracking-tight">Fila de hoje</h2>
+                <p className="text-sm text-muted-foreground">
+                  {queue.length} pendente(s) · {sentTodayCount} já enviado(s) ·
+                  horário {settings.sendTime}
                 </p>
+                {status !== "open" ? (
+                  <p className="mt-1 text-xs font-medium text-warning">
+                    WhatsApp não conectado — vincule o número em Conexões para
+                    liberar os envios.
+                  </p>
+                ) : null}
               </div>
-              <Badge
-                variant={status === "open" ? "default" : "secondary"}
-                className={cn(
-                  status === "open" &&
-                    "bg-success/15 text-success hover:bg-success/15",
-                )}
-              >
-                {statusLabel(status)}
-              </Badge>
+              <div className="flex flex-wrap gap-2">
+                {sentTodayCount > 0 ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={clearTodaySent}
+                    >
+                      Recolocar enviados na fila
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSent((v) => !v)}
+                    >
+                      {showSent ? (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                      {showSent
+                        ? "Ocultar enviados"
+                        : `Ver enviados (${sentTodayCount})`}
+                    </Button>
+                  </>
+                ) : null}
+                <Button
+                  type="button"
+                  onClick={() => void runQueue()}
+                  disabled={
+                    sending ||
+                    Boolean(sendingId) ||
+                    status !== "open" ||
+                    queue.length === 0
+                  }
+                >
+                  {sending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Enviar fila com intervalo
+                </Button>
+              </div>
             </div>
 
-            {!runtime ? (
-              <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                Aguardando o administrador configurar a API do WhatsApp em{" "}
-                <strong className="text-foreground">Admin → API</strong>. Depois
-                é só gerar o QR e escanear.
-              </div>
-            ) : null}
-
-            {status === "open" ? (
-              <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3">
-                <CheckCircle2 className="h-8 w-8 shrink-0 text-success" />
-                <div className="min-w-0">
-                  <p className="font-medium">WhatsApp conectado</p>
-                  {connectedProfile?.phone ? (
-                    <p className="mt-0.5 text-base font-semibold tabular-nums tracking-tight text-foreground">
-                      {maskPhone(connectedProfile.phone)}
-                      {connectedProfile.profileName ? (
-                        <span className="ml-2 text-sm font-normal text-muted-foreground">
-                          · {connectedProfile.profileName}
-                        </span>
-                      ) : null}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Número ainda não identificado…
-                    </p>
-                  )}
-                  <p className="text-sm text-muted-foreground">
-                    Pronto para enviar lembretes e PIX com intervalo seguro.
-                  </p>
-                </div>
-              </div>
+            {queue.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {sentTodayCount > 0
+                  ? "Ninguém pendente agora — os de hoje já foram enviados (ou estão fora da regra). Use “Recolocar enviados na fila” para testar de novo."
+                  : "Ninguém para avisar hoje: precisa telefone + vencer hoje ou nos próximos X dias (regra “antes do vencimento”) em pasta Cliente/Produto."}
+              </p>
             ) : (
-              <div className="flex min-h-[200px] items-center justify-center rounded-xl border bg-muted/30 p-4">
-                {qrBase64 ? (
-                  <img
-                    src={qrBase64}
-                    alt="QR Code WhatsApp"
-                    className="max-h-56 rounded-lg bg-white p-2"
-                  />
-                ) : (
-                  <div className="max-w-sm text-center text-sm text-muted-foreground">
-                    <Link2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
-                    Gere o QR Code e escaneie no WhatsApp do celular (Aparelhos
-                    conectados).
-                  </div>
-                )}
-              </div>
+              <ul className="space-y-2">
+                {queue.map((q) => {
+                  const rowBusy = sending || sendingId === q.id;
+                  return (
+                    <li
+                      key={q.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{q.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {q.kind === "before"
+                            ? `${Math.max(
+                                1,
+                                differenceInCalendarDays(
+                                  parseLocalYmd(q.dueDate),
+                                  parseLocalYmd(
+                                    format(new Date(), "yyyy-MM-dd"),
+                                  ),
+                                ),
+                              )} dia(s) antes`
+                            : "No dia"}{" "}
+                          · vence {formatBrDate(q.dueDate)} ·{" "}
+                          {maskPhone(q.phone)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant="outline">
+                          {q.kind === "before" ? "Antecipado" : "Hoje"}
+                        </Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={rowBusy || status !== "open" || !runtime}
+                          onClick={() => void runOne(q)}
+                          title="Enviar só este lembrete"
+                        >
+                          {sendingId === q.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Send className="h-3.5 w-3.5" />
+                          )}
+                          Enviar
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
 
-            {pairingCode ? (
-              <p className="text-center text-sm text-muted-foreground">
-                Código de pareamento:{" "}
-                <span className="font-mono font-semibold text-foreground">
-                  {pairingCode}
-                </span>
-              </p>
-            ) : null}
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => void refreshQr()}
-                disabled={busy || !runtime}
-              >
-                {busy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-                Gerar / atualizar QR
-              </Button>
-              {status === "open" ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={busy || !runtime}
-                    onClick={() => {
-                      setBusy(true);
-                      void ensureBotInbound()
-                        .finally(() => setBusy(false));
-                    }}
-                  >
-                    {busy ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Headset className="h-4 w-4" />
-                    )}
-                    Ativar recebimento do bot
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void onDisconnect()}
-                    disabled={busy}
-                  >
-                    <Unplug className="h-4 w-4" />
-                    Desconectar
-                  </Button>
-                </>
-              ) : null}
-            </div>
-            {status === "open" ? (
-              <p className="text-[11px] text-muted-foreground">
-                O bot não depende do localhost: a Evolution avisa o Supabase.
-                Confira se o Docker/ngrok da Evolution está no ar e se o WhatsApp
-                do revendedor no AuxPlus é exatamente o número que está mandando
-                a mensagem.
-              </p>
+            {showSent && sentTodayCount > 0 ? (
+              <div className="space-y-2 border-t border-border/70 pt-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Já enviados hoje ({sentToday.length})
+                </p>
+                <ul className="space-y-1.5">
+                  {sentToday.map((r, i) => (
+                    <li
+                      key={`${r.log.itemId}-${r.log.sentAt}-${i}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{r.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {r.dueDate
+                            ? `vence ${formatBrDate(r.dueDate)}`
+                            : "sem vencimento"}{" "}
+                          · {maskPhone(r.log.phone)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant="outline">
+                          {r.log.kind === "before" ? "Antecipado" : "Hoje"}
+                        </Badge>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {format(new Date(r.log.sentAt), "HH:mm")}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </section>
         </TabsContent>
@@ -1087,167 +852,6 @@ export default function WhatsAppPage() {
               </div>
             </div>
           </section>
-        </TabsContent>
-
-        <TabsContent value="fila" className="mt-0 space-y-4">
-          <section className="ax-surface space-y-4 p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-semibold tracking-tight">Fila de hoje</h2>
-                <p className="text-sm text-muted-foreground">
-                  {queue.length} pendente(s) · {sentTodayCount} já enviado(s) ·
-                  horário {settings.sendTime}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {sentTodayCount > 0 ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={clearTodaySent}
-                    >
-                      Recolocar enviados na fila
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowSent((v) => !v)}
-                    >
-                      {showSent ? (
-                        <EyeOff className="h-3.5 w-3.5" />
-                      ) : (
-                        <Eye className="h-3.5 w-3.5" />
-                      )}
-                      {showSent
-                        ? "Ocultar enviados"
-                        : `Ver enviados (${sentTodayCount})`}
-                    </Button>
-                  </>
-                ) : null}
-                <Button
-                  type="button"
-                  onClick={() => void runQueue()}
-                  disabled={
-                    sending ||
-                    Boolean(sendingId) ||
-                    status !== "open" ||
-                    queue.length === 0
-                  }
-                >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  Enviar fila com intervalo
-                </Button>
-              </div>
-            </div>
-
-            {queue.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {sentTodayCount > 0
-                  ? "Ninguém pendente agora — os de hoje já foram enviados (ou estão fora da regra). Use “Recolocar enviados na fila” para testar de novo."
-                  : "Ninguém para avisar hoje: precisa telefone + vencer hoje ou nos próximos X dias (regra “antes do vencimento”) em pasta Cliente/Produto."}
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {queue.map((q) => {
-                  const rowBusy = sending || sendingId === q.id;
-                  return (
-                    <li
-                      key={q.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium">{q.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {q.kind === "before"
-                            ? `${Math.max(
-                                1,
-                                differenceInCalendarDays(
-                                  parseLocalYmd(q.dueDate),
-                                  parseLocalYmd(
-                                    format(new Date(), "yyyy-MM-dd"),
-                                  ),
-                                ),
-                              )} dia(s) antes`
-                            : "No dia"}{" "}
-                          · vence {formatBrDate(q.dueDate)} ·{" "}
-                          {maskPhone(q.phone)}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Badge variant="outline">
-                          {q.kind === "before" ? "Antecipado" : "Hoje"}
-                        </Badge>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          disabled={rowBusy || status !== "open" || !runtime}
-                          onClick={() => void runOne(q)}
-                          title="Enviar só este lembrete"
-                        >
-                          {sendingId === q.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Send className="h-3.5 w-3.5" />
-                          )}
-                          Enviar
-                        </Button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {showSent && sentTodayCount > 0 ? (
-              <div className="space-y-2 border-t border-border/70 pt-3">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Já enviados hoje ({sentToday.length})
-                </p>
-                <ul className="space-y-1.5">
-                  {sentToday.map((r, i) => (
-                    <li
-                      key={`${r.log.itemId}-${r.log.sentAt}-${i}`}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium">{r.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {r.dueDate
-                            ? `vence ${formatBrDate(r.dueDate)}`
-                            : "sem vencimento"}{" "}
-                          · {maskPhone(r.log.phone)}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Badge variant="outline">
-                          {r.log.kind === "before" ? "Antecipado" : "Hoje"}
-                        </Badge>
-                        <span className="text-xs tabular-nums text-muted-foreground">
-                          {format(new Date(r.log.sentAt), "HH:mm")}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </section>
-        </TabsContent>
-
-        <TabsContent value="pix" className="mt-0 space-y-4">
-          <PixRenewPanel />
-        </TabsContent>
-
-        <TabsContent value="atendimento" className="mt-0 space-y-4">
-          <WhatsappBotPanel onEnabledChange={setBotEnabled} />
         </TabsContent>
       </Tabs>
 

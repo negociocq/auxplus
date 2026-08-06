@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBrDate } from "@/lib/format";
+import { normSearch } from "@/lib/utils";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
 import { Button } from "@/components/ui/button";
@@ -130,13 +131,14 @@ export function PixRenewPanel() {
 
   const filtered = useMemo(() => {
     const term = mpQ.trim().toLowerCase();
+    const nq = normSearch(mpQ);
     if (term.length < 2) return [];
     return clients
       .filter(
         (i) =>
-          i.name.toLowerCase().includes(term) ||
-          i.itemId.toLowerCase().includes(term) ||
-          (i.phone || "").includes(term),
+          normSearch(i.name).includes(nq) ||
+          normSearch(i.itemId).includes(nq) ||
+          normSearch(i.phone || "").includes(nq),
       )
       .slice(0, 50);
   }, [clients, mpQ]);
@@ -227,7 +229,7 @@ export function PixRenewPanel() {
     try {
       const evo = await loadEvolutionPlatformConfig();
       if (!isEvolutionConfigured(evo)) {
-        toast.error("Configure o WhatsApp (Evolution) em Automações");
+        toast.error("Configure o WhatsApp (Evolution) em Conexões");
         return;
       }
       const runtime = {
@@ -259,7 +261,7 @@ export function PixRenewPanel() {
     if (!item) return;
     if (!config.mpAccessToken.trim() || !config.mpPayerEmail.trim()) {
       toast.error(
-        "Configure o Mercado Pago em Automações → Mercado Pago",
+        "Configure o Mercado Pago em Conexões → Mercado Pago",
       );
       return;
     }
@@ -470,7 +472,7 @@ export function PixRenewPanel() {
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Busque o cliente, gere o PIX e envie no WhatsApp. Liberação só após
-            o pagamento. Token em Automações → Mercado Pago.
+            o pagamento. Token em Conexões → Mercado Pago.
           </p>
         </div>
         <div className="relative">

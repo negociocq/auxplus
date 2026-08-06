@@ -284,7 +284,7 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
             <p className="text-sm text-muted-foreground">
               {uniplayOn
                 ? "Clientes e revendedores cadastrados: o bot responde. Número desconhecido: só cria teste se enviarem *teste*."
-                : "Clientes cadastrados: o bot responde renovação. Revendedores e testes só com UniPlay conectada em Automações."}{" "}
+                : "Clientes cadastrados: o bot responde renovação. Revendedores e testes só com UniPlay conectada em Conexões."}{" "}
               No chat da pessoa, digite{" "}
               <span className="font-medium text-foreground">“assumir”</span>{" "}
               — o bot avisa que virou atendimento humano e fica pausado. Quando

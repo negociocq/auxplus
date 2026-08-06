@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatBrDate, formatMoney } from "@/lib/format";
+import { normSearch } from "@/lib/utils";
 import {
   loadIptvJobs,
   loadIptvJobsRemote,
@@ -123,17 +124,17 @@ export default function LogsPage() {
   };
 
   const jobMatchesQuery = (job: IptvJob, query: string) => {
-    const qn = query.trim().toLowerCase();
+    const qn = normSearch(query);
     if (!qn) return true;
-    const hay = [
-      job.clientName,
-      job.panelUsername,
-      job.note,
-      job.panelPassword || "",
-      job.kind === "renew" ? "renovação" : "teste",
-    ]
-      .join(" ")
-      .toLowerCase();
+    const hay = normSearch(
+      [
+        job.clientName,
+        job.panelUsername,
+        job.note,
+        job.panelPassword || "",
+        job.kind === "renew" ? "renovação" : "teste",
+      ].join(" "),
+    );
     return hay.includes(qn);
   };
 
@@ -349,15 +350,15 @@ export default function LogsPage() {
   if (!user) return null;
 
   const movementFiltered = useMemo(() => {
-    const qn = movementQ.trim().toLowerCase();
+    const qn = normSearch(movementQ);
     return movementRows.filter(
       (r) =>
         !qn ||
-        r.resellerName.toLowerCase().includes(qn) ||
-        r.resellerUsername.toLowerCase().includes(qn) ||
-        String(r.move.toUser || "").toLowerCase().includes(qn) ||
-        String(r.move.fromUser || "").toLowerCase().includes(qn) ||
-        String(r.move.obs || "").toLowerCase().includes(qn),
+        normSearch(r.resellerName).includes(qn) ||
+        normSearch(r.resellerUsername).includes(qn) ||
+        normSearch(String(r.move.toUser || "")).includes(qn) ||
+        normSearch(String(r.move.fromUser || "")).includes(qn) ||
+        normSearch(String(r.move.obs || "")).includes(qn),
     );
   }, [movementRows, movementQ]);
 

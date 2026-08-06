@@ -55,6 +55,7 @@ import {
   fromDatetimeLocalValue,
   toDatetimeLocalValue,
 } from "@/lib/format";
+import { normSearch } from "@/lib/utils";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import {
   annualPaymentBalance,
@@ -385,7 +386,7 @@ export default function FolderItems() {
       const plat = await loadIptvPlatformConfig();
       if (!cfg.iptvUsername.trim() || !cfg.iptvPassword) {
         toast.error(
-          "Conecte a conta UniPlay em Automações antes de sincronizar",
+          "Conecte a conta UniPlay em Conexões antes de sincronizar",
         );
         return;
       }
@@ -527,12 +528,12 @@ export default function FolderItems() {
           return false;
         }
         if (!search.trim()) return true;
-        const q = search.toLowerCase();
+        const q = normSearch(search);
         return (
-          i.name.toLowerCase().includes(q) ||
-          i.itemId.toLowerCase().includes(q) ||
-          i.phone.toLowerCase().includes(q) ||
-          notesForDisplay(i.notes).toLowerCase().includes(q)
+          normSearch(i.name).includes(q) ||
+          normSearch(i.itemId).includes(q) ||
+          normSearch(i.phone).includes(q) ||
+          normSearch(notesForDisplay(i.notes)).includes(q)
         );
       })
       .sort((a, b) => {

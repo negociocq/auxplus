@@ -59,7 +59,7 @@ export function useCreditLog(user: User | null) {
           title: entry.label,
           body,
           tag: `credit-${entry.id}`,
-          url: "/automations",
+          url: "/uniplay",
         },
         { userId },
       );

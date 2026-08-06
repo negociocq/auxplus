@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
+  Cable,
   Camera,
   Eye,
   EyeOff,
@@ -20,6 +21,7 @@ import {
   Settings,
   Shield,
   Trash2,
+  Tv,
   Users,
   Workflow,
   X,
@@ -32,6 +34,12 @@ import { useWhatsappAutoSend } from "@/hooks/useWhatsappAutoSend";
 import { useLocalAlerts } from "@/hooks/useLocalAlerts";
 import { useMpOrderAutoRelease } from "@/hooks/useMpOrderAutoRelease";
 import { useCreditLog } from "@/hooks/useCreditLog";
+import {
+  isUniplayConnected,
+  loadAutomationsConfig,
+  loadAutomationsConfigRemote,
+} from "@/lib/automationsConfig";
+import { onUniplayConnection } from "@/lib/uniplayConnectionSync";
 import { fileToAvatarDataUrl, saveLocalAvatar } from "@/lib/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -87,6 +95,26 @@ export function AppLayout() {
   useEffect(() => {
     mobileOpenRef.current = mobileOpen;
   }, [mobileOpen]);
+
+  // Item de menu UniPlay só aparece quando a conta UniPlay está conectada.
+  // Seed síncrono (localStorage) + refresh remoto + evento de conexão.
+  const [uniplayConnected, setUniplayConnected] = useState(() =>
+    user ? isUniplayConnected(loadAutomationsConfig(user.id)) : false,
+  );
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void loadAutomationsConfigRemote(user.id).then((cfg) => {
+      if (!cancelled) setUniplayConnected(isUniplayConnected(cfg));
+    });
+    const off = onUniplayConnection((connected) =>
+      setUniplayConnected(connected),
+    );
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [user]);
 
   useEffect(() => {
     try {
@@ -168,7 +196,10 @@ export function AppLayout() {
   const clientLinks = [
     { to: "/dashboard", label: "Pastas", icon: FolderKanban },
     { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
-    { to: "/automations", label: "Automações", icon: Workflow },
+    ...(uniplayConnected
+      ? [{ to: "/uniplay", label: "UniPlay", icon: Tv }]
+      : []),
+    { to: "/conexoes", label: "Conexões", icon: Cable },
     { to: "/logs", label: "Logs", icon: History },
     { to: "/settings", label: "Configuração", icon: Settings },
   ];
@@ -268,7 +299,7 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen ax-gradient-mesh">
-      <CommandPalette />
+      <CommandPalette uniplayConnected={uniplayConnected} />
 
       {mobileOpen ? (
         <button

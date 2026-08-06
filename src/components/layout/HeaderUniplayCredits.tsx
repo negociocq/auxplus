@@ -121,7 +121,7 @@ export function HeaderUniplayCredits({ user, hideBalance }: Props) {
       <TooltipTrigger asChild>
         <button
           type="button"
-          onClick={() => navigate("/automations")}
+          onClick={() => navigate("/uniplay")}
           className={cn(
             "flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-left shadow-sm transition hover:bg-accent sm:gap-2 sm:px-3",
             positive

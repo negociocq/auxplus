@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
+  Cable,
   FolderKanban,
   KeyRound,
   LifeBuoy,
@@ -11,6 +12,7 @@ import {
   Settings,
   Shield,
   Sun,
+  Tv,
   Users,
   Workflow,
 } from "lucide-react";
@@ -25,8 +27,13 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { useApp } from "@/context/AppContext";
+import { normSearch } from "@/lib/utils";
 
-export function CommandPalette() {
+export function CommandPalette({
+  uniplayConnected = false,
+}: {
+  uniplayConnected?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { user, logout, data } = useApp();
@@ -65,7 +72,13 @@ export function CommandPalette() {
   if (!user) return null;
 
   return (
-    <CommandDialog open={open} onOpenChange={setOpen}>
+    <CommandDialog
+      open={open}
+      onOpenChange={setOpen}
+      filter={(value, search) =>
+        normSearch(value).includes(normSearch(search)) ? 1 : 0
+      }
+    >
       <CommandInput placeholder="Buscar páginas, pastas e ações…" />
       <CommandList>
         <CommandEmpty>Nenhum resultado.</CommandEmpty>
@@ -78,9 +91,15 @@ export function CommandPalette() {
             <MessageCircle className="mr-2 h-4 w-4" />
             WhatsApp
           </CommandItem>
-          <CommandItem onSelect={() => go("/automations")}>
-            <Workflow className="mr-2 h-4 w-4" />
-            Automações
+          {uniplayConnected ? (
+            <CommandItem onSelect={() => go("/uniplay")}>
+              <Tv className="mr-2 h-4 w-4" />
+              UniPlay
+            </CommandItem>
+          ) : null}
+          <CommandItem onSelect={() => go("/conexoes")}>
+            <Cable className="mr-2 h-4 w-4" />
+            Conexões
           </CommandItem>
           <CommandItem onSelect={() => go("/tickets")}>
             <LifeBuoy className="mr-2 h-4 w-4" />

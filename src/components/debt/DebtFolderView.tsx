@@ -24,6 +24,7 @@ import {
   deleteItem,
   updateItem,
 } from "@/lib/storage";
+import { normSearch } from "@/lib/utils";
 import {
   buildDebtPlan,
   closeDebtPlan,
@@ -199,10 +200,10 @@ export function DebtFolderView({ folder }: { folder: Folder }) {
     return debts.filter(({ item, summary }) => {
       if (filter !== "all" && summary.lifecycle !== filter) return false;
       if (!search.trim()) return true;
-      const q = search.toLowerCase();
+      const q = normSearch(search);
       return (
-        item.name.toLowerCase().includes(q) ||
-        cleanNotes(item.notes).toLowerCase().includes(q)
+        normSearch(item.name).includes(q) ||
+        normSearch(cleanNotes(item.notes)).includes(q)
       );
     });
   }, [debts, filter, search]);

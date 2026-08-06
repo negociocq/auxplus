@@ -172,7 +172,7 @@ export function emptyWaTestFlow(): WaTestFlowConfig {
       offerPlan: "",
       activatedMonth: "",
       notConfigured:
-        "O fluxo de teste ainda não foi configurado neste WhatsApp. Peça ao responsável para ajustar em Automações / Atendimento → Teste.",
+        "O fluxo de teste ainda não foi configurado neste WhatsApp. Peça ao responsável para ajustar em UniPlay → Atendimento → Teste.",
     },
   };
 }

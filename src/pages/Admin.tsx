@@ -3,6 +3,7 @@ import { KeyRound, LifeBuoy, Search, Trash2, UserCog } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
 import { hashPassword } from "@/lib/password";
+import { normSearch } from "@/lib/utils";
 import { respondTicket } from "@/lib/storage";
 import type { Ticket, User } from "@/types";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -35,8 +36,8 @@ export function AdminUsers() {
   const [newPassword, setNewPassword] = useState("");
 
   const users = useMemo(() => {
-    const q = search.toLowerCase();
-    return data.users.filter((u) => !q || u.username.toLowerCase().includes(q));
+    const q = normSearch(search);
+    return data.users.filter((u) => !q || normSearch(u.username).includes(q));
   }, [data.users, search]);
 
   return (

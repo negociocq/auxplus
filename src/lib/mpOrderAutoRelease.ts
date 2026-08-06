@@ -611,7 +611,7 @@ export async function pollAndReleaseMpOrders(
   const config = loadAutomationsConfig(user.id);
   if (!config.mpAccessToken.trim()) {
     if (!silent) {
-      toast.error("Configure o Access Token do Mercado Pago em Automações");
+      toast.error("Configure o Access Token do Mercado Pago em Conexões");
     }
     return { approved: 0, waiting: 0, removed: 0 };
   }
