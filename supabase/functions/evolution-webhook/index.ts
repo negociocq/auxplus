@@ -89,6 +89,14 @@ function extractMessageId(data: Record<string, unknown>): string {
 
 /** Intervalo mínimo entre bolhas do bot (anti-spam WhatsApp). */
 const BOT_MSG_GAP_MS = 1400;
+
+/**
+ * Janela após o teste em que não ofertamos plano para quem mandou mensagem
+ * solta (“obrigado”, “ok”…) — isso não é “voltar o contato”.
+ * Quem digita a frase de teste, *teste*, *atendente* ou mostra intenção de
+ * assinar continua sendo atendido normalmente.
+ */
+const TEST_RETURN_COOLDOWN_MS = 30 * 60 * 1000;
 const BOT_TYPING_DELAY_MS = 1200;
 const BOT_MAX_PER_PHONE_HOUR = 30;
 const BOT_MAX_PER_PHONE_DAY = 80;
@@ -287,6 +295,29 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "Valor: *{amount}*\n\n" +
     "Use o código abaixo (válido por até 24h).\n\n" +
     "Se quiser falar de *outro assunto* ou *mudar a mensalidade*, digite *atendente*.",
+  testAlreadyUsed:
+    "Você *já usou* o teste gratuito neste número.\n\n" +
+    "Se quiser assinar, veja as opções:",
+  testConfirmInstall: "Conseguiu instalar o app? *(sim/não)*",
+  testConfirmInstallOk:
+    "Perfeito! 🎉 Seu teste de *{hours}h* já está no ar.\n\n" +
+    "Aproveite! Em instantes te pergunto se deu tudo certo.\n" +
+    "Quando quiser assinar, é só voltar aqui.",
+  testConfirmInstallNo:
+    "Que pena… Vamos resolver! 😊\n\n" +
+    "Me conta o que apareceu (não abre, tela preta, erro…)\n" +
+    "ou digite *atendente* para falar com a equipe.",
+  testMacPrompt:
+    "Perfeito! Então me envie o *MAC* que aparece no *canto inferior direito* do app.\n\n" +
+    "_Formatos: *aa:bb:cc:dd:ee:ff* ou *aabbccddeeff*_",
+  testCheckInOk:
+    "Que bom! Fico feliz que deu certo. 😊\n\n" +
+    "Seu teste dura *{hours}h*.\n" +
+    "Quando quiser assinar, é só voltar aqui — te ajudo na hora.",
+  testCheckInNo:
+    "Que pena que travou… 😕\n\n" +
+    "Me conta o que está acontecendo (tela preta, não carrega, erro…) que eu te ajudo.\n" +
+    "Ou digite *atendente*.",
 };
 
 const LEGACY_MESSAGES: Record<string, string[]> = {
@@ -1053,6 +1084,93 @@ function looksLikeMacMessage(raw: string) {
   return Boolean(normalizeMacWa(raw));
 }
 
+/**
+ * Classifica resposta do cliente a perguntas sim/não
+ * (instalação do app, check-in “conseguiu assistir?”).
+ */
+function classifyTestResponse(
+  text: string,
+): "positive" | "negative" | "neutral" {
+  const t = normKey(text);
+  if (!t) return "neutral";
+  const positives = [
+    "sim",
+    "ss",
+    "si",
+    "consegui",
+    "conseguiu",
+    "deu certo",
+    "deu tudo certo",
+    "funcionou",
+    "funciona",
+    "funcionando",
+    "ok",
+    "okay",
+    "perfeito",
+    "show",
+    "tranquilo",
+    "rodou",
+    "ta ok",
+    "ta rodando",
+    "yes",
+    "claro",
+    "assisti",
+    "to assistindo",
+  ];
+  for (const k of positives) {
+    if (t === k || t.startsWith(k + " ")) return "positive";
+  }
+  const negatives = [
+    "nao",
+    "nao consegui",
+    "nao deu",
+    "travou",
+    "nao funciona",
+    "nao funcionou",
+    "nao abre",
+    "nao abriu",
+    "nao carrega",
+    "nao entra",
+    "nao acessa",
+    "problema",
+    "erro",
+    "bug",
+    "nada",
+    "nope",
+    "nao assisti",
+  ];
+  for (const k of negatives) {
+    if (t === k || t.startsWith(k + " ")) return "negative";
+  }
+  return "neutral";
+}
+
+/** Mensagem de quem já testou e quer assinar / voltar a falar do plano. */
+function looksLikeSubIntent(text: string): boolean {
+  const t = normKey(text);
+  const keys = [
+    "assinar",
+    "quero pagar",
+    "plano",
+    "preco",
+    "precos",
+    "quanto custa",
+    "quanto e",
+    "mensalidade",
+    "contratar",
+    "ativar",
+    "promocao",
+    "como assino",
+    "valor do plano",
+    "valores",
+    "comprar",
+    "12 meses",
+    "6 meses",
+    "anual",
+  ];
+  return keys.some((k) => k.length >= 3 && t.includes(k));
+}
+
 function inferTestTvFromOption(opt: {
   key?: string;
   label?: string;
@@ -1689,6 +1807,27 @@ function ensurePhoneFlowInWebhook(tf: Record<string, unknown>) {
   if (!String(texts.macCheckIn || "").trim()) {
     texts.macCheckIn = DEFAULT_MESSAGES.testMacCheckIn;
   }
+  if (!String(texts.alreadyUsed || "").trim()) {
+    texts.alreadyUsed = DEFAULT_MESSAGES.testAlreadyUsed;
+  }
+  if (!String(texts.confirmInstall || "").trim()) {
+    texts.confirmInstall = DEFAULT_MESSAGES.testConfirmInstall;
+  }
+  if (!String(texts.confirmInstallOk || "").trim()) {
+    texts.confirmInstallOk = DEFAULT_MESSAGES.testConfirmInstallOk;
+  }
+  if (!String(texts.confirmInstallNo || "").trim()) {
+    texts.confirmInstallNo = DEFAULT_MESSAGES.testConfirmInstallNo;
+  }
+  if (!String(texts.macPrompt || "").trim()) {
+    texts.macPrompt = DEFAULT_MESSAGES.testMacPrompt;
+  }
+  if (!String(texts.checkInOk || "").trim()) {
+    texts.checkInOk = DEFAULT_MESSAGES.testCheckInOk;
+  }
+  if (!String(texts.checkInNo || "").trim()) {
+    texts.checkInNo = DEFAULT_MESSAGES.testCheckInNo;
+  }
   next.texts = texts;
   return next;
 }
@@ -1904,6 +2043,13 @@ function resolveTestFlowFromBot(bot: Record<string, unknown>) {
       macInvalid: String(
         messages.testMacInvalid || DEFAULT_MESSAGES.testMacInvalid,
       ),
+      alreadyUsed: DEFAULT_MESSAGES.testAlreadyUsed,
+      confirmInstall: DEFAULT_MESSAGES.testConfirmInstall,
+      confirmInstallOk: DEFAULT_MESSAGES.testConfirmInstallOk,
+      confirmInstallNo: DEFAULT_MESSAGES.testConfirmInstallNo,
+      macPrompt: DEFAULT_MESSAGES.testMacPrompt,
+      checkInOk: DEFAULT_MESSAGES.testCheckInOk,
+      checkInNo: DEFAULT_MESSAGES.testCheckInNo,
       pcReady: String(messages.testPcReady || ""),
       phoneReady: String(messages.testPhoneReady || ""),
       phoneIosReady: String(
@@ -2304,6 +2450,9 @@ Deno.serve(async (req) => {
       cmdNorm === "voltar" ||
       cmdNorm === "ativar bot" ||
       cmdNorm === "continuar";
+    const isOptedOut =
+      optOut[phoneStateKey(phone)] === true ||
+      Object.keys(optOut).some((k) => optOut[k] && phoneMatches(k, phone));
     if (wantsOptOut) {
       const key = phoneStateKey(phone) || phone;
       optOut[key] = true;
@@ -2320,7 +2469,7 @@ Deno.serve(async (req) => {
       );
       return json({ ok: true, action: "opt_out" });
     }
-    if (wantsOptIn) {
+    if (wantsOptIn && isOptedOut) {
       const key = phoneStateKey(phone);
       if (key) delete optOut[key];
       for (const k of Object.keys(optOut)) {
@@ -2332,9 +2481,6 @@ Deno.serve(async (req) => {
       );
       return json({ ok: true, action: "opt_in" });
     }
-    const isOptedOut =
-      optOut[phoneStateKey(phone)] === true ||
-      Object.keys(optOut).some((k) => optOut[k] && phoneMatches(k, phone));
     if (isOptedOut) {
       return json({ ok: true, skipped: "opt_out" });
     }
@@ -2459,6 +2605,9 @@ Deno.serve(async (req) => {
       state: "idle",
       updatedAt: new Date().toISOString(),
     };
+    // Resposta ao check-in pós-teste (“conseguiu assistir?”) → tratar depois,
+    // não como retorno de contato que dispara a oferta de plano.
+    const hadPendingCheckIn = Boolean(session.macCheckInId);
     // Qualquer resposta do cliente cancela o check-in pós-MAC agendado
     if (session.macCheckInId) {
       session = {
@@ -2514,6 +2663,7 @@ Deno.serve(async (req) => {
       "test_ask_tv",
       "test_ask_app",
       "test_await_mac",
+      "test_confirm_install",
       "test_plan_await_mac",
       "test_offer_plan",
     ]);
@@ -2635,8 +2785,16 @@ Deno.serve(async (req) => {
         );
         return json({ ok: true, action: "test_back_device" });
       }
-      if (sess.state === "test_ask_tv" || sess.state === "test_await_mac") {
-        if (sess.state === "test_await_mac" && sess.testAppMenuId) {
+      if (
+        sess.state === "test_ask_tv" ||
+        sess.state === "test_await_mac" ||
+        sess.state === "test_confirm_install"
+      ) {
+        if (
+          (sess.state === "test_await_mac" ||
+            sess.state === "test_confirm_install") &&
+          sess.testAppMenuId
+        ) {
           sessions[phone] = {
             ...sess,
             state: "test_ask_app",
@@ -2648,7 +2806,10 @@ Deno.serve(async (req) => {
           });
           return json({ ok: true, action: "test_back_app" });
         }
-        if (sess.state === "test_await_mac") {
+        if (
+          sess.state === "test_await_mac" ||
+          sess.state === "test_confirm_install"
+        ) {
           sessions[phone] = {
             ...sess,
             state: "test_ask_tv",
@@ -2718,29 +2879,32 @@ Deno.serve(async (req) => {
       return json({ ok: true, action: "test_back_idle" });
     };
 
-    const refuseOrOfferIfAlreadyTested = async () => {
+    const sendAlreadyUsedOrOffer = async (opts?: {
+      includeAlreadyUsed?: boolean;
+    }) => {
       const used = findTestConsumed(phone);
-      if (!used) return null;
       const sess: Session = {
         ...sessions[phone],
         state: "idle",
-        testUsername: used.username || sessions[phone]?.testUsername,
-        testDoneAt: used.at,
-        testClientName: used.name,
-        testRemoteId: used.remoteId,
+        testUsername: used?.username || sessions[phone]?.testUsername,
+        testDoneAt: used?.at || sessions[phone]?.testDoneAt,
+        testClientName: used?.name || sessions[phone]?.testClientName,
+        testRemoteId: used?.remoteId || sessions[phone]?.testRemoteId,
         updatedAt: new Date().toISOString(),
       };
       sessions[phone] = sess;
       await persistState();
       if (sess.testUsername) {
-        await send(
-          "Você *já usou* o teste gratuito neste número.\n\nSe quiser assinar, veja as opções:",
-        );
+        if (opts?.includeAlreadyUsed !== false) {
+          await send(
+            tfTexts.alreadyUsed || DEFAULT_MESSAGES.testAlreadyUsed,
+          );
+        }
         return await sendTestOfferPlan(sess);
       }
+      await send(tfTexts.alreadyUsed || DEFAULT_MESSAGES.testAlreadyUsed);
       await send(
-        "Você *já usou* o teste gratuito neste número.\n\n" +
-          "Para assinar ou tirar dúvidas, escreva *atendente*.",
+        "Para assinar ou tirar dúvidas, escreva *atendente*.",
       );
       return json({ ok: true, action: "test_already_used" });
     };
@@ -2753,8 +2917,10 @@ Deno.serve(async (req) => {
         );
         return json({ ok: true, action: "test_not_configured" });
       }
-      const blocked = await refuseOrOfferIfAlreadyTested();
-      if (blocked) return blocked;
+      if (findTestConsumed(phone)) {
+        // Já usou o teste → não abre outro; avisa e oferece o plano.
+        return await sendAlreadyUsedOrOffer({ includeAlreadyUsed: true });
+      }
       sessions[phone] = {
         state: "test_ask_name",
         role: "unknown",
@@ -2820,6 +2986,50 @@ Deno.serve(async (req) => {
         hours: sess.testHours || testHours,
       });
       return json({ ok: true, action: "test_offer_plan" });
+    };
+
+    /**
+     * Ativa o MAC no app (FunPlay/Prime) e agenda o check-in pós-teste.
+     * Compartilhado entre o estado test_await_mac e a confirmação de
+     * instalação (quando o cliente já manda o MAC sem responder sim/não).
+     */
+    const activateMacForSession = async (sess: Session, rawMac: string) => {
+      const mac = normalizeMacWa(rawMac);
+      if (!mac) {
+        await send(tfTexts.macInvalid || "MAC inválido");
+        await send("_Digite o MAC, *voltar* para o menu ou *atendente*._");
+        return json({ ok: true, action: "test_mac_invalid" });
+      }
+      const app = sess.testApp === "prime" ? "prime" : "fun";
+      const username = String(sess.testUsername || "").trim();
+      const password = String(sess.testPassword || "").trim();
+      if (!username || !password) {
+        throw new Error(
+          "Teste sem usuário/senha. Digite *voltar* e escolha o app de novo.",
+        );
+      }
+      bearer = await ensurePanelBearer(client, userId, automations);
+      await activatePartnerAppWa(bearer, app, username, password, mac);
+      const checkInId = crypto.randomUUID();
+      const doneAt = new Date().toISOString();
+      sessions[phone] = {
+        ...sess,
+        state: "idle",
+        testDoneAt: doneAt,
+        macCheckInId: checkInId,
+        updatedAt: new Date().toISOString(),
+      };
+      await persistState();
+      const isRoku = sess.testTv === "roku";
+      await send(
+        fill(pickMacOkTemplate(tfTexts, isRoku), {
+          mac,
+          hours: sess.testHours || testHours,
+          app: app === "fun" ? "FunPlay" : "Prime IPTV",
+        }),
+      );
+      scheduleMacCheckIn(checkInId);
+      return json({ ok: true, action: "test_mac_ok" });
     };
 
     const finishTestWithApp = async (
@@ -2888,8 +3098,7 @@ Deno.serve(async (req) => {
         });
         sessions[phone] = {
           ...baseSess,
-          state: "idle",
-          testDoneAt: doneAt,
+          state: "test_confirm_install",
         };
         await persistState();
         await send(
@@ -2898,9 +3107,10 @@ Deno.serve(async (req) => {
             { user: username, password, hours },
           ),
         );
-        return json({ ok: true, action: "test_xcloud_ready" });
+        await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
+        return json({ ok: true, action: "test_confirm_install" });
       }
-      sessions[phone] = { ...baseSess, state: "test_await_mac" };
+      sessions[phone] = { ...baseSess, state: "test_confirm_install" };
       await persistState();
       const tpl = app === "fun" ? tfTexts.funReady : tfTexts.primeReady;
       const askMacFallback =
@@ -2914,7 +3124,8 @@ Deno.serve(async (req) => {
           hours,
         }),
       );
-      return json({ ok: true, action: "test_await_mac" });
+      await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
+      return json({ ok: true, action: "test_confirm_install" });
     };
 
     const finishTestPcPhone = async (
@@ -2952,7 +3163,7 @@ Deno.serve(async (req) => {
         device === "pc" ? "pc" : "phone";
       sessions[phone] = {
         ...sess,
-        state: "idle",
+        state: "test_confirm_install",
         role: sess.role || "unknown",
         testDevice,
         testUsername: created.username,
@@ -2960,7 +3171,6 @@ Deno.serve(async (req) => {
         testRemoteId: created.remoteId,
         testHours: hours,
         panelUsername: created.username,
-        testDoneAt: doneAt,
         updatedAt: new Date().toISOString(),
       };
       await persistState();
@@ -2984,7 +3194,8 @@ Deno.serve(async (req) => {
             },
           ),
         );
-        return json({ ok: true, action: "test_pc_ready" });
+        await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
+        return json({ ok: true, action: "test_confirm_install" });
       }
       if (device === "phone_ios") {
         await send(
@@ -3000,7 +3211,8 @@ Deno.serve(async (req) => {
             },
           ),
         );
-        return json({ ok: true, action: "test_phone_ios_ready" });
+        await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
+        return json({ ok: true, action: "test_confirm_install" });
       }
       await send(
         fill(
@@ -3013,7 +3225,8 @@ Deno.serve(async (req) => {
           },
         ),
       );
-      return json({ ok: true, action: "test_phone_android_ready" });
+      await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
+      return json({ ok: true, action: "test_confirm_install" });
     };
 
     const askPlanScreenMac = async (sess: Session) => {
@@ -3269,11 +3482,8 @@ Deno.serve(async (req) => {
         }
         const used = findTestConsumed(phone);
         if (used || (session.testUsername && session.testDoneAt)) {
-          const blocked = await refuseOrOfferIfAlreadyTested();
-          if (blocked) return blocked;
-          if (session.testUsername && session.testDoneAt) {
-            return await sendTestOfferPlan(session);
-          }
+          // Pediu um NOVO teste depois de já ter usado → "já usou" + oferta.
+          return await sendAlreadyUsedOrOffer({ includeAlreadyUsed: true });
         }
         return await startTestAskName();
       } catch (e) {
@@ -3286,7 +3496,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Contato que já testou manda qualquer coisa fora de menu → oferta
+    // Contato que já testou manda qualquer coisa fora de menu.
+    // Só reage quando é retorno de verdade: resposta ao check-in pós-teste,
+    // interesse em assinar ou contato voltando depois do cooldown.
+    // "Você já usou o teste" NÃO é enviado aqui — só quando pede um novo teste.
     if (
       flowObj &&
       !testFlowStates.has(String(session.state || "")) &&
@@ -3295,8 +3508,74 @@ Deno.serve(async (req) => {
       (findTestConsumed(phone) ||
         (session.testUsername && session.testDoneAt))
     ) {
-      const blocked = await refuseOrOfferIfAlreadyTested();
-      if (blocked) return blocked;
+      // Pediu atendente → encaminha para humano (contato sem pasta no painel)
+      if (wantsAttendant) {
+        setHumanPaused(phone, true);
+        sessions[phone] = {
+          ...session,
+          state: "human",
+          role: "unknown",
+          humanBusySent: false,
+          updatedAt: new Date().toISOString(),
+        };
+        await persistState();
+        await send(
+          messages.problemHuman || "Vou te passar para nossos atendentes.",
+        );
+        try {
+          await enqueueHumanAlert(client, userId, phone, "unknown");
+          const notif =
+            (await getSetting<{
+              enabled?: boolean;
+              whatsappHumanEnabled?: boolean;
+            }>(client, `notif_settings_user_${userId}`)) || {};
+          if (
+            notif.enabled !== false &&
+            notif.whatsappHumanEnabled !== false
+          ) {
+            await notifyOwnerHumanHandoff(
+              apiBaseUrl,
+              apiKey,
+              instance,
+              phone,
+              "unknown",
+            );
+          }
+        } catch {
+          /* alerta não bloqueia o handoff */
+        }
+        return json({ ok: true, action: "human" });
+      }
+      const used = findTestConsumed(phone);
+      const lastTestAt = used?.at || session.testDoneAt;
+      const fresh =
+        Boolean(lastTestAt) &&
+        Date.now() - new Date(lastTestAt as string).getTime() <
+          TEST_RETURN_COOLDOWN_MS;
+      // Interesse claro em assinar → oferta do plano (sem o "já usou")
+      if (looksLikeSubIntent(text)) {
+        return await sendAlreadyUsedOrOffer({ includeAlreadyUsed: false });
+      }
+      if (hadPendingCheckIn || fresh) {
+        // Resposta ao check-in pós-teste ("conseguiu assistir?") → reage
+        const cls = classifyTestResponse(text);
+        if (cls === "positive") {
+          await send(
+            fill(tfTexts.checkInOk || DEFAULT_MESSAGES.testCheckInOk, {
+              hours: session.testHours || testHours,
+            }),
+          );
+          return json({ ok: true, action: "test_checkin_ok" });
+        }
+        if (cls === "negative") {
+          await send(tfTexts.checkInNo || DEFAULT_MESSAGES.testCheckInNo);
+          return json({ ok: true, action: "test_checkin_no" });
+        }
+        // Neutro pouco depois do teste → não incomoda
+        return json({ ok: true, action: "idle_silent" });
+      }
+      // Contato voltando depois do cooldown → oferta do plano (sem "já usou")
+      return await sendAlreadyUsedOrOffer({ includeAlreadyUsed: false });
     }
 
     // Fluxo guiado de teste (menus editáveis da conta)
@@ -3344,38 +3623,67 @@ Deno.serve(async (req) => {
             );
             return json({ ok: true, action: "test_mac_invalid" });
           }
-          const mac = normalizeMacWa(text);
-          if (!mac) {
-            await send(tfTexts.macInvalid || "MAC inválido");
-            return json({ ok: true, action: "test_mac_invalid" });
+          return await activateMacForSession(session, text);
+        }
+
+        if (session.state === "test_confirm_install") {
+          const isMacApp =
+            session.testApp === "fun" || session.testApp === "prime";
+          // Já mandou o MAC direto (pulou o sim/não) → ativa
+          if (isMacApp && looksLikeMacMessage(text)) {
+            return await activateMacForSession(session, text);
           }
-          const app = session.testApp === "prime" ? "prime" : "fun";
-          const username = String(session.testUsername || "").trim();
-          const password = String(session.testPassword || "").trim();
-          if (!username || !password) {
-            throw new Error("Teste sem usuário/senha. Digite *voltar* e escolha o app de novo.");
+          const cls = classifyTestResponse(text);
+          if (cls === "positive") {
+            if (isMacApp) {
+              sessions[phone] = {
+                ...session,
+                state: "test_await_mac",
+                updatedAt: new Date().toISOString(),
+              };
+              await persistState();
+              await send(
+                tfTexts.macPrompt || DEFAULT_MESSAGES.testMacPrompt,
+              );
+              return json({ ok: true, action: "test_confirm_install_ok_mac" });
+            }
+            // XCloud / PC / celular: sem MAC — teste no ar + check-in
+            const doneAt = new Date().toISOString();
+            const checkInId = crypto.randomUUID();
+            sessions[phone] = {
+              ...session,
+              state: "idle",
+              testDoneAt: doneAt,
+              macCheckInId: checkInId,
+              updatedAt: new Date().toISOString(),
+            };
+            await persistState();
+            await send(
+              fill(
+                tfTexts.confirmInstallOk ||
+                  DEFAULT_MESSAGES.testConfirmInstallOk,
+                { hours: session.testHours || testHours },
+              ),
+            );
+            scheduleMacCheckIn(checkInId);
+            return json({ ok: true, action: "test_confirm_install_ok" });
           }
-          bearer = await ensurePanelBearer(client, userId, automations);
-          await activatePartnerAppWa(bearer, app, username, password, mac);
-          const checkInId = crypto.randomUUID();
-          sessions[phone] = {
-            ...session,
-            state: "idle",
-            testDoneAt: new Date().toISOString(),
-            macCheckInId: checkInId,
-            updatedAt: new Date().toISOString(),
-          };
-          await persistState();
-          const isRoku = session.testTv === "roku";
-          await send(
-            fill(pickMacOkTemplate(tfTexts, isRoku), {
-              mac,
-              hours: session.testHours || testHours,
-              app: app === "fun" ? "FunPlay" : "Prime IPTV",
-            }),
-          );
-          scheduleMacCheckIn(checkInId);
-          return json({ ok: true, action: "test_mac_ok" });
+          if (cls === "negative") {
+            sessions[phone] = {
+              ...session,
+              state: "idle",
+              updatedAt: new Date().toISOString(),
+            };
+            await persistState();
+            await send(
+              tfTexts.confirmInstallNo ||
+                DEFAULT_MESSAGES.testConfirmInstallNo,
+            );
+            return json({ ok: true, action: "test_confirm_install_no" });
+          }
+          // Sem resposta clara → repete a pergunta
+          await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
+          return json({ ok: true, action: "test_confirm_install_retry" });
         }
 
         if (session.state === "test_plan_await_mac") {

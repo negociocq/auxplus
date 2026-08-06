@@ -438,6 +438,7 @@ export type WaBotSessionState =
   | "test_ask_tv"
   | "test_ask_app"
   | "test_await_mac"
+  | "test_confirm_install"
   | "test_plan_await_mac"
   | "test_offer_plan";
 

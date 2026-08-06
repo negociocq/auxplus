@@ -89,6 +89,20 @@ export interface WaTestFlowConfig {
     /** Check-in se o cliente não responder após ativar o MAC. */
     macCheckIn: string;
     macInvalid: string;
+    /** Já usou o teste — aviso ao pedir outro teste. */
+    alreadyUsed: string;
+    /** Após escolher app/dispositivo — “conseguiu instalar? (sim/não)”. */
+    confirmInstall: string;
+    /** Resposta sim à confirmação de instalação (XCloud/PC/celular). */
+    confirmInstallOk: string;
+    /** Resposta não à confirmação de instalação (ajuda). */
+    confirmInstallNo: string;
+    /** Após “sim” no FunPlay/Prime — pedir o MAC. */
+    macPrompt: string;
+    /** Check-in “conseguiu assistir?” — resposta sim. */
+    checkInOk: string;
+    /** Check-in “conseguiu assistir?” — resposta não. */
+    checkInNo: string;
     pcReady: string;
     /** Celular Android — APK + UniPlay ({user} {password} {hours} {apk}) */
     phoneReady: string;
@@ -145,6 +159,13 @@ export function emptyWaTestFlow(): WaTestFlowConfig {
       macOkRoku: "",
       macCheckIn: "",
       macInvalid: "",
+      alreadyUsed: "",
+      confirmInstall: "",
+      confirmInstallOk: "",
+      confirmInstallNo: "",
+      macPrompt: "",
+      checkInOk: "",
+      checkInNo: "",
       pcReady: "",
       phoneReady: "",
       phoneIosReady: "",
@@ -414,6 +435,30 @@ export function exampleWaTestFlow(): WaTestFlowConfig {
         "• *aabbccddeeff*\n\n" +
         "Ele fica no *canto inferior direito* do app.\n" +
         "Mande *só o MAC*, sem outros textos.",
+      alreadyUsed:
+        "Você *já usou* o teste gratuito neste número.\n\n" +
+        "Se quiser assinar, veja as opções:",
+      confirmInstall:
+        "Conseguiu instalar o app? *(sim/não)*",
+      confirmInstallOk:
+        "Perfeito! 🎉 Seu teste de *{hours}h* já está no ar.\n\n" +
+        "Aproveite! Em instantes te pergunto se deu tudo certo.\n" +
+        "Quando quiser assinar, é só voltar aqui.",
+      confirmInstallNo:
+        "Que pena… Vamos resolver! 😊\n\n" +
+        "Me conta o que apareceu (não abre, tela preta, erro…)\n" +
+        "ou digite *atendente* para falar com a equipe.",
+      macPrompt:
+        "Perfeito! Então me envie o *MAC* que aparece no *canto inferior direito* do app.\n\n" +
+        "_Formatos: *aa:bb:cc:dd:ee:ff* ou *aabbccddeeff*_",
+      checkInOk:
+        "Que bom! Fico feliz que deu certo. 😊\n\n" +
+        "Seu teste dura *{hours}h*.\n" +
+        "Quando quiser assinar, é só voltar aqui — te ajudo na hora.",
+      checkInNo:
+        "Que pena que travou… 😕\n\n" +
+        "Me conta o que está acontecendo (tela preta, não carrega, erro…) que eu te ajudo.\n" +
+        "Ou digite *atendente*.",
       pcReady:
         "✅ Teste de *{hours}h* no *computador*\n\n" +
         "1) Abra este link:\n{loginUrl}\n\n" +
@@ -616,6 +661,13 @@ function parseWaTestFlowObject(raw: Record<string, unknown>): WaTestFlowConfig {
       macOkRoku: String(textsRaw.macOkRoku ?? ""),
       macCheckIn: String(textsRaw.macCheckIn ?? ""),
       macInvalid: String(textsRaw.macInvalid ?? ""),
+      alreadyUsed: String(textsRaw.alreadyUsed ?? ""),
+      confirmInstall: String(textsRaw.confirmInstall ?? ""),
+      confirmInstallOk: String(textsRaw.confirmInstallOk ?? ""),
+      confirmInstallNo: String(textsRaw.confirmInstallNo ?? ""),
+      macPrompt: String(textsRaw.macPrompt ?? ""),
+      checkInOk: String(textsRaw.checkInOk ?? ""),
+      checkInNo: String(textsRaw.checkInNo ?? ""),
       pcReady: String(textsRaw.pcReady ?? ""),
       phoneReady: String(textsRaw.phoneReady ?? ""),
       phoneIosReady: String(textsRaw.phoneIosReady ?? ""),
@@ -750,6 +802,13 @@ export function normalizeWaTestFlow(
       ),
       macCheckIn: example.texts.macCheckIn,
       macInvalid: String(m.testMacInvalid || example.texts.macInvalid),
+      alreadyUsed: example.texts.alreadyUsed,
+      confirmInstall: example.texts.confirmInstall,
+      confirmInstallOk: example.texts.confirmInstallOk,
+      confirmInstallNo: example.texts.confirmInstallNo,
+      macPrompt: example.texts.macPrompt,
+      checkInOk: example.texts.checkInOk,
+      checkInNo: example.texts.checkInNo,
       pcReady: String(m.testPcReady || example.texts.pcReady),
       phoneReady: String(m.testPhoneReady || example.texts.phoneReady),
       phoneIosReady: example.texts.phoneIosReady,
@@ -797,6 +856,17 @@ function ensurePhoneFlowDefaults(flow: WaTestFlowConfig): WaTestFlowConfig {
         flow.texts.phoneIosReady.trim() || example.texts.phoneIosReady,
       macCheckIn:
         flow.texts.macCheckIn.trim() || example.texts.macCheckIn,
+      alreadyUsed:
+        flow.texts.alreadyUsed.trim() || example.texts.alreadyUsed,
+      confirmInstall:
+        flow.texts.confirmInstall.trim() || example.texts.confirmInstall,
+      confirmInstallOk:
+        flow.texts.confirmInstallOk.trim() || example.texts.confirmInstallOk,
+      confirmInstallNo:
+        flow.texts.confirmInstallNo.trim() || example.texts.confirmInstallNo,
+      macPrompt: flow.texts.macPrompt.trim() || example.texts.macPrompt,
+      checkInOk: flow.texts.checkInOk.trim() || example.texts.checkInOk,
+      checkInNo: flow.texts.checkInNo.trim() || example.texts.checkInNo,
     },
   };
 }

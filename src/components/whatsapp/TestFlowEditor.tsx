@@ -543,11 +543,18 @@ export function TestFlowEditor({ value, onChange }: Props) {
             ["macOkRoku", "MAC ativado — Roku (sair do app)"],
             ["macCheckIn", "Check-in se não responder após o MAC"],
             ["macInvalid", "MAC inválido"],
+            ["macPrompt", "Após instalar — pedir o MAC (FunPlay/Prime)"],
+            ["checkInOk", "Check-in “conseguiu assistir?” — resposta sim"],
+            ["checkInNo", "Check-in “conseguiu assistir?” — resposta não"],
             ["pcReady", "Computador — link + login"],
             ["phoneReady", "Celular Android — APK + UniPlay"],
             ["phoneIosReady", "Celular iPhone — Smarters / Xtream Codes"],
             ["activatedMonth", "Intro PIX do plano (antes do pagamento)"],
             ["notConfigured", "Fluxo não configurado"],
+            ["confirmInstall", "Após entregar credenciais — “conseguiu instalar?” (sim/não)"],
+            ["confirmInstallOk", "Instalação confirmada (sim) — teste no ar"],
+            ["confirmInstallNo", "Instalação falhou (não) — oferece ajuda"],
+            ["alreadyUsed", "Já usou o teste e pediu outro"],
           ] as const
         ).map(([key, label]) => (
           <div key={key} className="space-y-1">
