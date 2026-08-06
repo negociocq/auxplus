@@ -123,16 +123,9 @@ export default function Conexoes() {
                     "ml-0.5 h-5 px-1.5 text-[10px]",
                     wa.status === "open" &&
                       "border-success/40 bg-success/15 text-success",
-                    wa.status === "qr" || wa.status === "connecting"
-                      ? "border-primary/40 bg-primary/15 text-primary"
-                      : "",
                   )}
                 >
-                  {wa.status === "open"
-                    ? "OK"
-                    : wa.status === "qr" || wa.status === "connecting"
-                      ? "…"
-                      : "Off"}
+                  {wa.status === "open" ? "OK" : "Off"}
                 </Badge>
               </span>
               <span className="text-[11px] font-normal text-muted-foreground">
@@ -486,19 +479,24 @@ export default function Conexoes() {
                   <Save className="h-3.5 w-3.5" />
                   {uni.saving ? "…" : "Salvar"}
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-9"
-                  onClick={uni.openPanel}
-                  disabled={
-                    !(uni.platform.panelUrl.trim() || DEFAULT_IPTV_PANEL_URL)
-                  }
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Painel
-                </Button>
+                {uni.uniplayConnected ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    onClick={uni.openPanel}
+                    disabled={
+                      !(
+                        uni.platform.panelUrl.trim() ||
+                        DEFAULT_IPTV_PANEL_URL
+                      )
+                    }
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Painel
+                  </Button>
+                ) : null}
                 {uni.uniplayConnected ? (
                   <Button
                     type="button"

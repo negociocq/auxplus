@@ -48,6 +48,7 @@ import {
   defaultWhatsappAutomation,
   loadSendLog,
   loadWhatsappSettings,
+  normalizeBrPhone,
   parseLocalYmd,
   nextDelayMs,
   releaseWhatsappSendLock,
@@ -138,7 +139,7 @@ export default function WhatsAppPage() {
     return logs.filter((l) => l.day === day && l.ok).length;
   }, [logs]);
 
-  /** Quem já recebeu hoje (log ok), com nome/vencimento resolvidos do item. */
+  /** Quem já recebeu hoje (log ok), com nome/usuário/vencimento resolvidos do item. */
   const sentToday = useMemo(() => {
     const day = format(new Date(), "yyyy-MM-dd");
     return logs
@@ -146,15 +147,20 @@ export default function WhatsAppPage() {
       .slice()
       .sort((a, b) => (b.sentAt || "").localeCompare(a.sentAt || ""))
       .map((l) => {
+        // O log guarda o id interno do item + telefone normalizado (com o 9).
+        // Busca também por itemId (usuário do painel) e telefone cru, para cobrir
+        // logs antigos que usavam outro formato.
+        const lid = (l.itemId || "").trim().toLowerCase();
         const item = myItems.find(
           (i) =>
-            (i.itemId &&
-              i.itemId.trim().toLowerCase() === l.itemId.trim().toLowerCase()) ||
-            (i.phone && i.phone === l.phone),
+            (i.id && i.id.trim().toLowerCase() === lid) ||
+            (i.itemId && i.itemId.trim().toLowerCase() === lid) ||
+            (i.phone && normalizeBrPhone(i.phone) === l.phone),
         );
         return {
           log: l,
           name: item?.name || l.itemId || maskPhone(l.phone),
+          itemId: item?.itemId,
           dueDate: item?.dueDate,
         };
       });
@@ -508,8 +514,11 @@ export default function WhatsAppPage() {
                       className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">{r.name}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="truncate font-medium leading-tight">
+                          {r.name}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {r.itemId ? `Usuário: ${r.itemId} · ` : ""}
                           {r.dueDate
                             ? `vence ${formatBrDate(r.dueDate)}`
                             : "sem vencimento"}{" "}

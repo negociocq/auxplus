@@ -10,6 +10,7 @@ import {
   ChartColumn,
   ChevronDown,
   ChevronUp,
+  History,
   Loader2,
   MoreVertical,
   Package,
@@ -157,11 +158,14 @@ import {
   getLastIssuedIptvToken,
   listIptvResellers,
   listIptvUsers,
+  type IptvResellerMovement,
 } from "@/lib/iptvPanelApi";
 import {
+  applyResellerMovementsToFolder,
   syncIptvResellersToFolder,
   syncIptvUsersToFolder,
 } from "@/lib/iptvAutomation";
+import { ResellerMovementsDialog } from "@/components/shared/ResellerMovementsDialog";
 import {
   excludeFromSync,
   excludedUsernamesForFolder,
@@ -328,6 +332,8 @@ export default function FolderItems() {
     useState("");
   const [uniplayLinked, setUniplayLinked] = useState(false);
   const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(8.5);
+  const [movementsOpen, setMovementsOpen] = useState(false);
+  const [movementsUsername, setMovementsUsername] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folder = data.folders.find(
@@ -366,6 +372,26 @@ export default function FolderItems() {
   /** Botão de sync só com UniPlay conectada. */
   const uniplaySyncEnabled = uniplaySyncMode != null && uniplayLinked;
   const isResellerFolder = uniplaySyncMode === "resellers";
+
+  const openMovements = (item: Item) => {
+    setMovementsUsername(item.itemId);
+    setMovementsOpen(true);
+  };
+
+  /** Aplica as movimentações no item (créditos + receitas por mês). */
+  const applyMovementsItem = (moves: IptvResellerMovement[]) => {
+    const uname = String(movementsUsername || "").trim().toLowerCase();
+    if (!folder || !uname) return;
+    setData((prev) =>
+      applyResellerMovementsToFolder(
+        prev,
+        folder.id,
+        new Map<string, IptvResellerMovement[]>([[uname, moves]]),
+      ),
+    );
+    toast.success("Recargas aplicadas (créditos + receitas por mês)");
+    setMovementsOpen(false);
+  };
 
   const formatItemAmount = (value: number) =>
     isResellerFolder
@@ -1244,6 +1270,15 @@ export default function FolderItems() {
                                 <Pencil className="h-4 w-4" />
                                 Editar
                               </DropdownMenuItem>
+                              {isResellerFolder ? (
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={() => openMovements(item)}
+                                >
+                                  <History className="h-4 w-4" />
+                                  Movimentações
+                                </DropdownMenuItem>
+                              ) : null}
                               <DropdownMenuItem
                                 className="gap-2"
                                 onClick={() =>
@@ -1481,6 +1516,15 @@ export default function FolderItems() {
                             <Pencil className="h-4 w-4" />
                             Editar
                           </DropdownMenuItem>
+                          {isResellerFolder ? (
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => openMovements(item)}
+                            >
+                              <History className="h-4 w-4" />
+                              Movimentações
+                            </DropdownMenuItem>
+                          ) : null}
                           <DropdownMenuItem
                             className="gap-2"
                             onClick={() =>
@@ -1871,6 +1915,17 @@ export default function FolderItems() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ResellerMovementsDialog
+        open={movementsOpen}
+        onOpenChange={(open) => {
+          if (!open) setMovementsOpen(false);
+        }}
+        user={user}
+        username={movementsUsername || undefined}
+        displayName={folder?.name}
+        onApply={applyMovementsItem}
+      />
 
       {/* Status charts sheet */}
       <Sheet open={showStatusSlide} onOpenChange={setShowStatusSlide}>

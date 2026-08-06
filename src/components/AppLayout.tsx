@@ -200,7 +200,9 @@ export function AppLayout() {
       ? [{ to: "/uniplay", label: "UniPlay", icon: Tv }]
       : []),
     { to: "/conexoes", label: "Conexões", icon: Cable },
-    { to: "/logs", label: "Logs", icon: History },
+    ...(uniplayConnected
+      ? [{ to: "/logs", label: "Logs", icon: History }]
+      : []),
     { to: "/settings", label: "Configuração", icon: Settings },
   ];
   const adminLinks = [
