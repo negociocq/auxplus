@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { AlertTriangle, Loader2, Trash2, RefreshCw, Lock } from "lucide-react";
+import { AlertTriangle, Loader2, Trash2, RefreshCw, Lock, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -351,6 +351,17 @@ export function MpOrdersCleanup({ userId }: { userId: string }) {
                     className="h-7 px-2"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => removeOrder(order.id)}
+                    disabled={loading}
+                    className="h-7 px-2"
+                    title="Cancelar verificação - nunca mais mensagens ou notificações"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Cancelar
                   </Button>
                 </div>
               </div>
