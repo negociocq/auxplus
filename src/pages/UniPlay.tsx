@@ -32,8 +32,8 @@ import { useUniplayConnection } from "@/hooks/useUniplayConnection";
 import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { hasUsedProrrogaInCurrentCycle } from "@/lib/itemExtensions";
-import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage } from "@/lib/iptvPanelApi";
+import { hasUsedProrrogaInCurrentCycle, extractProrrogaUsage } from "@/lib/itemExtensions";
+import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage, ensureIptvToken } from "@/lib/iptvPanelApi";
 import { applyProrrogaToItem } from "@/lib/iptvAutomation";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -804,11 +804,17 @@ export default function UniPlay() {
 
       // Carrega configurações do WhatsApp para pegar o template
       const waSettings = loadWhatsappSettings(user.id);
+      // Extrai a data antiga do marcador de prorrogação (se existir)
+      // ou usa a data atual como fallback
+      const prorrogaUsage = extractProrrogaUsage(item);
+      const oldDue = prorrogaUsage?.oldDue || item.dueDate;
+      const newDue = item.dueDate; // Data já atualizada pela applyProrrogaToItem
+
       const text = buildProrrogaMessage(
         item.name,
         item.itemId,
-        item.dueDate, // Data antiga (que estava antes da prorrogação)
-        item.dueDate, // Nova data (já atualizada pela applyProrrogaToItem)
+        oldDue,
+        newDue,
         kind,
         waSettings.prorrogaMessage
       );
@@ -835,20 +841,33 @@ export default function UniPlay() {
         return;
       }
 
+      if (!bearer.trim()) {
+        toast.error("Conecte sua conta UniPlay antes");
+        return;
+      }
+
+      // Obtém credenciais atualizadas (seguindo o padrão de runApiRenew)
+      const ensured = await ensureIptvToken({
+        apiBaseUrl: config.iptvApiBaseUrl,
+        bearerToken: bearer.trim(),
+        defaultPackage: "1",
+      });
+
+      // Cria objeto creds com token atualizado
+      const creds = {
+        apiBaseUrl: config.iptvApiBaseUrl,
+        bearerToken: ensured.token,
+        defaultPackage: "1",
+        regPassword: platform.regPassword?.trim() || undefined,
+      };
+
       // Chama API do painel
       toast.info(`Aplicando prorrogação (${kind}) no painel...`);
-      const response = await prorrogaIptvUser(
-        { bearer, ...creds.current },
-        item.itemId,
-        kind
-      );
+      await prorrogaIptvUser(creds, item.itemId, kind);
 
       // Pega a data real do painel
       toast.info("Confirmando nova data de vencimento...");
-      const panelExp = await fetchIptvExpDate(
-        { bearer, ...creds.current },
-        item.itemId
-      );
+      const panelExp = await fetchIptvExpDate(creds, item.itemId);
 
       // Atualiza item localmente
       const updated = applyProrrogaToItem(item, kind, panelExp);
