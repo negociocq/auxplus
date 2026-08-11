@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Bell, KeyRound, Loader2, Mail, Save, Settings2 } from "lucide-react";
+import { Bell, KeyRound, Loader2, LogOut, Mail, Save, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
+import { supabase } from "@/integrations/supabase/client";
 import {
   isValidEmail,
   sendLinkEmailConfirmation,
@@ -50,6 +51,7 @@ export default function Settings() {
     () => notificationPermission(),
   );
   const [uniplayLinked, setUniplayLinked] = useState(false);
+  const [signingOutAll, setSigningOutAll] = useState(false);
 
   useEffect(() => {
     setEmail(user?.email?.trim() || user?.pendingEmail?.trim() || "");
@@ -79,6 +81,27 @@ export default function Settings() {
   const confirmedEmail = user.email?.trim() || "";
   const pendingEmail = user.pendingEmail?.trim() || "";
   const missingEmail = !confirmedEmail;
+
+  const onSignOutAllSessions = async () => {
+    setSigningOutAll(true);
+    try {
+      await supabase.auth.signOut({ scope: "global" });
+      toast.success("Finalizado em todas as sessões");
+      // Redireciona após um tempo curto para o login
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 1000);
+    } catch (e) {
+      console.error("[Settings] Erro ao finalizar sessões:", e);
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : "Erro ao finalizar todas as sessões"
+      );
+    } finally {
+      setSigningOutAll(false);
+    }
+  };
 
   const onSaveEmail = async (e: FormEvent) => {
     e.preventDefault();
@@ -294,6 +317,32 @@ export default function Settings() {
                   ? "Reenviar confirmação"
                   : "Enviar confirmação"}
             </Button>
+
+            <div className="border-t pt-5">
+              <div className="rounded-lg border border-amber-200/50 bg-amber-50/50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+                <p className="mb-3 text-sm font-medium text-amber-900 dark:text-amber-200">
+                  ⚠️ Finalizar todas as sessões
+                </p>
+                <p className="mb-3 text-xs text-amber-800/70 dark:text-amber-300/70">
+                  Isso fará logout em TODAS as sessões ativas deste navegador e
+                  de outros dispositivos. Você terá que fazer login novamente.
+                </p>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => void onSignOutAllSessions()}
+                  disabled={signingOutAll}
+                >
+                  {signingOutAll ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <LogOut className="h-3.5 w-3.5" />
+                  )}
+                  {signingOutAll ? "Finalizando…" : "Finalizar todas sessões"}
+                </Button>
+              </div>
+            </div>
           </form>
         </TabsContent>
 
