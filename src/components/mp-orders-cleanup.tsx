@@ -335,33 +335,17 @@ export function MpOrdersCleanup({ userId }: { userId: string }) {
                 <div className="flex gap-1">
                   <Button
                     size="sm"
-                    variant="ghost"
-                    onClick={() => blockOrder(order.id)}
-                    disabled={loading}
-                    className="h-7 px-2"
-                    title="Bloquear permanentemente para nunca mais processar"
-                  >
-                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeOrder(order.id)}
-                    disabled={loading}
-                    className="h-7 px-2"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
                     variant="destructive"
                     onClick={() => removeOrder(order.id)}
                     disabled={loading}
-                    className="h-7 px-2"
-                    title="Cancelar verificação - nunca mais mensagens ou notificações"
+                    className="h-7 w-full"
                   >
-                    <X className="h-3.5 w-3.5" />
-                    Cancelar
+                    {loading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <X className="h-3.5 w-3.5" />
+                    )}
+                    🚫 BLOQUEAR PERMANENTEMENTE
                   </Button>
                 </div>
               </div>
