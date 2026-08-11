@@ -11,6 +11,7 @@ import {
   FlaskConical,
   Headset,
   Loader2,
+  Phone,
   Plus,
   RefreshCw,
   Search,
@@ -142,6 +143,7 @@ export default function UniPlay() {
     hidden: hideSensitive,
     user: maskUser,
     num: maskNum,
+    phone: maskPhone,
   } = useHideBalance();
   const uni = useUniplayConnection(user);
   const {
@@ -1680,6 +1682,16 @@ export default function UniPlay() {
                 {matchTest?.dueDate ? (
                   <span>· vence {formatBrDate(matchTest.dueDate)}</span>
                 ) : null}
+                {matchTest?.phone ? (
+                  <a
+                    href={`tel:+${matchTest.phone.replace(/\D/g, "")}`}
+                    className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                    title="Ligar para quem pediu o teste"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {maskPhone(matchTest.phone)}
+                  </a>
+                ) : null}
               </>
             )}
           </p>
@@ -2403,6 +2415,16 @@ export default function UniPlay() {
                             ? ` · ${formatBrDate(job.dueDate)}`
                             : ""}
                         </p>
+                        {job.phone ? (
+                          <a
+                            href={`tel:+${job.phone.replace(/\D/g, "")}`}
+                            className="inline-flex items-center gap-0.5 text-[11px] font-medium text-primary hover:underline"
+                            title="Ligar para quem pediu o teste"
+                          >
+                            <Phone className="h-3 w-3" />
+                            {maskPhone(job.phone)}
+                          </a>
+                        ) : null}
                       </div>
                       <div className="flex shrink-0 gap-1">
                         <Button
@@ -2965,6 +2987,18 @@ export default function UniPlay() {
                     </div>
                     <div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
                       <p>Usuário: {maskUser(detailJob.panelUsername)}</p>
+                      {detailJob.phone ? (
+                        <p>
+                          Telefone:{" "}
+                          <a
+                            href={`tel:+${detailJob.phone.replace(/\D/g, "")}`}
+                            className="font-medium text-primary hover:underline"
+                            title="Ligar para quem pediu o teste"
+                          >
+                            {maskPhone(detailJob.phone)}
+                          </a>
+                        </p>
+                      ) : null}
                       <p>
                         Senha:{" "}
                         {hideSensitive

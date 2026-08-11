@@ -447,18 +447,79 @@ export function isPastSendTime(sendTime: string, now = new Date()) {
 }
 
 /**
- * Já enviou este item hoje com sucesso? Dedup robusto contra fila defasada:
- * re-checa o log na hora do envio (não confia só na fila montada antes).
+ * Já houve QUALQUER tentativa hoje (sucesso OU falha) para este telefone+tipo?
+ * Bloquear também a falha é intencional: se a Evolution entregou a mensagem mas
+ * a resposta HTTP se perdeu (timeout), a falha é falsa — reenviar repetiria o
+ * lembrete. Garante 1 envio por dia por telefone+tipo.
  */
 export function wasItemSentToday(
   userId: string,
   itemId: string,
   kind: string,
+  /** Telefone normalizado — cobre cliente duplicado em várias pastas. */
+  phone?: string,
 ): boolean {
   const day = format(new Date(), "yyyy-MM-dd");
   return loadSendLog(userId).some(
-    (l) => l.day === day && l.ok && l.itemId === itemId && l.kind === kind,
+    (l) =>
+      l.day === day &&
+      (l.itemId === itemId || (phone ? l.phone === phone : false)) &&
+      l.kind === kind,
   );
+}
+
+/**
+ * Marca a tentativa ANTES do envio (reserva). Fecha a corrida entre abas: outra
+ * aba já enxerga a reserva pelo localStorage e não envia de novo. Também garante
+ * que uma resposta perdida (falsa falha) não gere reenvio — o dia já está
+ * "usado" assim que a tentativa começa.
+ */
+export function markWhatsappAttempt(
+  userId: string,
+  phone: string,
+  itemId: string,
+  kind: "before" | "onday",
+): void {
+  const day = format(new Date(), "yyyy-MM-dd");
+  const logs = loadSendLog(userId);
+  const exists = logs.some(
+    (l) => l.day === day && l.phone === phone && l.kind === kind,
+  );
+  if (exists) return;
+  const entry: WaSendLog = {
+    day,
+    sentAt: new Date().toISOString(),
+    phone,
+    itemId,
+    kind,
+    ok: false,
+    error: "sending",
+  };
+  saveSendLog(userId, [...logs, entry]);
+}
+
+/** Conclui a tentativa: ok:true se entregue, ok:false com o erro se falhou. */
+export function resolveWhatsappAttempt(
+  userId: string,
+  phone: string,
+  kind: "before" | "onday",
+  ok: boolean,
+  error?: string,
+): void {
+  const day = format(new Date(), "yyyy-MM-dd");
+  const logs = loadSendLog(userId);
+  const idx = logs.findIndex(
+    (l) => l.day === day && l.phone === phone && l.kind === kind && !l.ok,
+  );
+  if (idx === -1) return;
+  const next = [...logs];
+  next[idx] = {
+    ...next[idx],
+    ok,
+    error: ok ? undefined : error || next[idx].error || "erro",
+    sentAt: new Date().toISOString(),
+  };
+  saveSendLog(userId, next);
 }
 
 /** Monta fila do dia (lembretes elegíveis pela regra de dias). */
@@ -477,13 +538,18 @@ export function buildTodayQueue(
   const scheduledAt = parseLocalYmd(todayKey);
   scheduledAt.setHours(hour, minute, 0, 0);
 
+  // Anti-duplicado por TELEFONE: o mesmo número nunca leva 2 lembretes do mesmo
+  // tipo no mesmo dia. Conta QUALQUER tentativa (ok ou falha): depois de uma
+  // resposta perdida / falha falsa, o item não volta pra fila hoje.
   const sentKeys = new Set(
     alreadySent
-      .filter((l) => l.day === todayKey && l.ok)
-      .map((l) => `${l.itemId}:${l.kind}`),
+      .filter((l) => l.day === todayKey)
+      .map((l) => `${l.phone}:${l.kind}`),
   );
 
   const queue: WaQueueItem[] = [];
+  // Mesmo telefone já enfileirado hoje (ainda que não enviado) → pula.
+  const queuedKeys = new Set<string>();
 
   for (const item of items) {
     if (!revenueIds.has(item.folderId)) continue;
@@ -496,10 +562,11 @@ export function buildTodayQueue(
     const due = parseLocalYmd(dueKey);
 
     if (settings.sendOnDay && dueKey === todayKey) {
-      const key = `${item.id}:onday`;
-      if (!sentKeys.has(key)) {
+      const key = `${phone}:onday`;
+      if (!sentKeys.has(key) && !queuedKeys.has(key)) {
+        queuedKeys.add(key);
         queue.push({
-          id: key,
+          id: `${item.id}:onday`,
           itemId: item.id,
           folderId: item.folderId,
           name: item.name,
@@ -521,10 +588,11 @@ export function buildTodayQueue(
       // senão o lembrete repete todo dia enquanto o cliente está "Perto".
       const daysLeft = differenceInCalendarDays(due, parseLocalYmd(todayKey));
       if (daysLeft === settings.daysBefore) {
-        const key = `${item.id}:before`;
-        if (!sentKeys.has(key)) {
+        const key = `${phone}:before`;
+        if (!sentKeys.has(key) && !queuedKeys.has(key)) {
+          queuedKeys.add(key);
           queue.push({
-            id: key,
+            id: `${item.id}:before`,
             itemId: item.id,
             folderId: item.folderId,
             name: item.name,

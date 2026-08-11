@@ -17,6 +17,10 @@ verify_jwt = false
 [functions.mp-webhook]
 verify_jwt = false
 
+# Envio automático WhatsApp (cron via pg_cron chama sem JWT; função é idempotente)
+[functions.wa-auto-send]
+verify_jwt = false
+
 # Auth URLs (produção + localhost / Dyad)
 [auth]
 enabled = true

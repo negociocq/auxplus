@@ -21,7 +21,7 @@ import {
 import type { ItemPayment } from "@/types";
 import {
   fixUtf8Mojibake,
-  isIptvTestOrTrialUser,
+  isShortLivedIptvTest,
   parseIptvExpToDateTime,
   resolveTestAccessLinks,
   type IptvRemoteUser,
@@ -453,7 +453,9 @@ export function syncIptvUsersToFolder(
     next.items.filter((i) => i.folderId === folderId && i.isActive !== false);
 
   for (const remote of users) {
-    if (isIptvTestOrTrialUser(remote)) {
+    // Só exclui teste AINDA ativo (vence em horas). Teste ativado (plano de
+    // semanas/meses) entra como cliente — mesmo com flag test_hours no painel.
+    if (isShortLivedIptvTest(remote)) {
       skipped += 1;
       continue;
     }
@@ -500,6 +502,10 @@ export function syncIptvUsersToFolder(
       // Telefone só preenche se vazio no AuxPlus — nunca sobrescreve o editado
       const remotePhone = String(remote.phone || "").trim();
       if (remotePhone && !(existing.phone || "").trim()) patch.phone = remotePhone;
+      // “Criado em” do painel → só preenche se vazio no AuxPlus (nunca sobrescreve)
+      if (remote.createdAt && !existing.createdAt) {
+        patch.createdAt = remote.createdAt.slice(0, 19);
+      }
       if (Object.keys(patch).length === 0) {
         skipped += 1;
         continue;
@@ -514,6 +520,7 @@ export function syncIptvUsersToFolder(
         dueDate,
         phone: String(remote.phone || "").trim(),
         price: 0,
+        createdAt: remote.createdAt ? remote.createdAt.slice(0, 19) : null,
         isActive: true,
       });
       created += 1;
@@ -984,6 +991,8 @@ export function mergePanelTestsIntoJobs(
         clientName,
         dueDate: dueDate ?? existing.dueDate,
         testHours,
+        // Telefone só preenche se vazio no AuxPlus — nunca sobrescreve o editado
+        phone: String(remote.phone || "").trim() || existing.phone,
         note: `UniPlay · ${username}${password ? ` / ${password}` : ""}`,
         updatedAt: new Date().toISOString(),
       });
@@ -1000,7 +1009,7 @@ export function mergePanelTestsIntoJobs(
           panelPassword: password || undefined,
           m3u: links.m3u || undefined,
           dnsSmarters: links.dnsSmarters || undefined,
-          phone: "",
+          phone: String(remote.phone || "").trim(),
           dueDate,
           months: 1,
           testHours,

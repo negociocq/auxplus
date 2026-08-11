@@ -1,0 +1,2 @@
+-- Placeholder: versão já aplicada no banco remoto (histórico local estava ausente).
+-- Conteúdo real não está neste repo; usado só para o `db push` reconhecer a versão.

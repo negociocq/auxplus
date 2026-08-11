@@ -48,10 +48,12 @@ import {
   defaultWhatsappAutomation,
   loadSendLog,
   loadWhatsappSettings,
+  markWhatsappAttempt,
   normalizeBrPhone,
   parseLocalYmd,
   nextDelayMs,
   releaseWhatsappSendLock,
+  resolveWhatsappAttempt,
   saveSendLog,
   saveWhatsappSettings,
   sendEvolutionText,
@@ -136,14 +138,15 @@ export default function WhatsAppPage() {
 
   const sentTodayCount = useMemo(() => {
     const day = format(new Date(), "yyyy-MM-dd");
-    return logs.filter((l) => l.day === day && l.ok).length;
+    // Conta tentativas de hoje (ok e falha) — falha também aparece na lista.
+    return logs.filter((l) => l.day === day).length;
   }, [logs]);
 
-  /** Quem já recebeu hoje (log ok), com nome/usuário/vencimento resolvidos do item. */
+  /** Tentativas de hoje (ok e falha), com nome/usuário/vencimento resolvidos do item. */
   const sentToday = useMemo(() => {
     const day = format(new Date(), "yyyy-MM-dd");
     return logs
-      .filter((l) => l.day === day && l.ok)
+      .filter((l) => l.day === day)
       .slice()
       .sort((a, b) => (b.sentAt || "").localeCompare(a.sentAt || ""))
       .map((l) => {
@@ -169,19 +172,11 @@ export default function WhatsAppPage() {
   const clearTodaySent = () => {
     if (!user) return;
     const day = format(new Date(), "yyyy-MM-dd");
-    const next = loadSendLog(user.id).filter((l) => !(l.day === day && l.ok));
+    // Limpa TODAS as tentativas de hoje (ok e falha) — só assim a fila reaparece.
+    const next = loadSendLog(user.id).filter((l) => l.day !== day);
     saveSendLog(user.id, next);
     setLogs(next);
     toast.message("Log de envios de hoje limpo — a fila pode reaparecer");
-  };
-
-  const appendLog = (entry: WaSendLog) => {
-    if (!user) return;
-    setLogs((prev) => {
-      const next = [...prev, entry];
-      saveSendLog(user.id, next);
-      return next;
-    });
   };
 
   const sendOne = async (item: WaQueueItem) => {
@@ -195,15 +190,11 @@ export default function WhatsAppPage() {
       toast.error("API do WhatsApp não configurada pelo admin");
       return false;
     }
+    // Reserva antes de enviar (fecha corrida entre abas / resposta perdida).
+    markWhatsappAttempt(user.id, item.phone, item.itemId, item.kind);
     await sendEvolutionText(runtime, item.phone, item.message);
-    appendLog({
-      day: format(new Date(), "yyyy-MM-dd"),
-      sentAt: new Date().toISOString(),
-      phone: item.phone,
-      itemId: item.itemId,
-      kind: item.kind,
-      ok: true,
-    });
+    resolveWhatsappAttempt(user.id, item.phone, item.kind, true);
+    setLogs(loadSendLog(user.id));
     return true;
   };
 
@@ -228,15 +219,14 @@ export default function WhatsAppPage() {
       const ok = await sendOne(item);
       if (ok) toast.success(`Enviado: ${item.name}`);
     } catch (e) {
-      appendLog({
-        day: format(new Date(), "yyyy-MM-dd"),
-        sentAt: new Date().toISOString(),
-        phone: item.phone,
-        itemId: item.itemId,
-        kind: item.kind,
-        ok: false,
-        error: e instanceof Error ? e.message : "erro",
-      });
+      resolveWhatsappAttempt(
+        user.id,
+        item.phone,
+        item.kind,
+        false,
+        e instanceof Error ? e.message : "erro",
+      );
+      setLogs(loadSendLog(user.id));
       toast.error(
         `Falha em ${item.name}: ${e instanceof Error ? e.message : "erro"}`,
       );
@@ -267,8 +257,9 @@ export default function WhatsAppPage() {
     let sent = 0;
     try {
       for (const item of queue) {
-        // Dedup na hora: se já foi enviado hoje, pula (fila pode estar defasada)
-        if (wasItemSentToday(user.id, item.itemId, item.kind)) continue;
+        // Dedup na hora: se já foi enviado hoje, pula (fila pode estar defasada).
+        // Por telefone também: cliente duplicado em várias pastas não reenvia.
+        if (wasItemSentToday(user.id, item.itemId, item.kind, item.phone)) continue;
         const gate = canSendMore(settings, loadSendLog(user.id));
         if (!gate.ok) {
           toast.message(gate.reason || "Parado pelos limites de segurança");
@@ -281,15 +272,14 @@ export default function WhatsAppPage() {
             toast.success(`Enviado: ${item.name}`);
           }
         } catch (e) {
-          appendLog({
-            day: format(new Date(), "yyyy-MM-dd"),
-            sentAt: new Date().toISOString(),
-            phone: item.phone,
-            itemId: item.itemId,
-            kind: item.kind,
-            ok: false,
-            error: e instanceof Error ? e.message : "erro",
-          });
+          resolveWhatsappAttempt(
+            user.id,
+            item.phone,
+            item.kind,
+            false,
+            e instanceof Error ? e.message : "erro",
+          );
+          setLogs(loadSendLog(user.id));
           toast.error(
             `Falha em ${item.name}: ${e instanceof Error ? e.message : "erro"}`,
           );
@@ -505,7 +495,7 @@ export default function WhatsAppPage() {
             {showSent && sentTodayCount > 0 ? (
               <div className="space-y-2 border-t border-border/70 pt-3">
                 <p className="text-xs font-medium text-muted-foreground">
-                  Já enviados hoje ({sentToday.length})
+                  Tentativas hoje ({sentToday.length})
                 </p>
                 <ul className="space-y-1.5">
                   {sentToday.map((r, i) => (
@@ -526,8 +516,9 @@ export default function WhatsAppPage() {
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <Badge variant="outline">
+                        <Badge variant={r.log.ok ? "outline" : "destructive"}>
                           {r.log.kind === "before" ? "Antecipado" : "Hoje"}
+                          {!r.log.ok ? " · falhou" : ""}
                         </Badge>
                         <span className="text-xs tabular-nums text-muted-foreground">
                           {format(new Date(r.log.sentAt), "HH:mm")}

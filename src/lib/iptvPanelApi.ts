@@ -37,6 +37,8 @@ export type IptvRemoteUser = {
   phone?: string;
   exp_date?: string;
   expDate?: string;
+  /** “Criado Em” do painel, normalizado p/ `yyyy-MM-dd HH:mm:ss`. */
+  createdAt?: string;
   [k: string]: unknown;
 };
 
@@ -893,6 +895,14 @@ function pickUserFields(u: Record<string, unknown>): IptvRemoteUser {
   const displayName = nota || nameRaw || undefined;
   const phoneRaw =
     u.whatsapp ?? u.phone ?? u.telefone ?? u.celular ?? u.whatsApp;
+  const createdRaw = pickLooseString(u, [
+    "created_at",
+    "createdAt",
+    "date_regis",
+    "date_register",
+    "date_registration",
+    "created",
+  ]);
   return {
     ...u,
     id: (u.id ?? u.user_id ?? u.uid) as string | number,
@@ -911,6 +921,7 @@ function pickUserFields(u: Record<string, unknown>): IptvRemoteUser {
       phoneRaw != null && String(phoneRaw).trim()
         ? String(phoneRaw).trim()
         : undefined,
+    createdAt: parseIptvExpToDateTime(createdRaw ?? "") || undefined,
   };
 }
 
@@ -1044,6 +1055,32 @@ export function isIptvTestOrTrialUser(
 }
 
 /**
+ * Linha de TESTE ainda ativa (vence em horas/dias curtos)?
+ *
+ * Um teste ATIVADO vira plano (vence em semanas/meses) e passa a ser cliente —
+ * mesmo que o painel mantenha a flag test_hours / nota “teste” do período de
+ * teste. Convenção igual à aba Testes (isTestForSync): com mais de 2 dias de
+ * validade restante, não é mais teste de horas.
+ *
+ * Usado no sync de clientes (em vez de isIptvTestOrTrialUser), que excluía
+ * qualquer linha com flag de teste mesmo depois de virar plano.
+ */
+export function isShortLivedIptvTest(
+  u: IptvRemoteUser | Record<string, unknown>,
+): boolean {
+  const row = u as Record<string, unknown>;
+  const expFull = parseIptvExpToDateTime(
+    String(row.exp_date ?? row.expDate ?? ""),
+  );
+  const expMs = expFull ? new Date(expFull.replace(" ", "T")).getTime() : NaN;
+  const left = Number.isFinite(expMs) ? expMs - Date.now() : NaN;
+  // Mais de 2 dias de validade → plano ativo (mesmo com flag de teste antiga)
+  if (Number.isFinite(left) && left > 2 * 86_400_000) return false;
+  // Sem data de expiração ou vida curta → usa a heurística original
+  return isIptvTestOrTrialUser(u);
+}
+
+/**
  * Critério estrito para APAGAR em lote: só o que o painel marca como teste
  * (flag / test_hours). Nunca usa nome, nota ou “vence em poucos dias”
  * — evita risco com clientes ativos.
@@ -1112,7 +1149,7 @@ export async function listIptvUsers(
   }
 
   if (opts?.activeOnly) {
-    users = users.filter((u) => !isIptvTestOrTrialUser(u));
+    users = users.filter((u) => !isShortLivedIptvTest(u));
   }
   return users;
 }

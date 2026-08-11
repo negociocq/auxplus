@@ -10,13 +10,13 @@ import {
   isPastSendTime,
   loadSendLog,
   loadWhatsappSettings,
+  markWhatsappAttempt,
   nextDelayMs,
   releaseWhatsappSendLock,
-  saveSendLog,
+  resolveWhatsappAttempt,
   sendEvolutionText,
   syncWhatsappAccountData,
   wasItemSentToday,
-  type WaSendLog,
 } from "@/lib/whatsappAutomation";
 import {
   instanceNameForUser,
@@ -123,8 +123,10 @@ export function useWhatsappAutoSend(user: User | null, data: AppData) {
           if (cancelled) break;
           const liveSettings = loadWhatsappSettings(user.id);
           if (!liveSettings.enabled) break;
-          // Dedup na hora: se já foi enviado hoje, pula (fila pode estar velha)
-          if (wasItemSentToday(user.id, item.itemId, item.kind)) continue;
+          // Dedup na hora: se já foi enviado hoje, pula (fila pode estar velha).
+          // Por telefone também: cliente duplicado em várias pastas não reenvia.
+          if (wasItemSentToday(user.id, item.itemId, item.kind, item.phone))
+            continue;
 
           const gate = canSendMore(liveSettings, loadSendLog(user.id));
           if (!gate.ok) {
@@ -135,29 +137,20 @@ export function useWhatsappAutoSend(user: User | null, data: AppData) {
           }
 
           try {
+            // Reserva a tentativa ANTES de enviar: se a resposta da Evolution se
+            // perder após entregar (falsa falha), a reserva já bloqueia reenvio hoje.
+            markWhatsappAttempt(user.id, item.phone, item.itemId, item.kind);
             await sendEvolutionText(runtime, item.phone, item.message);
-            const entry: WaSendLog = {
-              day: format(new Date(), "yyyy-MM-dd"),
-              sentAt: new Date().toISOString(),
-              phone: item.phone,
-              itemId: item.itemId,
-              kind: item.kind,
-              ok: true,
-            };
-            const nextLogs = [...loadSendLog(user.id), entry];
-            saveSendLog(user.id, nextLogs);
+            resolveWhatsappAttempt(user.id, item.phone, item.kind, true);
             sent += 1;
           } catch (e) {
-            const entry: WaSendLog = {
-              day: format(new Date(), "yyyy-MM-dd"),
-              sentAt: new Date().toISOString(),
-              phone: item.phone,
-              itemId: item.itemId,
-              kind: item.kind,
-              ok: false,
-              error: e instanceof Error ? e.message : "erro",
-            };
-            saveSendLog(user.id, [...loadSendLog(user.id), entry]);
+            resolveWhatsappAttempt(
+              user.id,
+              item.phone,
+              item.kind,
+              false,
+              e instanceof Error ? e.message : "erro",
+            );
             toast.error(
               `Falha automática em ${item.name}: ${
                 e instanceof Error ? e.message : "erro"
