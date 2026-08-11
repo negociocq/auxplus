@@ -92,7 +92,6 @@ import {
   buildRenewalReceiptMessage,
   createIptvTest,
   deleteSmartApp,
-  ensureIptvToken,
   fetchIptvUserPassword,
   findIptvUserByUsername,
   formatIptvCredits,
@@ -846,11 +845,16 @@ export default function UniPlay() {
         return;
       }
 
+      // Carrega configurações da plataforma para pegar regPassword
+      const platformConfig = await loadAutomationsConfig();
+      const regPassword = platformConfig?.platform?.regPassword?.trim();
+
       // Obtém credenciais atualizadas (seguindo o padrão de runApiRenew)
       const ensured = await ensureIptvToken({
         apiBaseUrl: config.iptvApiBaseUrl,
         bearerToken: bearer.trim(),
         defaultPackage: "1",
+        regPassword: regPassword || undefined,
       });
 
       // Cria objeto creds com token atualizado
@@ -858,7 +862,7 @@ export default function UniPlay() {
         apiBaseUrl: config.iptvApiBaseUrl,
         bearerToken: ensured.token,
         defaultPackage: "1",
-        regPassword: platform.regPassword?.trim() || undefined,
+        regPassword: regPassword || undefined,
       };
 
       // Chama API do painel
