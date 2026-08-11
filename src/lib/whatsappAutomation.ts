@@ -20,6 +20,8 @@ export interface WhatsappAutomationSettings {
   sendTime: string;
   messageBefore: string;
   messageOnDay: string;
+  /** Mensagem para prorrogações (+48h/23:59) */
+  prorrogaMessage: string;
   /** Intervalo mínimo entre envios (segundos) */
   minIntervalSec: number;
   /** Variação aleatória extra (segundos) */
@@ -101,6 +103,20 @@ Evite bloqueios — renove o quanto antes.
 
 Obrigado!`;
 
+export const DEFAULT_PRORROGA_MESSAGE = `{getGreeting}
+
+✅ Prorrogação concedida!
+
+Usuário: {item_id}
+
+Vencimento anterior: {due_date}
+Novo vencimento: {new_due}
+
+Tipo: {prorroga_type}
+
+Aproveite o período extra!`;
+
+
 export function defaultWhatsappAutomation(): WhatsappAutomationSettings {
   return {
     enabled: false,
@@ -110,6 +126,7 @@ export function defaultWhatsappAutomation(): WhatsappAutomationSettings {
     sendTime: "09:30",
     messageBefore: DEFAULT_MESSAGE_BEFORE,
     messageOnDay: DEFAULT_MESSAGE_ONDAY,
+    prorrogaMessage: DEFAULT_PRORROGA_MESSAGE,
     minIntervalSec: 60,
     jitterSec: 30,
     maxPerDay: 100,
@@ -145,6 +162,7 @@ function normalizeWhatsappSettings(
     sendTime: String(rest.sendTime || base.sendTime).trim() || base.sendTime,
     messageBefore: String(rest.messageBefore ?? base.messageBefore),
     messageOnDay: String(rest.messageOnDay ?? base.messageOnDay),
+    prorrogaMessage: String(rest.prorrogaMessage ?? base.prorrogaMessage),
     minIntervalSec: Math.max(
       30,
       Number(rest.minIntervalSec) || base.minIntervalSec,

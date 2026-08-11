@@ -78,7 +78,7 @@ export default function WhatsAppPage() {
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [showSent, setShowSent] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<
-    null | "messageBefore" | "messageOnDay" | "limits"
+    null | "messageBefore" | "messageOnDay" | "prorrogaMessage" | "limits"
   >(null);
   const sendingRef = useRef(false);
 
@@ -313,6 +313,9 @@ export default function WhatsAppPage() {
     } else if (restoreTarget === "messageOnDay") {
       persist({ ...settings, messageOnDay: d.messageOnDay });
       toast.success("Mensagem (no dia) restaurada ao padrão");
+    } else if (restoreTarget === "prorrogaMessage") {
+      persist({ ...settings, prorrogaMessage: d.prorrogaMessage });
+      toast.success("Mensagem (prorrogação) restaurada ao padrão");
     } else {
       persist({
         ...settings,
@@ -846,6 +849,36 @@ export default function WhatsAppPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() => setRestoreTarget("messageOnDay")}
+                >
+                  Restaurar padrão
+                </Button>
+              </div>
+            </div>
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="msg-prorroga">
+                  Mensagem — Prorrogações (+48h / 23:59)
+                </Label>
+                <Textarea
+                  id="msg-prorroga"
+                  rows={8}
+                  value={settings.prorrogaMessage}
+                  onChange={(e) => patch("prorrogaMessage", e.target.value)}
+                  placeholder="Sua mensagem aqui..."
+                />
+                <div className="text-xs text-muted-foreground">
+                  Variáveis disponíveis:{" "}
+                  <code className="rounded bg-muted px-1">{"{name}"}</code>{" "}
+                  <code className="rounded bg-muted px-1">{"{item_id}"}</code>{" "}
+                  <code className="rounded bg-muted px-1">{"{due_date}"}</code>{" "}
+                  <code className="rounded bg-muted px-1">{"{new_due}"}</code>{" "}
+                  <code className="rounded bg-muted px-1">{"{prorroga_type}"}</code>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRestoreTarget("prorrogaMessage")}
                 >
                   Restaurar padrão
                 </Button>

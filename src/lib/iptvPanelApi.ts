@@ -4,6 +4,8 @@
  */
 
 import { SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
+import { formatBrDate } from "@/lib/format";
+import { DEFAULT_PRORROGA_MESSAGE } from "@/lib/whatsappAutomation";
 
 export type IptvPanelCreds = {
   apiBaseUrl: string;
@@ -2037,6 +2039,72 @@ export async function renewIptvUser(
 }
 
 /**
+ * Prorroga vencimento de usuário IPTV (+48h ou 23:59).
+ * No painel UniPlay: action: 7 para +48h, action: 10 para 23:59.
+ */
+export async function prorrogaIptvUser(
+  creds: IptvPanelCreds,
+  remoteUserId: string | number,
+  kind: "48h" | "23:59",
+): Promise<unknown> {
+  const action = kind === "48h" ? 7 : 10;
+  const body: Record<string, unknown> = {
+    action,
+  };
+  if (kind === "48h" && creds.regPassword?.trim()) {
+    body.reg_password = creds.regPassword.trim();
+  }
+
+  const id = encodeURIComponent(String(remoteUserId));
+  const path = `/users-iptv/${id}`;
+  const payload = JSON.stringify(body);
+  // UniPlay/Laravel: POST em /users-iptv/{id} costuma dar 405
+  const methods = ["PUT", "PATCH", "POST"] as const;
+  let lastError: Error | null = null;
+
+  for (const method of methods) {
+    try {
+      return await panelFetch(creds, path, {
+        method,
+        body: payload,
+      });
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      const msg = lastError.message;
+      const methodNotAllowed =
+        /405|method is not supported|Method Not Allowed|não permitido|not supported for this route/i.test(
+          msg,
+        );
+      if (methodNotAllowed) continue;
+      throw lastError;
+    }
+  }
+
+  throw (
+    lastError ||
+    new Error(`Falha ao prorrogar (${kind}) no UniPlay (método não aceito)`)
+  );
+}
+
+/**
+ * Pega o exp_date real do usuário após uma operação no painel.
+ */
+export async function fetchIptvExpDate(
+  creds: IptvPanelCreds,
+  remoteUserId: string | number,
+): Promise<string | null> {
+  const id = encodeURIComponent(String(remoteUserId));
+  try {
+    const data = await panelFetch<{ exp_date?: string }>(creds, `/users-iptv/${id}`, {
+      method: "GET",
+    });
+    return data.exp_date || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Apaga usuário IPTV no painel.
  * No front UniPlay: POST /users-iptv/{id} com
  * `{ action: 2, id_iptv, reg_password }` (a API NÃO aceita HTTP DELETE).
@@ -2246,6 +2314,44 @@ export function buildRenewalReceiptMessage(
     "",
     "Bom proveito! Qualquer dúvida, é só chamar.",
   ].join("\n");
+}
+
+/**
+ * Saudação baseada na hora do dia (Bom dia/Boa tarde/Boa noite).
+ */
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+/**
+ * Constrói mensagem de prorrogação usando template configurável.
+ */
+export function buildProrrogaMessage(
+  name: string,
+  itemId: string,
+  oldDue: string,
+  newDue: string,
+  kind: "48h" | "23:59",
+  template?: string,
+): string {
+  // Carrega configurações do usuário ou usa template padrão
+  const settings = template || DEFAULT_PRORROGA_MESSAGE;
+
+  const kindText = kind === "48h" ? "+48 horas" : "23:59 (mesmo dia)";
+  const oldDueFormatted = formatBrDate(oldDue);
+  const newDueFormatted = formatBrDate(newDue);
+
+  // Substitui variáveis
+  return settings
+    .replace(/{getGreeting}/g, getGreeting())
+    .replace(/{name}/g, name)
+    .replace(/{item_id}/g, itemId)
+    .replace(/{due_date}/g, oldDueFormatted)
+    .replace(/{new_due}/g, newDueFormatted)
+    .replace(/{prorroga_type}/g, kindText);
 }
 
 /** Comprovante de recarga de créditos para revendedor. */

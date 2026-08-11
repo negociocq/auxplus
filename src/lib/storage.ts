@@ -40,11 +40,29 @@ import {
   extractScreens,
   stripScreensMarker,
 } from "@/lib/itemScreens";
+import {
+  PRORROGA_MARKER_PREFIX,
+  PRORROGA_MARKER_SUFFIX,
+} from "@/lib/itemExtensions";
+
+function stripProrrogaMarker(notes?: string | null): string {
+  if (!notes) return notes || "";
+  const start = notes.indexOf(PRORROGA_MARKER_PREFIX);
+  if (start === -1) return notes;
+  const end = notes.indexOf(PRORROGA_MARKER_SUFFIX, start);
+  if (end === -1) return notes;
+  return (
+    notes.slice(0, start) +
+    notes.slice(end + PRORROGA_MARKER_SUFFIX.length)
+  );
+}
 
 function stripAllMarkers(notes?: string | null): string {
   return stripScreensMarker(
     stripPlanMarker(
-      stripResellerMarker(stripDebtMarker(stripPaymentMarker(notes))),
+      stripResellerMarker(
+        stripDebtMarker(stripPaymentMarker(stripProrrogaMarker(notes))),
+      ),
     ),
   );
 }

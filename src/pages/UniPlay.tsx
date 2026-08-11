@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { format } from "date-fns";
 import {
   CalendarPlus,
+  CalendarClock,
   CheckCircle2,
   ClipboardCopy,
   Coins,
@@ -20,6 +21,7 @@ import {
   UserCircle,
   Users,
   Wallet,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBrDate } from "@/lib/format";
@@ -28,9 +30,13 @@ import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
 import { useUniplayConnection } from "@/hooks/useUniplayConnection";
 import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { hasUsedProrrogaInCurrentCycle } from "@/lib/itemExtensions";
+import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage } from "@/lib/iptvPanelApi";
+import { applyProrrogaToItem } from "@/lib/iptvAutomation";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -766,6 +772,105 @@ export default function UniPlay() {
     setRenewOption(preferred);
     setRenewTargetJobId(null);
     setRenewTargetId(itemId);
+  };
+
+  const sendProrrogaMessage = async (item: Item, kind: "48h" | "23:59") => {
+    if (!user) return;
+    const phone = item.phone?.trim();
+    if (!phone) {
+      toast.message("Prorrogação aplicada, mas cliente sem telefone para enviar mensagem");
+      return;
+    }
+    try {
+      const evo = await loadEvolutionPlatformConfig();
+      if (!isEvolutionConfigured(evo)) {
+        toast.message("Prorrogação aplicada. Configure o WhatsApp (Evolution) para enviar mensagem");
+        return;
+      }
+      const runtime = {
+        apiBaseUrl: evo.apiBaseUrl,
+        apiKey: evo.apiKey,
+        instanceName: instanceNameForUser(
+          evo.instancePrefix,
+          user.id,
+          user.username,
+        ),
+      };
+      const status = await fetchEvolutionStatus(runtime);
+      if (status !== "open") {
+        toast.message("Prorrogação aplicada. WhatsApp desconectado — mensagem não enviada");
+        return;
+      }
+
+      // Carrega configurações do WhatsApp para pegar o template
+      const waSettings = loadWhatsappSettings(user.id);
+      const text = buildProrrogaMessage(
+        item.name,
+        item.itemId,
+        item.dueDate, // Data antiga (que estava antes da prorrogação)
+        item.dueDate, // Nova data (já atualizada pela applyProrrogaToItem)
+        kind,
+        waSettings.prorrogaMessage
+      );
+      await sendEvolutionText(runtime, phone, text);
+      toast.success("Mensagem de prorrogação enviada no WhatsApp");
+    } catch (e) {
+      toast.message(
+        e instanceof Error
+          ? `Prorrogação aplicada, mas falhou o WhatsApp: ${e.message}`
+          : "Prorrogação aplicada, mas falhou o envio da mensagem",
+      );
+    }
+  };
+
+  const runProrroga = async (itemId: string, kind: "48h" | "23:59") => {
+    setBusyId(itemId);
+    try {
+      const item = data.items.find((i) => i.id === itemId);
+      if (!item) throw new Error("Item não encontrado");
+
+      // Verifica se já usou prorrogação no ciclo atual
+      if (hasUsedProrrogaInCurrentCycle(item)) {
+        toast.error("Este cliente já usou prorrogação neste ciclo de pagamento");
+        return;
+      }
+
+      // Chama API do painel
+      toast.info(`Aplicando prorrogação (${kind}) no painel...`);
+      const response = await prorrogaIptvUser(
+        { bearer, ...creds.current },
+        item.itemId,
+        kind
+      );
+
+      // Pega a data real do painel
+      toast.info("Confirmando nova data de vencimento...");
+      const panelExp = await fetchIptvExpDate(
+        { bearer, ...creds.current },
+        item.itemId
+      );
+
+      // Atualiza item localmente
+      const updated = applyProrrogaToItem(item, kind, panelExp);
+      const newData = updateItem(data, updated.id, updated);
+      setData(newData);
+
+      // Envia mensagem WhatsApp
+      toast.info("Enviando mensagem de prorrogação...");
+      await sendProrrogaMessage(updated, kind);
+
+      toast.success(
+        `Prorrogação (${kind}) aplicada! Mensagem enviada ao WhatsApp`
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : `Falha ao prorrogar (${kind})`
+      );
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const openTestRenewDialog = (jobId: string) => {
@@ -2096,6 +2201,51 @@ export default function UniPlay() {
                       >
                         Detalhes
                       </Button>
+                      {isClientStillActive(item.dueDate) && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              className="h-8 px-2.5"
+                              disabled={!bearer.trim() || busyId === item.id || hasUsedProrrogaInCurrentCycle(item)}
+                            >
+                              {busyId === item.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                              ) : (
+                                <CalendarClock className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              Prorrogar
+                              <ChevronDown className="h-3 w-3 ml-1" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => runProrroga(item.id, "48h")}
+                              disabled={busyId === item.id}
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-medium">+48 horas</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Confiança ao cliente
+                                </span>
+                              </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => runProrroga(item.id, "23:59")}
+                              disabled={busyId === item.id}
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-medium">Até 23:59</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Mesmo dia do vencimento
+                                </span>
+                              </div>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                       {(() => {
                         const extend = isClientStillActive(item.dueDate);
                         return (

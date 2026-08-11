@@ -2,6 +2,12 @@ import { addMonths, format } from "date-fns";
 import type { AppData, Item } from "@/types";
 import { createItem, updateItem } from "@/lib/storage";
 import {
+  type ProrrogaKind,
+  calculateNewDueDate,
+  withProrrogaUsage,
+  withoutProrrogaUsage,
+} from "@/lib/itemExtensions";
+import {
   appendItemPayment,
   embedPaymentsInNotes,
   extractPaymentsFromNotes,
@@ -407,7 +413,8 @@ export function applyRenewalToItem(item: Item, months: number): Item {
   const newDue = nextDueAfterRenew(item.dueDate, months);
   const draft: Item = { ...item, dueDate: newDue };
   const payments = paymentsAfterDueChange(item, draft);
-  return withEmbeddedPayments({ ...draft, payments });
+  // Remove marcador de prorrogação ao renovar (ciclo pago)
+  return withEmbeddedPayments(resetProrrogaUsage({ ...draft, payments }));
 }
 
 /** Atualiza vencimento do lembrete a partir da data do painel (ou +meses). */
@@ -419,9 +426,44 @@ export function applyPanelDueToItem(
   if (fromPanel) {
     const draft: Item = { ...item, dueDate: fromPanel };
     const payments = paymentsAfterDueChange(item, draft);
-    return withEmbeddedPayments({ ...draft, payments });
+    // Remove marcador de prorrogação ao atualizar vencimento (ciclo pago)
+    return withEmbeddedPayments(resetProrrogaUsage({ ...draft, payments }));
   }
   return applyRenewalToItem(item, opts.months ?? 1);
+}
+
+/**
+ * Aplica prorrogação no item (+48h ou 23:59) SEM registrar pagamento.
+ * Apenas atualiza vencimento e marca uso no ciclo.
+ */
+export function applyProrrogaToItem(
+  item: Item,
+  kind: ProrrogaKind,
+  panelExp?: string | null,
+): Item {
+  // Usa a data do painel se fornecida, ou calcula localmente
+  const newDue = panelExp
+    ? parseIptvExpToDateTime(panelExp)
+    : calculateNewDueDate(item.dueDate, kind);
+
+  const draft: Item = { ...item, dueDate: newDue };
+
+  // Atualiza marcador de uso no ciclo (sem pagamentos)
+  const usage = {
+    usedAt: new Date().toISOString(),
+    kind,
+    oldDue: item.dueDate,
+    newDue,
+  };
+
+  return withProrrogaUsage(draft, usage);
+}
+
+/**
+ * Remove marcador de prorrogação (para reset de ciclo pós-pagamento).
+ */
+export function resetProrrogaUsage(item: Item): Item {
+  return withoutProrrogaUsage(item);
 }
 
 export type SyncIptvResult = {
