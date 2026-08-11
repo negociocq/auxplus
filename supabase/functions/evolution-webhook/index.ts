@@ -447,11 +447,11 @@ function isClientStillActive(dueDate?: string | null) {
 }
 
 function clientRenewLabel(dueDate?: string | null) {
-  return isClientStillActive(dueDate) ? "Estender vencimento" : "Renovar";
+  return isClientStillActive(dueDate) ? "Renovar vencimento" : "Renovar";
 }
 
 function clientRenewKind(dueDate?: string | null) {
-  return isClientStillActive(dueDate) ? "extensão" : "renovação";
+  return isClientStillActive(dueDate) ? "renovação" : "renovação";
 }
 
 /** Menu do cliente com Renovar / Estender conforme o vencimento. */

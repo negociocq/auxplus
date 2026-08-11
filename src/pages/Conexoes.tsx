@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Cable,
   CheckCircle2,
@@ -15,7 +15,9 @@ import {
   QrCode,
   RefreshCw,
   Save,
+  Trash2,
   Unplug,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
@@ -50,6 +52,7 @@ import { copyText } from "@/lib/iptvAutomation";
 import { DEFAULT_IPTV_PANEL_URL } from "@/lib/platformApi";
 import { SUPABASE_URL } from "@/integrations/supabase/client";
 import type { WaConnectionStatus } from "@/lib/whatsappAutomation";
+import { MpOrdersCleanup } from "@/components/mp-orders-cleanup";
 
 function statusLabel(status: WaConnectionStatus) {
   switch (status) {
@@ -811,6 +814,18 @@ export default function Conexoes() {
               </li>
               <li>Salve. Faça um PIX de teste para validar</li>
             </ol>
+          </section>
+
+          <section className="ax-surface space-y-3 p-4">
+            <div>
+              <h2 className="text-sm font-semibold tracking-tight">
+                Limpar Pedidos Travados
+              </h2>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Se um pedido fica em "Pago mas falhando na liberação", remova aqui para parar as notificações.
+              </p>
+            </div>
+            <MpOrdersCleanup userId={user.id} />
           </section>
         </TabsContent>
 
