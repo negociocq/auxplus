@@ -85,12 +85,53 @@ export default function Settings() {
   const onSignOutAllSessions = async () => {
     setSigningOutAll(true);
     try {
+      // Pega a session atual
+      const { data: sessionData } = await supabase.auth.getSession();
+      const currentSession = sessionData?.session;
+
+      if (!currentSession?.user?.id) {
+        toast.error("Sessão não encontrada");
+        return;
+      }
+
+      // Primeiro tenta o logout global do Supabase
       await supabase.auth.signOut({ scope: "global" });
-      toast.success("Finalizado em todas as sessões");
+
+      // Depois invalida TODAS as sessões via edge function
+      // Isso garante que tokens em outros dispositivos sejam rejeitados
+      try {
+        const { SUPABASE_URL } = await import("@/integrations/supabase/client");
+        const response = await fetch(
+          `${SUPABASE_URL}/functions/v1/invalidate-all-sessions`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${currentSession.access_token}`,
+            },
+            body: JSON.stringify({ user_id: currentSession.user.id }),
+          }
+        );
+
+        if (!response.ok) {
+          console.warn(
+            "[Settings] Edge function invalidate-all-sessions falhou, mas signOut global foi executado"
+          );
+        }
+      } catch (err) {
+        console.warn(
+          "[Settings] Erro ao chamar invalidate-all-sessions:",
+          err
+        );
+        // Continua mesmo assim, pois o signOut global já foi feito
+      }
+
+      toast.success("✅ Logout em TODAS as sessões e dispositivos");
+
       // Redireciona após um tempo curto para o login
       setTimeout(() => {
         window.location.href = "/login";
-      }, 1000);
+      }, 1500);
     } catch (e) {
       console.error("[Settings] Erro ao finalizar sessões:", e);
       toast.error(
