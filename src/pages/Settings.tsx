@@ -85,20 +85,54 @@ export default function Settings() {
   const onSignOutAllSessions = async () => {
     setSigningOutAll(true);
     try {
-      // Pega a session atual
-      const { data: sessionData } = await supabase.auth.getSession();
-      const currentSession = sessionData?.session;
+      // Tenta pegar a sessão de diferentes formas (localhost pode ser diferente)
+      let userId: string | null = null;
+      let accessToken: string | null = null;
 
-      if (!currentSession?.user?.id) {
-        toast.error("Sessão não encontrada");
+      // Método 1: via auth.getSession()
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session) {
+        userId = sessionData.session.user?.id || null;
+        accessToken = sessionData.session.access_token || null;
+      }
+
+      // Método 2: se Method 1 falhou, tenta via getUser()
+      if (!userId) {
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData?.user?.id) {
+          userId = userData.user.id;
+          // Tenta pegar o token do localStorage (para localhost)
+          const authToken = localStorage.getItem(
+            "sb-jcuehnzaonhdcjbxhadz-auth-token"
+          );
+          if (authToken) {
+            try {
+              const parsed = JSON.parse(authToken);
+              accessToken = parsed.session?.access_token || null;
+            } catch {
+              // Ignora erro de parse
+            }
+          }
+        }
+      }
+
+      // Método 3: Se ainda não temos userId, tenta do contexto do user
+      if (!userId && user?.id) {
+        userId = user.id;
+      }
+
+      if (!userId) {
+        toast.error("Sessão não encontrada. Tente fazer logout normal.");
+        setSigningOutAll(false);
         return;
       }
+
+      console.log("[Settings] Finalizando todas as sessões para:", userId);
 
       // Primeiro tenta o logout global do Supabase
       await supabase.auth.signOut({ scope: "global" });
 
       // Depois invalida TODAS as sessões via edge function
-      // Isso garante que tokens em outros dispositivos sejam rejeitados
       try {
         const { SUPABASE_URL } = await import("@/integrations/supabase/client");
         const response = await fetch(
@@ -107,16 +141,21 @@ export default function Settings() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${currentSession.access_token}`,
+              ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
             },
-            body: JSON.stringify({ user_id: currentSession.user.id }),
+            body: JSON.stringify({ user_id: userId }),
           }
         );
 
         if (!response.ok) {
+          const errorText = await response.text();
           console.warn(
-            "[Settings] Edge function invalidate-all-sessions falhou, mas signOut global foi executado"
+            "[Settings] Edge function falhou:",
+            response.status,
+            errorText
           );
+        } else {
+          console.log("[Settings] Edge function executada com sucesso");
         }
       } catch (err) {
         console.warn(
@@ -139,7 +178,6 @@ export default function Settings() {
           ? e.message
           : "Erro ao finalizar todas as sessões"
       );
-    } finally {
       setSigningOutAll(false);
     }
   };
