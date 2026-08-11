@@ -719,6 +719,18 @@ async function panelFetch(
   }
 
   if (!res.ok) {
+    // Erros 5xx (502/503/504) = servidor temporariamente indisponível
+    // Não loga no console para evitar poluição, apenas retorna erro silencioso
+    if (res.status >= 500) {
+      // Painel down: retorna erro SILENCIOSO sem log para evitar poluição de console
+      const err = new Error(
+        `Painel temporariamente indisponível (${res.status})`
+      );
+      (err as any).isPanelDown = true;
+      (err as any).status = res.status;
+      throw err;
+    }
+
     const msg = parseApiError(data, text, res.statusText);
     if (res.status === 401 || res.status === 403) {
       throw new Error(
@@ -2010,6 +2022,20 @@ export async function renewIptvUser(
   const id = encodeURIComponent(String(remoteUserId));
   const path = `/users-iptv/${id}`;
   const payload = JSON.stringify(body);
+
+  // DEBUG: Log completo da requisição
+  console.log("DEBUG API PRORROGAÇÃO:", {
+    url: `http://localhost:32116/ges-api${path}`,
+    method: "PUT",
+    body,
+    kind,
+    action,
+    hasRegPassword: !!(kind === "48h" && creds.regPassword?.trim()),
+    remoteUserId,
+    bearerToken: creds.bearerToken ? "PRESENTE" : "AUSENTE",
+    regPasswordLength: creds.regPassword?.trim()?.length || 0,
+  });
+
   // UniPlay/Laravel: POST em /users-iptv/{id} costuma dar 405
   const methods = ["PUT", "PATCH", "POST"] as const;
   let lastError: Error | null = null;
@@ -2058,6 +2084,20 @@ export async function prorrogaIptvUser(
   const id = encodeURIComponent(String(remoteUserId));
   const path = `/users-iptv/${id}`;
   const payload = JSON.stringify(body);
+
+  // DEBUG: Log completo da requisição
+  console.log("DEBUG API PRORROGAÇÃO:", {
+    url: `http://localhost:32116/ges-api${path}`,
+    method: "PUT",
+    body,
+    kind,
+    action,
+    hasRegPassword: !!(kind === "48h" && creds.regPassword?.trim()),
+    remoteUserId,
+    bearerToken: creds.bearerToken ? "PRESENTE" : "AUSENTE",
+    regPasswordLength: creds.regPassword?.trim()?.length || 0,
+  });
+
   // UniPlay/Laravel: POST em /users-iptv/{id} costuma dar 405
   const methods = ["PUT", "PATCH", "POST"] as const;
   let lastError: Error | null = null;
@@ -2186,6 +2226,30 @@ export async function deleteIptvUser(
   throw lastError instanceof Error
     ? lastError
     : new Error("Falha ao apagar usuário no UniPlay");
+}
+
+/**
+ * Recria a linha de um usuário no painel (sem gastar crédito).
+ * Não altera: criado em, telefone, vencimento.
+ * Apenas recria a linha.
+ */
+export async function recreateIptvLine(
+  creds: IptvPanelCreds,
+  remoteUserId: string | number,
+): Promise<unknown> {
+  const id = encodeURIComponent(String(remoteUserId));
+
+  try {
+    const result = await panelFetch(creds, `/recreate-line/${id}`, {
+      method: "PUT",
+      body: "",
+    });
+    return result;
+  } catch (e) {
+    throw new Error(
+      `Falha ao recriar linha do usuário. ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 }
 
 /**
