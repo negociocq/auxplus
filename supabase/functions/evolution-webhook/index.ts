@@ -68,9 +68,18 @@ async function reportClientProblem(
   client: any,
   userId: string,
   phone: string,
-  clientName?: string
+  clientName?: string,
+  problemType?: 'assist' | 'payment' | 'other'
 ): Promise<void> {
   try {
+    // Apenas registra se é problema de assistência
+    if (problemType && problemType !== 'assist') {
+      console.log(
+        `[reportClientProblem] Ignorando problema tipo "${problemType}" (não é assistência)`
+      );
+      return;
+    }
+
     const stateKey = `panel_down_monitoring_${userId}`;
 
     // Carrega estado atual
@@ -101,6 +110,7 @@ async function reportClientProblem(
       name: clientName,
       reportedAt: new Date().toISOString(),
       userId,
+      problemType: problemType || 'assist',
     };
 
     state.clientsReporting = [...filtered, report];
@@ -118,7 +128,7 @@ async function reportClientProblem(
     );
 
     console.log(
-      `[reportClientProblem] Cliente ${phone} registrado. Total: ${state.clientsReporting.length}`
+      `[reportClientProblem] Cliente ${phone} registrado (tipo: ${problemType}). Total: ${state.clientsReporting.length}`
     );
   } catch (error) {
     console.error("[reportClientProblem] Erro:", error);
@@ -3618,12 +3628,13 @@ Deno.serve(async (req) => {
 
         // Se painel está offline, registra cliente para notificação posterior
         if (!panelOk) {
-          // Registra cliente que reportou problema
+          // Registra cliente que reportou problema (tipo: assistência)
           await reportClientProblem(
             client,
             userId,
             phone,
-            clientItem?.name || resellerItem?.name
+            clientItem?.name || resellerItem?.name,
+            'assist'  // Problema tipo: assistência
           );
           return json({ ok: true, action: "problem_panel_offline" });
         }

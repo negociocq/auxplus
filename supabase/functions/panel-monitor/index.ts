@@ -20,6 +20,7 @@ interface PanelDownReport {
   name?: string;
   reportedAt: string;
   userId: string;
+  problemType?: 'assist' | 'payment' | 'other';
 }
 
 interface PanelMonitoringState {
@@ -52,9 +53,173 @@ async function checkPanelHealth(): Promise<boolean> {
 }
 
 /**
- * Envia WhatsApp via Evolution API.
+ * Envia notificação para admin quando painel fica offline.
  */
-async function sendEvolutionMessage(
+async function notifyAdminPanelDown(
+  supabase: any,
+  userId: string
+): Promise<void> {
+  try {
+    // Busca número do admin (salvo em platform_settings)
+    const { data: adminData } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", `admin_notification_phone_${userId}`)
+      .maybeSingle();
+
+    if (!adminData?.value) {
+      console.log(`[notifyAdminPanelDown] Sem número de admin para userId ${userId}`);
+      return;
+    }
+
+    const adminPhone =
+      typeof adminData.value === "string"
+        ? adminData.value
+        : adminData.value.phone;
+
+    if (!adminPhone) {
+      console.log(`[notifyAdminPanelDown] Número de admin vazio para userId ${userId}`);
+      return;
+    }
+
+    // Busca credentials Evolution
+    const { data: settingsData } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", `wa_evolution_user_${userId}`)
+      .maybeSingle();
+
+    if (!settingsData?.value) {
+      console.log(`[notifyAdminPanelDown] Sem credentials Evolution para userId ${userId}`);
+      return;
+    }
+
+    const settings =
+      typeof settingsData.value === "string"
+        ? JSON.parse(settingsData.value)
+        : settingsData.value;
+
+    const apiUrl = settings.apiBaseUrl;
+    const apiKey = settings.apiKey;
+    const instance = settings.instanceName;
+
+    if (!apiUrl || !apiKey || !instance) {
+      console.log(`[notifyAdminPanelDown] Credentials incompletas para userId ${userId}`);
+      return;
+    }
+
+    const adminMessage =
+      "🚨 ALERTA: UniPlay está OFFLINE\n\n" +
+      "⏰ " + new Date().toLocaleString("pt-BR") + "\n" +
+      "📍 Não conseguindo se comunicar com painel\n" +
+      "⚠️ Clientes estão sendo notificados\n\n" +
+      "Verifique e repare o servidor!";
+
+    const sent = await sendEvolutionMessage(
+      apiUrl,
+      apiKey,
+      instance,
+      adminPhone,
+      adminMessage
+    );
+
+    if (sent) {
+      console.log(
+        `[notifyAdminPanelDown] ✅ Notificação enviada para admin ${adminPhone}`
+      );
+    } else {
+      console.log(
+        `[notifyAdminPanelDown] ❌ Falha ao enviar para admin ${adminPhone}`
+      );
+    }
+  } catch (error) {
+    console.error(`[notifyAdminPanelDown] Erro:`, error);
+  }
+}
+
+/**
+ * Envia notificação para admin quando painel volta online.
+ */
+async function notifyAdminPanelBack(
+  supabase: any,
+  userId: string
+): Promise<void> {
+  try {
+    // Busca número do admin
+    const { data: adminData } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", `admin_notification_phone_${userId}`)
+      .maybeSingle();
+
+    if (!adminData?.value) {
+      console.log(`[notifyAdminPanelBack] Sem número de admin para userId ${userId}`);
+      return;
+    }
+
+    const adminPhone =
+      typeof adminData.value === "string"
+        ? adminData.value
+        : adminData.value.phone;
+
+    if (!adminPhone) {
+      console.log(`[notifyAdminPanelBack] Número de admin vazio para userId ${userId}`);
+      return;
+    }
+
+    // Busca credentials Evolution
+    const { data: settingsData } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", `wa_evolution_user_${userId}`)
+      .maybeSingle();
+
+    if (!settingsData?.value) {
+      console.log(`[notifyAdminPanelBack] Sem credentials Evolution para userId ${userId}`);
+      return;
+    }
+
+    const settings =
+      typeof settingsData.value === "string"
+        ? JSON.parse(settingsData.value)
+        : settingsData.value;
+
+    const apiUrl = settings.apiBaseUrl;
+    const apiKey = settings.apiKey;
+    const instance = settings.instanceName;
+
+    if (!apiUrl || !apiKey || !instance) {
+      console.log(`[notifyAdminPanelBack] Credentials incompletas para userId ${userId}`);
+      return;
+    }
+
+    const adminMessage =
+      "✅ RECUPERADO: UniPlay está ONLINE\n\n" +
+      "⏰ " + new Date().toLocaleString("pt-BR") + "\n" +
+      "📍 Painel respondendo normalmente\n" +
+      "✨ Clientes estão sendo notificados do retorno";
+
+    const sent = await sendEvolutionMessage(
+      apiUrl,
+      apiKey,
+      instance,
+      adminPhone,
+      adminMessage
+    );
+
+    if (sent) {
+      console.log(
+        `[notifyAdminPanelBack] ✅ Notificação de recuperação enviada para admin ${adminPhone}`
+      );
+    } else {
+      console.log(
+        `[notifyAdminPanelBack] ❌ Falha ao enviar para admin ${adminPhone}`
+      );
+    }
+  } catch (error) {
+    console.error(`[notifyAdminPanelBack] Erro:`, error);
+  }
+}
   apiBaseUrl: string,
   apiKey: string,
   instanceName: string,
@@ -214,17 +379,6 @@ async function monitorPanelAndNotify(): Promise<void> {
     `[monitorPanelAndNotify] Painel ${isPanelOnline ? "ONLINE ✅" : "OFFLINE ❌"}`
   );
 
-  // Se painel está offline, não temos nada a fazer aqui
-  if (!isPanelOnline) {
-    console.log("[monitorPanelAndNotify] Painel offline, aguardando próxima verificação");
-    return;
-  }
-
-  // Painel está online: processa notificações para todos os usuários
-  console.log(
-    "[monitorPanelAndNotify] Painel online, buscando usuários com monitoramento ativo..."
-  );
-
   try {
     // Busca todos os estados de monitoramento
     const { data: monitoringStates, error } = await supabase
@@ -237,6 +391,25 @@ async function monitorPanelAndNotify(): Promise<void> {
       return;
     }
 
+    // Se painel está offline
+    if (!isPanelOnline) {
+      console.log("[monitorPanelAndNotify] Painel OFFLINE - notificando admins");
+
+      // Notifica cada admin que painel está down
+      for (const state of monitoringStates || []) {
+        const userId = state.key.replace("panel_down_monitoring_", "");
+        await notifyAdminPanelDown(supabase, userId);
+      }
+
+      console.log("[monitorPanelAndNotify] Aguardando próxima verificação");
+      return;
+    }
+
+    // Painel está online: processa notificações para todos os usuários
+    console.log(
+      "[monitorPanelAndNotify] Painel online, buscando usuários com monitoramento ativo..."
+    );
+
     console.log(
       `[monitorPanelAndNotify] Encontrados ${monitoringStates?.length || 0} usuários com monitoramento`
     );
@@ -244,6 +417,9 @@ async function monitorPanelAndNotify(): Promise<void> {
     // Processa cada usuário
     for (const state of monitoringStates || []) {
       const userId = state.key.replace("panel_down_monitoring_", "");
+
+      // Notifica admin que painel está de volta
+      await notifyAdminPanelBack(supabase, userId);
 
       // Busca credentials do usuário
       const { data: userSettings } = await supabase

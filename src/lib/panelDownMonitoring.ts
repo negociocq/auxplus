@@ -14,6 +14,7 @@ export interface PanelDownReport {
   name?: string;
   reportedAt: string;
   userId: string;
+  problemType?: 'assist' | 'payment' | 'other'; // 'assist' = não consigo assistir
 }
 
 export interface PanelMonitoringState {
@@ -28,15 +29,25 @@ const STATE_KEY = (userId: string) => `panel_down_monitoring_${userId}`;
 
 /**
  * Registra cliente que reportou problema quando painel está offline.
+ * Apenas registra se o problema é de "não consigo assistir"
  */
 export async function reportPanelProblem(
   userId: string,
   phone: string,
-  clientName?: string
+  clientName?: string,
+  problemType?: 'assist' | 'payment' | 'other'
 ): Promise<void> {
   if (!supabase || !userId) return;
 
   try {
+    // Apenas registra se é problema de assistência
+    if (problemType && problemType !== 'assist') {
+      console.log(
+        `[reportPanelProblem] Ignorando problema tipo "${problemType}" (não é assistência)`
+      );
+      return;
+    }
+
     const state = await getPanelMonitoringState(userId);
 
     const newReport: PanelDownReport = {
@@ -44,6 +55,7 @@ export async function reportPanelProblem(
       name: clientName,
       reportedAt: new Date().toISOString(),
       userId,
+      problemType: problemType || 'assist',
     };
 
     // Evita duplicatas do mesmo telefone
@@ -231,5 +243,57 @@ export function getPanelBackOnlineMessage(): string {
     "✅ Ótimas notícias! O serviço voltou ao normal.\n\n" +
     "Agora você já consegue assistir normalmente. " +
     "Se o problema persistir, entre em contato com nossos atendentes! 😊"
+  );
+}
+
+/**
+ * Marca que painel ficou offline e notifica admin.
+ */
+export async function markPanelAsDown(userId: string): Promise<void> {
+  if (!supabase || !userId) return;
+
+  try {
+    const state = await getPanelMonitoringState(userId);
+
+    // Se já está marcado como down, não marca novamente
+    if (state.isDown) {
+      return;
+    }
+
+    const updated: PanelMonitoringState = {
+      ...state,
+      isDown: true,
+      wentDownAt: new Date().toISOString(),
+    };
+
+    await savePanelMonitoringState(userId, updated);
+    console.log(`[markPanelAsDown] Painel marcado como DOWN para userId ${userId}`);
+  } catch (error) {
+    console.error("[markPanelAsDown] Erro:", error);
+  }
+}
+
+/**
+ * Obtém mensagem de notificação para admin.
+ */
+export function getPanelDownAdminMessage(): string {
+  return (
+    "🚨 ALERTA: UniPlay está OFFLINE\n\n" +
+    "⏰ Horário: " + new Date().toLocaleString('pt-BR') + "\n" +
+    "📍 Status: Não conseguindo se comunicar com painel\n" +
+    "⚠️ Ação: Verifique e repare o servidor\n\n" +
+    "Clientes já foram notificados sobre a instabilidade."
+  );
+}
+
+/**
+ * Obtém mensagem de notificação quando painel volta para admin.
+ */
+export function getPanelBackOnlineAdminMessage(): string {
+  return (
+    "✅ RECUPERADO: UniPlay está ONLINE\n\n" +
+    "⏰ Horário: " + new Date().toLocaleString('pt-BR') + "\n" +
+    "📍 Status: Painel respondendo normalmente\n" +
+    "✨ Clientes estão sendo notificados"
   );
 }
