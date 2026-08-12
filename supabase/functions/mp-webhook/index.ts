@@ -99,6 +99,8 @@ type MpOrder = {
   error?: string;
   expiresAt?: string;
   pixCopyPaste?: string;
+  /** true se já enviou notificação de erro (evita reenviá-la) */
+  errorNotificationSent?: boolean;
 };
 
 type FoundOrder = { userId: string; order: MpOrder; orders: MpOrder[] };
@@ -936,6 +938,7 @@ async function markOrderError(
   userId: string,
   orderId: string,
   error: string,
+  notificationSent = false,
 ) {
   const bag =
     (await getSetting<{ orders?: MpOrder[] }>(
@@ -953,6 +956,7 @@ async function markOrderError(
             ...o,
             status: o.status === "released" ? "released" : "approved",
             error,
+            errorNotificationSent: notificationSent,
             updatedAt: now,
           }
         : o,
@@ -1063,35 +1067,43 @@ async function processApprovedPayment(
     }
 
     // Para outros erros, marca como erro normal
-    await markOrderError(client, found.userId, claimed.id, msg);
+    let sentNotification = false;
+
+    // Avisa cliente (apenas se ainda não foi notificado)
+    if (!claimed.errorNotificationSent) {
+      try {
+        const phone = String(claimed.phone || "").replace(/\D/g, "");
+        if (phone.length >= 10) {
+          const evo =
+            (await getSetting<{
+              apiBaseUrl?: string;
+              apiKey?: string;
+            }>(client, "evolution_api")) || {};
+          const apiBaseUrl = String(evo.apiBaseUrl || "").trim();
+          const apiKey = String(evo.apiKey || "").trim();
+          if (apiBaseUrl && apiKey) {
+            const instance = await resolveInstanceName(client, found.userId);
+            await sendEvolutionText(
+              apiBaseUrl,
+              apiKey,
+              instance,
+              phone,
+              "⚠️ Pagamento recebido\n\nSeu PIX foi confirmado, mas houve um problema ao concluir sua renovação (" +
+                claimed.id +
+                ").\n\n" +
+                "Já encaminhei para um atendente — em breve alguém responde por aqui."
+            );
+            sentNotification = true;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    await markOrderError(client, found.userId, claimed.id, msg, sentNotification);
     await releaseClaim(client, claimed.id);
 
-    // Avisa cliente
-    try {
-      const phone = String(claimed.phone || "").replace(/\D/g, "");
-      if (phone.length >= 10) {
-        const evo =
-          (await getSetting<{
-            apiBaseUrl?: string;
-            apiKey?: string;
-          }>(client, "evolution_api")) || {};
-        const apiBaseUrl = String(evo.apiBaseUrl || "").trim();
-        const apiKey = String(evo.apiKey || "").trim();
-        if (apiBaseUrl && apiKey) {
-          const instance = await resolveInstanceName(client, found.userId);
-          await sendEvolutionText(
-            apiBaseUrl,
-            apiKey,
-            instance,
-            phone,
-            "Recebi seu pagamento, mas houve um problema ao liberar automaticamente.\n\n" +
-              "Um atendente vai concluir em instantes. Digite *atendente* se preferir."
-          );
-        }
-      }
-    } catch {
-      /* ignore */
-    }
     return {
       ok: false,
       error: msg,
