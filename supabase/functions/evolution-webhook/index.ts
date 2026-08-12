@@ -503,6 +503,16 @@ function formatDue(value?: string | null) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+/** Extrai hora do vencimento (padrão: 23:59:59) */
+function formatDueTime(value?: string | null) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(String(value || "").trim());
+  if (!m) return "23:59:59";
+  const h = String(m[4]).padStart(2, "0");
+  const min = String(m[5]).padStart(2, "0");
+  const s = String(m[6] || "59").padStart(2, "0");
+  return `${h}:${min}:${s}`;
+}
+
 /** Data de hoje no Brasil (YYYY-MM-DD) — alinhado às pastas de clientes. */
 function todayYmdBrazil() {
   try {
@@ -572,6 +582,7 @@ function fillClientAskIntent(
   let msg = fill(template, {
     user: opts.user,
     due: formatDue(opts.dueDate),
+    dueTime: formatDueTime(opts.dueDate),
     renewLabel,
     renewKind: clientRenewKind(opts.dueDate),
   });
@@ -596,6 +607,7 @@ function fillClientRenewPix(
   let msg = fill(template, {
     ...vars,
     newDue,
+    dueTime: formatDueTime(dueDate),
     renewLabel: clientRenewLabel(dueDate),
     renewKind: clientRenewKind(dueDate),
   });
@@ -4142,6 +4154,168 @@ Deno.serve(async (req) => {
       }
 
       if (wantsAttendant) {
+        // Se é "2" no menu ask_intent, mostra menu de problema primeiro
+        if (session.state === "ask_intent" && (t === "2" || t === "problema")) {
+          sessions[phone] = {
+            state: "ask_problem_kind",
+            role: "client",
+            itemRefId: String(clientItem.id),
+            updatedAt: new Date().toISOString(),
+          };
+          await persistState();
+          await send(
+            messages.askProblemKind ||
+              DEFAULT_MESSAGES.askProblemKind ||
+              "Qual é o problema?\n\n*1* — Não consigo assistir\n*2* — Problema de pagamento\n*3* — Outro assunto\n*0* — Voltar",
+          );
+          return json({ ok: true, action: "ask_problem_kind" });
+        }
+
+        // Se está em ask_problem_kind, processa resposta do problema
+        if (session.state === "ask_problem_kind") {
+          if (t === "0" || t === "voltar") {
+            sessions[phone] = {
+              state: "ask_intent",
+              role: "client",
+              itemRefId: String(clientItem.id),
+              panelUsername: String(clientItem.item_id || ""),
+              updatedAt: new Date().toISOString(),
+            };
+            await persistState();
+            await send(
+              fillClientAskIntent(
+                messages.askIntent || DEFAULT_MESSAGES.askIntent,
+                {
+                  user: clientItem.item_id,
+                  dueDate: clientItem.due_date,
+                },
+              ),
+            );
+            return json({ ok: true, action: "ask_intent" });
+          }
+
+          // Problema em assistir (painel)
+          if (t === "1" || t === "assistir" || t === "consigo") {
+            const panelOk = await isPanelHealthy();
+            const statusMsg = getPanelStatusMessage(panelOk);
+            sessions[phone] = {
+              state: "human",
+              role: "client",
+              itemRefId: String(clientItem.id),
+              humanBusySent: false,
+              updatedAt: new Date().toISOString(),
+            };
+            await persistState();
+            await send(statusMsg);
+            setHumanPaused(phone, true);
+            try {
+              await enqueueHumanAlert(client, userId, phone, "client");
+              const notif =
+                (await getSetting<{
+                  enabled?: boolean;
+                  whatsappHumanEnabled?: boolean;
+                }>(client, `notif_settings_user_${userId}`)) || {};
+              if (notif.enabled !== false && notif.whatsappHumanEnabled !== false) {
+                await notifyOwnerHumanHandoff(
+                  apiBaseUrl,
+                  apiKey,
+                  instance,
+                  phone,
+                  "client",
+                );
+              }
+            } catch {
+              /* alerta não bloqueia */
+            }
+            return json({ ok: true, action: "problem_assist" });
+          }
+
+          // Problema de pagamento
+          if (t === "2" || t === "pagamento") {
+            sessions[phone] = {
+              state: "human",
+              role: "client",
+              itemRefId: String(clientItem.id),
+              humanBusySent: false,
+              updatedAt: new Date().toISOString(),
+            };
+            await persistState();
+            setHumanPaused(phone, true);
+            await send(
+              messages.problemPayment ||
+                DEFAULT_MESSAGES.problemPayment ||
+                "Entendo. Você está com problema de pagamento. Vou te passar para nossos atendentes.",
+            );
+            try {
+              await enqueueHumanAlert(client, userId, phone, "client");
+              const notif =
+                (await getSetting<{
+                  enabled?: boolean;
+                  whatsappHumanEnabled?: boolean;
+                }>(client, `notif_settings_user_${userId}`)) || {};
+              if (notif.enabled !== false && notif.whatsappHumanEnabled !== false) {
+                await notifyOwnerHumanHandoff(
+                  apiBaseUrl,
+                  apiKey,
+                  instance,
+                  phone,
+                  "client",
+                );
+              }
+            } catch {
+              /* alerta não bloqueia */
+            }
+            return json({ ok: true, action: "problem_payment" });
+          }
+
+          // Outro problema
+          if (t === "3" || t === "outro" || t === "assunto") {
+            sessions[phone] = {
+              state: "human",
+              role: "client",
+              itemRefId: String(clientItem.id),
+              humanBusySent: false,
+              updatedAt: new Date().toISOString(),
+            };
+            await persistState();
+            setHumanPaused(phone, true);
+            await send(
+              messages.problemOther ||
+                DEFAULT_MESSAGES.problemOther ||
+                "Certo! Vou te encaminhar para nossos atendentes.",
+            );
+            try {
+              await enqueueHumanAlert(client, userId, phone, "client");
+              const notif =
+                (await getSetting<{
+                  enabled?: boolean;
+                  whatsappHumanEnabled?: boolean;
+                }>(client, `notif_settings_user_${userId}`)) || {};
+              if (notif.enabled !== false && notif.whatsappHumanEnabled !== false) {
+                await notifyOwnerHumanHandoff(
+                  apiBaseUrl,
+                  apiKey,
+                  instance,
+                  phone,
+                  "client",
+                );
+              }
+            } catch {
+              /* alerta não bloqueia */
+            }
+            return json({ ok: true, action: "problem_other" });
+          }
+
+          // Resposta inválida no menu de problema
+          await send(
+            messages.askProblemKind ||
+              DEFAULT_MESSAGES.askProblemKind ||
+              "Qual é o problema?\n\n*1* — Não consigo assistir\n*2* — Problema de pagamento\n*3* — Outro assunto\n*0* — Voltar",
+          );
+          return json({ ok: true, action: "ask_problem_kind_repeat" });
+        }
+
+        // Se digitou "atendente" direto ou está em outro menu, vai para humano
         setHumanPaused(phone, true);
         sessions[phone] = {
           state: "human",
