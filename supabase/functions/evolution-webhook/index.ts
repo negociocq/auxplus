@@ -4187,7 +4187,7 @@ Deno.serve(async (req) => {
           const credits = creditsForPlanMonths(months);
           // Preço = valor do plano na pasta (pacote), não mensalidade × meses
           const amount = Math.round((Number(clientItem.price) || 0) * 100) / 100;
-          if (amount < 1) throw new Error("Cliente sem preço na pasta");
+          if (amount < 1) throw new Error(`Cliente *${clientItem.item_id}* sem preço configurado na pasta. Peça ao responsável para adicionar um valor ou escreva *atendente*`);
 
           const ordersKey = `mp_orders_user_${userId}`;
           const bag =
@@ -4288,11 +4288,16 @@ Deno.serve(async (req) => {
           await persistState();
           return json({ ok: true, action: "renew_pix" });
         } catch (e) {
-          await send(
-            messages.errorGeneric ||
-              (e instanceof Error ? e.message : "Erro"),
-          );
-          return json({ ok: false, error: String(e) });
+          const errMsg = e instanceof Error ? e.message : String(e);
+          // Se for erro de configuração/cliente, passa a mensagem de erro para o cliente
+          // Se for erro técnico, mostra genérico
+          const isClientError = errMsg.includes("sem preço") || errMsg.includes("não configurado");
+          const clientMsg = isClientError
+            ? errMsg
+            : (messages.errorGeneric || DEFAULT_MESSAGES.errorGeneric);
+          await send(clientMsg);
+          console.error(`[evolution-webhook] Erro na renovação: ${errMsg}`);
+          return json({ ok: false, error: errMsg });
         }
       }
 
