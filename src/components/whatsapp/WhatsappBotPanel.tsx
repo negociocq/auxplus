@@ -9,6 +9,7 @@ import {
   Store,
   FlaskConical,
   Headset,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
@@ -91,6 +92,7 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [uniplayOn, setUniplayOn] = useState(() =>
     user ? isUniplayConnected(loadAutomationsConfig(user.id)) : false,
   );
@@ -177,6 +179,23 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
     setState(next);
     await saveWaBotStateRemote(user.id, next);
     toast.success(`Bot reativado para ${phone}`);
+  };
+
+  const resetBotConfig = async () => {
+    if (!user) return;
+    setResetting(true);
+    try {
+      // Recarregar a configuração padrão (isso vai resetar para as mensagens padrão)
+      const defaultConfig = defaultWhatsappBotConfig();
+      const next = await saveWhatsappBotConfigRemote(user.id, defaultConfig);
+      setCfg(next);
+      onEnabledChange?.(next.enabled);
+      toast.success("✅ Configuração do bot resetada com sucesso!\n\nAs novas mensagens com a opção de problema e vencimento com hora já estão ativas.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao resetar configuração");
+    } finally {
+      setResetting(false);
+    }
   };
 
   if (!user) return null;
@@ -353,6 +372,21 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
                 ["errorGeneric", "Erro genérico"],
               ]}
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={resetting}
+              onClick={() => void resetBotConfig()}
+              className="w-full gap-2"
+            >
+              {resetting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="h-4 w-4" />
+              )}
+              Redefinir Configuração do Bot
+            </Button>
           </section>
 
           <section className="ax-surface space-y-3 p-4">
