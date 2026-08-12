@@ -18,12 +18,47 @@ const corsHeaders: Record<string, string> = {
 
 const PANEL_ORIGIN = "https://searchdefense.top";
 const UPSTREAM = "https://gesapioffice.com/api";
+const PANEL_URL = "http://localhost:32116";
+const HEALTH_CHECK_ENDPOINT = "/ges-api/recargas/credits";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+/**
+ * Health check rápido do painel (3s timeout).
+ * Retorna true se responsivo, false se offline.
+ */
+async function isPanelHealthy(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(`${PANEL_URL}${HEALTH_CHECK_ENDPOINT}`, {
+      method: "GET",
+      signal: controller.signal,
+      credentials: "omit",
+    });
+
+    clearTimeout(timeoutId);
+    return response.ok || response.status < 500; // 2xx ou 4xx = online
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Retorna mensagem amigável baseada no status do painel.
+ */
+function getPanelStatusMessage(isOnline: boolean): string {
+  if (isOnline) {
+    return "Estou conseguindo me comunicar com os servidores.\n\nVou transferir você para nosso atendimento para investigar o problema.";
+  } else {
+    return "Estamos com uma instabilidade no serviço no momento.\n\nNossos técnicos já estão trabalhando no reparo. Tente novamente em alguns minutos.";
+  }
 }
 
 function digitsPhone(raw: string) {
@@ -3508,8 +3543,21 @@ Deno.serve(async (req) => {
       (findTestConsumed(phone) ||
         (session.testUsername && session.testDoneAt))
     ) {
-      // Pediu atendente → encaminha para humano (contato sem pasta no painel)
+      // Pediu atendente → faz health check do painel antes de encaminhar
       if (wantsAttendant) {
+        // Health check rápido (sem bloquear)
+        const panelOk = await isPanelHealthy();
+
+        // Mensagem dinâmica baseada no status do painel
+        const statusMsg = getPanelStatusMessage(panelOk);
+        await send(statusMsg);
+
+        // Se painel está offline, não transfere para atendimento agora
+        if (!panelOk) {
+          return json({ ok: true, action: "problem_panel_offline" });
+        }
+
+        // Painel online → transfere para atendimento humano
         setHumanPaused(phone, true);
         sessions[phone] = {
           ...session,
@@ -3519,9 +3567,7 @@ Deno.serve(async (req) => {
           updatedAt: new Date().toISOString(),
         };
         await persistState();
-        await send(
-          messages.problemHuman || "Vou te passar para nossos atendentes.",
-        );
+
         try {
           await enqueueHumanAlert(client, userId, phone, "unknown");
           const notif =
