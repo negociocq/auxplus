@@ -57,7 +57,71 @@ function getPanelStatusMessage(isOnline: boolean): string {
   if (isOnline) {
     return "Estou conseguindo me comunicar com os servidores.\n\nVou transferir você para nosso atendimento para investigar o problema.";
   } else {
-    return "Estamos com uma instabilidade no serviço no momento.\n\nNossos técnicos já estão trabalhando no reparo. Tente novamente em alguns minutos.";
+    return "❌ Estamos com uma instabilidade no serviço no momento.\n\nNossos técnicos já estão trabalhando no reparo.\n\nQuando conseguirmos resolver, enviaremos uma mensagem aqui. 🛠️";
+  }
+}
+
+/**
+ * Registra cliente que reportou problema quando painel está offline.
+ */
+async function reportClientProblem(
+  client: any,
+  userId: string,
+  phone: string,
+  clientName?: string
+): Promise<void> {
+  try {
+    const stateKey = `panel_down_monitoring_${userId}`;
+
+    // Carrega estado atual
+    const { data: stateData } = await client
+      .from("platform_settings")
+      .select("value")
+      .eq("key", stateKey)
+      .maybeSingle();
+
+    let state = stateData?.value || {
+      isDown: true,
+      wentDownAt: new Date().toISOString(),
+      clientsReporting: [],
+      notificationsSent: {},
+    };
+
+    if (typeof state === "string") {
+      state = JSON.parse(state);
+    }
+
+    // Adiciona novo report (evita duplicatas)
+    const filtered = (state.clientsReporting || []).filter(
+      (r: any) => r.phone !== phone
+    );
+
+    const report = {
+      phone,
+      name: clientName,
+      reportedAt: new Date().toISOString(),
+      userId,
+    };
+
+    state.clientsReporting = [...filtered, report];
+    state.isDown = true;
+    state.wentDownAt = state.wentDownAt || new Date().toISOString();
+
+    // Salva estado
+    await client.from("platform_settings").upsert(
+      {
+        key: stateKey,
+        value: state,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" }
+    );
+
+    console.log(
+      `[reportClientProblem] Cliente ${phone} registrado. Total: ${state.clientsReporting.length}`
+    );
+  } catch (error) {
+    console.error("[reportClientProblem] Erro:", error);
   }
 }
 
@@ -3552,8 +3616,15 @@ Deno.serve(async (req) => {
         const statusMsg = getPanelStatusMessage(panelOk);
         await send(statusMsg);
 
-        // Se painel está offline, não transfere para atendimento agora
+        // Se painel está offline, registra cliente para notificação posterior
         if (!panelOk) {
+          // Registra cliente que reportou problema
+          await reportClientProblem(
+            client,
+            userId,
+            phone,
+            clientItem?.name || resellerItem?.name
+          );
           return json({ ok: true, action: "problem_panel_offline" });
         }
 
