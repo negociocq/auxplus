@@ -441,19 +441,10 @@ export function applyProrrogaToItem(
   kind: ProrrogaKind,
   panelExp?: string | null,
 ): Item {
-  console.log("DEBUG applyProrrogaToItem:", {
-    itemDue: item.dueDate,
-    kind,
-    panelExp,
-    hasPanelExp: !!panelExp
-  });
-
   // Usa a data do painel se fornecida, ou calcula localmente
   const newDue = panelExp
     ? parseIptvExpToDateTime(panelExp)
     : calculateNewDueDate(item.dueDate, kind);
-
-  console.log("DEBUG applyProrrogaToItem - novo vencimento:", newDue);
 
   // Cria um novo item com o vencimento atualizado
   const draft: Item = {
@@ -472,12 +463,6 @@ export function applyProrrogaToItem(
   };
 
   const result = withProrrogaUsage(draft, usage);
-  console.log("DEBUG applyProrrogaToItem - resultado:", {
-    oldDue: item.dueDate,
-    newDue: result.dueDate,
-    kind
-  });
-
   return result;
 }
 

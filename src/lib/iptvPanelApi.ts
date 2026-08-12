@@ -1488,18 +1488,40 @@ function pickMovement(row: Record<string, unknown>): IptvResellerMovement | null
     "qtd_credits",
     "creditos",
   ]);
-  // UniPlay devolve o valor POR CRÉDITO (sale); o faturado total = créditos × unitário
-  const unitPrice = pickLogNumber(row, [
+  // UniPlay pode devolver:
+  // - "faturado" / "total": valor TOTAL da recarga
+  // - "sale" / "price": valor POR CRÉDITO (unitário)
+  // Se encontrar faturado/total primeiro, use direto. Senão calcule multiplicando.
+  let faturado = 0;
+  let unitPrice = 0;
+
+  // Tenta encontrar o valor total primeiro
+  const totalValue = pickLogNumber(row, [
     "faturado",
-    "valor",
     "total",
-    "sale",
-    "value",
-    "price",
     "valor_total",
     "debito",
-    "creditos_reais",
   ]);
+
+  if (totalValue) {
+    // Se achou total, use direto
+    faturado = totalValue;
+    unitPrice = credits > 0 ? totalValue / credits : 0;
+  } else {
+    // Senão, procura por unitário e multiplica
+    unitPrice = pickLogNumber(row, [
+      "sale",
+      "value",
+      "price",
+      "valor",
+      "creditos_reais",
+    ]);
+    faturado = credits * unitPrice;
+  }
+
+  faturado = Math.round(faturado * 100) / 100;
+  unitPrice = Math.round(unitPrice * 100) / 100;
+
   let obs = pickLogString(row, [
     "obs",
     "nota",
@@ -1551,7 +1573,7 @@ function pickMovement(row: Record<string, unknown>): IptvResellerMovement | null
     fromUser = p.from || fromUser;
     toUser = p.to || toUser;
   }
-  const faturado = Math.round(credits * unitPrice * 100) / 100;
+
   return {
     id: String(id ?? "") || at || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     credits,
@@ -2044,19 +2066,6 @@ export async function renewIptvUser(
   const path = `/users-iptv/${id}`;
   const payload = JSON.stringify(body);
 
-  // DEBUG: Log completo da requisição
-  console.log("DEBUG API PRORROGAÇÃO:", {
-    url: `http://localhost:32116/ges-api${path}`,
-    method: "PUT",
-    body,
-    kind,
-    action,
-    hasRegPassword: !!(kind === "48h" && creds.regPassword?.trim()),
-    remoteUserId,
-    bearerToken: creds.bearerToken ? "PRESENTE" : "AUSENTE",
-    regPasswordLength: creds.regPassword?.trim()?.length || 0,
-  });
-
   // UniPlay/Laravel: POST em /users-iptv/{id} costuma dar 405
   const methods = ["PUT", "PATCH", "POST"] as const;
   let lastError: Error | null = null;
@@ -2105,19 +2114,6 @@ export async function prorrogaIptvUser(
   const id = encodeURIComponent(String(remoteUserId));
   const path = `/users-iptv/${id}`;
   const payload = JSON.stringify(body);
-
-  // DEBUG: Log completo da requisição
-  console.log("DEBUG API PRORROGAÇÃO:", {
-    url: `http://localhost:32116/ges-api${path}`,
-    method: "PUT",
-    body,
-    kind,
-    action,
-    hasRegPassword: !!(kind === "48h" && creds.regPassword?.trim()),
-    remoteUserId,
-    bearerToken: creds.bearerToken ? "PRESENTE" : "AUSENTE",
-    regPasswordLength: creds.regPassword?.trim()?.length || 0,
-  });
 
   // UniPlay/Laravel: POST em /users-iptv/{id} costuma dar 405
   const methods = ["PUT", "PATCH", "POST"] as const;

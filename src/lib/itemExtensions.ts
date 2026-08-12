@@ -180,13 +180,5 @@ export function calculateNewDueDate(oldDue: string, kind: ProrrogaKind): string 
   // Retorna no formato ISO (YYYY-MM-DD)
   const result = date.toISOString().split("T")[0];
 
-  // DEBUG: Log para verificar cálculo
-  console.log("DEBUG calculateNewDueDate:", {
-    oldDue,
-    isoDate,
-    result,
-    kind
-  });
-
   return result;
 }

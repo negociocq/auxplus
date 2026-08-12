@@ -416,10 +416,16 @@ export async function releasePaidMpOrder(
         throw new Error(`Revendedor ${username} sem ID numérico no UniPlay.`);
       }
       const amountBrl = Number(order.amount) || 0;
+      // O Mercado Pago retorna o amount em centavos ou multiplicado
+      // Exemplo: 10 créditos × R$ 8,50 = R$ 85 (correto)
+      // MAS MP retorna 850 (está 10x maior)
+      // Dividir por 10 para corrigir
+      const correctedAmount = amountBrl / 10;
+      const unitPrice = credits > 0 ? correctedAmount / credits : undefined;
       await addIptvResellerCredits(creds, {
         resellerId,
         credits,
-        saleBrl: amountBrl > 0 ? amountBrl : undefined,
+        saleBrl: unitPrice,  // ← Preço unitário
         reason: `AuxPlus PIX ${order.id}`,
       });
       const issued = getLastIssuedIptvToken();

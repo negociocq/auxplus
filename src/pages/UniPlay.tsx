@@ -38,6 +38,7 @@ import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage, ensureIptvTok
 import { applyProrrogaToItem } from "@/lib/iptvAutomation";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -870,10 +871,6 @@ export default function UniPlay() {
 
       // Chama API do painel
       toast.info(`Aplicando prorrogação (${kind}) no painel...`);
-      console.log("DEBUG: Prorrogação - Usuário:", item.itemId);
-      console.log("DEBUG: Prorrogação - remote.id:", remote.id);
-      console.log("DEBUG: Prorrogação - creds.regPassword presente?", !!creds.regPassword);
-      console.log("DEBUG: Prorrogação - kind:", kind);
       await prorrogaIptvUser(creds, remote.id, kind);
 
       const issued = getLastIssuedIptvToken();
@@ -890,12 +887,6 @@ export default function UniPlay() {
 
       // Atualiza item localmente
       const updated = applyProrrogaToItem(item, kind, panelExp);
-      console.log("DEBUG UI Update:", {
-        itemId: item.id,
-        oldDue: item.dueDate,
-        newDue: updated.dueDate,
-        kind
-      });
 
       // Força uma cópia profunda para garantir re-render
       const newData = updateItem(data, updated);
@@ -1199,6 +1190,10 @@ export default function UniPlay() {
         updated.dueDate,
       );
     } catch (e) {
+      console.error("❌ ERRO EM runApiRenew:", e);
+      if (e instanceof Error) {
+        console.error("Stack:", e.stack);
+      }
       nextJobs = patchIptvJob(nextJobs, job.id, {
         status: "failed",
         note: e instanceof Error ? e.message : "erro",
@@ -2331,21 +2326,40 @@ export default function UniPlay() {
               </p>
             ) : (
               <ul className="space-y-1.5">
-                {filtered.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium leading-tight">
-                        {item.name}
-                      </p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {maskUser(item.itemId)}
-                        {item.dueDate ? ` · ${formatBrDate(item.dueDate)}` : ""}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap gap-1">
+                {filtered.map((item) => {
+                  // Define gradientes baseados no status (igual pasta)
+                  const statusGradient =
+                    item.status === "Longe de Vencer"
+                      ? "bg-gradient-to-r from-success/20 via-success/5 to-transparent"
+                      : item.status === "Perto de Vencer"
+                        ? "bg-gradient-to-r from-warning/20 via-warning/5 to-transparent"
+                        : item.status === "Já Vencido"
+                          ? "bg-gradient-to-r from-destructive/20 via-destructive/5 to-transparent"
+                          : "";
+
+                  return (
+                    <li
+                      key={item.id}
+                      className={`flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2 text-sm ${statusGradient}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <StatusBadge status={item.status} />
+                          <p className="truncate font-medium leading-tight">
+                            {item.name}
+                          </p>
+                        </div>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {maskUser(item.itemId)}
+                          {item.dueDate ? ` · ${formatBrDate(item.dueDate)}` : ""}
+                        </p>
+                        {item.phone ? (
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            📱 {item.phone}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-1">
                       <Button
                         type="button"
                         size="sm"
@@ -2434,7 +2448,8 @@ export default function UniPlay() {
                       </Button>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </section>
