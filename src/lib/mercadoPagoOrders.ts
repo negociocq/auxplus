@@ -77,7 +77,9 @@ export function loadMpOrders(userId: string): MpRenewOrder[] {
     const raw = localStorage.getItem(`${KEY}:${userId}`);
     if (!raw) return [];
     const list = JSON.parse(raw) as unknown[];
-    return Array.isArray(list) ? list.filter(isOrder) : [];
+    return Array.isArray(list)
+      ? list.filter(isOrder).filter((o) => !o.blocked)
+      : [];
   } catch {
     return [];
   }
@@ -190,6 +192,10 @@ export function isMpOrderPastExpiry(order: MpRenewOrder, now = Date.now()) {
 export function pruneStaleMpOrders(orders: MpRenewOrder[]): MpRenewOrder[] {
   const now = Date.now();
   const alive = orders.filter((o) => {
+    // Ignora pedidos bloqueados permanentemente
+    if (o.blocked) {
+      return false;
+    }
     if (
       o.status === "expired" ||
       o.status === "cancelled" ||
