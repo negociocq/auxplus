@@ -36,11 +36,21 @@ export interface WhatsappBotConfig {
   messages: {
     /** Cliente conhecido: pergunta renovação ou problema */
     askIntent: string;
+    /** Menu: qual é o problema? (quando cliente diz "problema") */
+    askProblemKind: string;
+    /** Resposta quando cliente não consegue assistir (painel online) */
+    problemAssistPanelOk: string;
+    /** Resposta quando cliente não consegue assistir (painel offline) */
+    problemAssistPanelDown: string;
+    /** Resposta quando cliente tem problema de pagamento */
+    problemPayment: string;
+    /** Resposta quando cliente tem outro problema */
+    problemOther: string;
     /** Após escolher renovação */
     renewCreatingPix: string;
     /** Intro do PIX (placeholders: {name} {user} {due} {months} {amount}) */
     renewPixIntro: string;
-    /** Cliente pediu problema */
+    /** Cliente pediu problema (deprecated, mantém compatibilidade) */
     problemHuman: string;
     /** Dono digitou “assumir” */
     humanAssumed: string;
@@ -117,6 +127,22 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
         "Como posso ajudar?\n\n" +
         "*1* — {renewLabel}\n" +
         "*2* — Falar com nossos atendentes",
+      askProblemKind:
+        "Qual é o problema?\n\n" +
+        "*1* — Não consigo assistir\n" +
+        "*2* — Problema de pagamento\n" +
+        "*3* — Outro assunto\n" +
+        "*0* — Voltar",
+      problemAssistPanelOk:
+        "✅ Estou conseguindo me comunicar com os servidores.\n\n" +
+        "Vou transferir você para nosso atendimento para investigar o problema.",
+      problemAssistPanelDown:
+        "❌ Estamos com uma instabilidade no serviço no momento.\n\n" +
+        "Nossos técnicos já estão trabalhando no reparo. Tente novamente em alguns minutos.",
+      problemPayment:
+        "Entendi. Vou te encaminhar para nossos atendentes para ajudar com o pagamento.\n\nEm breve alguém responde por aqui.",
+      problemOther:
+        "Certo! Vou te encaminhar para nossos atendentes.\nEm breve alguém responde por aqui.",
       renewCreatingPix: "Perfeito! Estou gerando o PIX da {renewKind}…",
       renewPixIntro:
         "✅ PIX de {renewKind}\n\n" +
@@ -431,6 +457,7 @@ export async function registerWaInstanceMapping(
 export type WaBotSessionState =
   | "idle"
   | "ask_intent"
+  | "ask_problem_kind"
   | "reseller_offer"
   | "human"
   | "test_ask_name"
