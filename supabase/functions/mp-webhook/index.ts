@@ -817,14 +817,35 @@ async function releaseOrder(
   } else {
     // renovação de cliente
     if (!username) throw new Error("Pedido sem usuário");
-    const remoteId = await findUniplayUserId(bearer, username);
+
+    let remoteId = await findUniplayUserId(bearer, username);
+    let actualUsername = username;
+
+    // Se não encontrou pelo username, tenta buscar pelo itemRefId
+    if (remoteId == null && order.itemRefId) {
+      try {
+        const { data: item } = await client
+          .from("items")
+          .select("item_id")
+          .eq("id", order.itemRefId)
+          .maybeSingle();
+
+        if (item?.item_id) {
+          actualUsername = String(item.item_id).trim();
+          remoteId = await findUniplayUserId(bearer, actualUsername);
+        }
+      } catch {
+        /* ignora — continua com tentativa original */
+      }
+    }
+
     if (remoteId == null) {
       throw new Error(`Usuário ${username} não encontrado no UniPlay`);
     }
+
     await renewIptvUser(bearer, remoteId, credits);
     let newDue = nextDueAfterRenew(order.dueDate, months);
     try {
-      const after = await findUniplayUserId(bearer, username);
       // re-fetch user for exp — list again
       const listed = (await uniplayFetch("/users-iptv", bearer)) as unknown;
       const rows = Array.isArray(listed)
@@ -837,13 +858,12 @@ async function releaseOrder(
         const r = row as Record<string, unknown>;
         return (
           String(r.username || r.user || "").trim().toLowerCase() ===
-          username.toLowerCase()
+          actualUsername.toLowerCase()
         );
       }) as Record<string, unknown> | undefined;
       const exp = String(hit?.exp_date || hit?.expDate || "").trim();
       const m = /^(\d{4}-\d{2}-\d{2})/.exec(exp.replace(" ", "T"));
       if (m) newDue = m[1]!;
-      void after;
     } catch {
       /* usa cálculo local */
     }
@@ -854,7 +874,7 @@ async function releaseOrder(
       kind: "renew",
       itemRefId: order.itemRefId || "",
       clientName: order.clientName || username,
-      panelUsername: username,
+      panelUsername: actualUsername,
       panelRemoteId: remoteId,
       phone,
       dueDate: newDue,
@@ -986,8 +1006,66 @@ async function processApprovedPayment(
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha ao liberar";
+
+    // Se o erro é "usuário não encontrado", remove IMEDIATAMENTE do armazenamento
+    // para evitar loop infinito de tentativas
+    if (
+      msg.includes("não encontrado") ||
+      msg.includes("not found") ||
+      msg.includes("Usuário") ||
+      msg.includes("user")
+    ) {
+      // REMOVE IMEDIATAMENTE DA FILA - não tenta mais nunca
+      const updatedOrders = found.orders.filter((o) => o.id !== claimed.id);
+      await saveOrders(client, found.userId, updatedOrders);
+
+      console.log(
+        `[mp-webhook] BLOQUEADO: Pedido ${claimed.id} removido permanentemente (${msg})`
+      );
+
+      // Avisa cliente UMA VEZ
+      try {
+        const phone = String(claimed.phone || "").replace(/\D/g, "");
+        if (phone.length >= 10) {
+          const evo =
+            (await getSetting<{
+              apiBaseUrl?: string;
+              apiKey?: string;
+            }>(client, "evolution_api")) || {};
+          const apiBaseUrl = String(evo.apiBaseUrl || "").trim();
+          const apiKey = String(evo.apiKey || "").trim();
+          if (apiBaseUrl && apiKey) {
+            const instance = await resolveInstanceName(client, found.userId);
+            await sendEvolutionText(
+              apiBaseUrl,
+              apiKey,
+              instance,
+              phone,
+              "⚠️ Pagamento recebido!\n\nMas não conseguimos localizar seu usuário no painel. Pode ser que:\n\n" +
+                "• Você tem outro cliente cadastrado com este número\n" +
+                "• Seu usuário foi alterado\n\n" +
+                "Entre em contato: *atendente*"
+            );
+          }
+        }
+      } catch (err) {
+        console.error("[mp-webhook] Erro ao avisar cliente:", err);
+      }
+
+      // Nao tenta mais — retorna sucesso para o MP (pedido foi processado, mesmo que com erro)
+      return {
+        ok: true,
+        error: `${msg} (Bloqueado para evitar retry infinito)`,
+        paymentId,
+        userId: found.userId,
+        orderId: claimed.id,
+      };
+    }
+
+    // Para outros erros, marca como erro normal
     await markOrderError(client, found.userId, claimed.id, msg);
     await releaseClaim(client, claimed.id);
+
     // Avisa cliente
     try {
       const phone = String(claimed.phone || "").replace(/\D/g, "");
@@ -1007,7 +1085,7 @@ async function processApprovedPayment(
             instance,
             phone,
             "Recebi seu pagamento, mas houve um problema ao liberar automaticamente.\n\n" +
-              "Um atendente vai concluir em instantes. Digite *atendente* se preferir.",
+              "Um atendente vai concluir em instantes. Digite *atendente* se preferir."
           );
         }
       }
@@ -1043,12 +1121,31 @@ async function pollAllPending(client: ReturnType<typeof createClient>) {
           })()
         : ((row.value || { orders: [] }) as { orders?: MpOrder[] });
     const orders = Array.isArray(bag.orders) ? bag.orders : [];
-    const pending = orders.filter(
-      (o) =>
-        o.status === "pending" ||
-        (o.status === "approved" && !o.releasedAt) ||
-        o.error === RELEASING_MARK,
-    );
+
+    // Filtra apenas pedidos que ainda não foram finalizados e não estão bloqueados
+    // Se tem erro e passou 30min, ignora (não tenta mais)
+    const pending = orders.filter((o) => {
+      // NUNCA processa pedidos bloqueados
+      if ((o as Record<string, any>).blocked) return false;
+
+      if (o.status === "pending" || (o.status === "approved" && !o.releasedAt)) {
+        return true;
+      }
+      if (o.error === RELEASING_MARK) {
+        const t = Date.parse(String(o.updatedAt || "")) || 0;
+        // Se passou 2 minutos em RELEASING_MARK, retira da fila
+        if (Date.now() - t >= 2 * 60 * 1000) {
+          return false;
+        }
+        return true;
+      }
+      // Se tem outro erro (não RELEASING_MARK), ignora completamente
+      if (o.error && o.error !== RELEASING_MARK) {
+        return false;
+      }
+      return false;
+    });
+
     if (!pending.length) continue;
     const automations =
       (await getSetting<Record<string, unknown>>(
@@ -1059,10 +1156,6 @@ async function pollAllPending(client: ReturnType<typeof createClient>) {
     if (!mpToken) continue;
     for (const order of pending) {
       try {
-        if (order.error === RELEASING_MARK) {
-          const t = Date.parse(String(order.updatedAt || "")) || 0;
-          if (Date.now() - t < 2 * 60 * 1000) continue;
-        }
         const st = await fetchMpOrderStatus(mpToken, order.mpPaymentId);
         if (st.mapped === "approved") {
           results.push(await processApprovedPayment(client, order.mpPaymentId));

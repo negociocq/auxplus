@@ -44,6 +44,9 @@ export interface MpRenewOrder {
   paidAt?: string;
   releasedAt?: string;
   error?: string;
+  /** Pedido permanentemente bloqueado - ignora todas as operações */
+  blocked?: boolean;
+  blockedAt?: string;
 }
 
 const KEY = "auxplus-mp-orders";
@@ -126,7 +129,9 @@ export async function loadMpOrdersRemote(
         ? (JSON.parse(data.value) as { orders?: unknown })
         : (data.value as { orders?: unknown });
     const remote = Array.isArray(raw?.orders)
-      ? (raw.orders as unknown[]).filter(isOrder)
+      ? (raw.orders as unknown[])
+          .filter(isOrder)
+          .filter((o) => !o.blocked) // Ignora pedidos bloqueados permanentemente
       : [];
     const merged = mergeOrders(local, remote);
     writeLocal(userId, merged);

@@ -211,7 +211,10 @@ export function useEvolutionConnection(
 
   useEffect(() => {
     if (!runtime) return;
-    void checkStatus();
+    // Silencia erros de polagem de status na inicialização
+    checkStatus().catch(() => {
+      /* erros esperados durante tentativas de conexão */
+    });
   }, [runtime, checkStatus]);
 
   const onDisconnect = async () => {

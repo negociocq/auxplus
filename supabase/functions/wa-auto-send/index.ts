@@ -217,9 +217,9 @@ function formatDueForMessage(value: unknown): string {
   const s = String(value || "").trim();
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (!m) return "—";
-  const base = `${m[3]}/${m[2]}/${m[1]}`;
-  if (m[4] != null) return `${base} ${m[4]}:${m[5]}:${m[6] ?? "00"}`;
-  return base;
+  const date = `${m[3]}/${m[2]}/${m[1]}`;
+  const time = m[4] != null ? `${m[4]}:${m[5]}:${m[6] ?? "00"}` : "00:00:00";
+  return `${date} ${time}`;
 }
 
 function fillWhatsappTemplate(

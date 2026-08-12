@@ -424,9 +424,9 @@ function formatDueForMessage(value: string | null | undefined): string {
     /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/,
   );
   if (!m) return "—";
-  const base = `${m[3]}/${m[2]}/${m[1]}`;
-  if (m[4] != null) return `${base} ${m[4]}:${m[5]}:${m[6] ?? "00"}`;
-  return base;
+  const date = `${m[3]}/${m[2]}/${m[1]}`;
+  const time = m[4] != null ? `${m[4]}:${m[5]}:${m[6] ?? "00"}` : "00:00:00";
+  return `${date} ${time}`;
 }
 
 export function fillWhatsappTemplate(
@@ -718,6 +718,8 @@ async function evolutionFetch(
   runtime: EvolutionRuntimeConfig,
   path: string,
   init?: RequestInit,
+  /** Se true, não loga erros HTTP no console (tentativas em loop de webhook) */
+  silent = false,
 ) {
   if (!runtime.apiBaseUrl.trim()) {
     throw new Error(
@@ -768,7 +770,12 @@ async function evolutionFetch(
       typeof data === "object" && data && "message" in data
         ? String((data as { message: unknown }).message)
         : text || res.statusText;
-    throw new Error(msg || `Erro HTTP ${res.status}`);
+    const error = new Error(msg || `Erro HTTP ${res.status}`);
+    // Silencia erros 400/404 de webhook (tentativas repetidas não geram console spam)
+    if (!silent || res.status >= 500) {
+      console.debug("[evolutionFetch]", path, res.status, msg);
+    }
+    throw error;
   }
   return data;
 }
@@ -1000,10 +1007,11 @@ export async function setEvolutionWebhook(
     for (const body of bodies) {
       for (const method of ["POST", "PUT"] as const) {
         try {
+          // silent=true: não loga erros 400/404 repetidos no console
           await evolutionFetch(runtime, path, {
             method,
             body: JSON.stringify(body),
-          });
+          }, true);
           return;
         } catch (e) {
           lastErr = e;

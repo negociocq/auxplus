@@ -132,7 +132,11 @@ export function MpOrdersCleanup({ userId }: { userId: string }) {
           : (data.value as MpOrdersData);
 
       const orders = Array.isArray(parsed.orders)
-        ? parsed.orders.filter((o) => o.id !== orderId)
+        ? parsed.orders.map((o) =>
+            o.id === orderId
+              ? { ...o, blocked: true, blockedAt: new Date().toISOString() }
+              : o
+          )
         : [];
 
       await supabase
@@ -141,10 +145,11 @@ export function MpOrdersCleanup({ userId }: { userId: string }) {
         .eq("key", `mp_orders_user_${userId}`);
 
       setProblematicOrders(problematicOrders.filter((o) => o.id !== orderId));
-      toast.success("Pedido removido");
+      toast.success("✅ Verificação cancelada permanentemente");
+      toast.message("Nenhuma notificação ou mensagem será enviada");
     } catch (e) {
-      console.error("[MpOrdersCleanup] Erro ao remover:", e);
-      toast.error("Erro ao remover pedido");
+      console.error("[MpOrdersCleanup] Erro ao bloquear:", e);
+      toast.error("Erro ao bloquear pedido");
     } finally {
       setLoading(false);
     }

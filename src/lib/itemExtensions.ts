@@ -17,6 +17,56 @@ export const PRORROGA_MARKER_PREFIX = "<!--AXEXT:";
 export const PRORROGA_MARKER_SUFFIX = "-->";
 
 /**
+ * Normaliza número de telefone removendo caracteres especiais.
+ * Permite comparação entre formatos diferentes (+5571 8373-9054 vs +5571983739054).
+ */
+export function normalizePhone(phone: string): string {
+  return String(phone || "").replace(/\D/g, "").trim();
+}
+
+/**
+ * Encontra item pelo telefone, priorizando clientes ativos (não vencidos).
+ * Se houver múltiplos com o mesmo número, retorna o mais recente/ativo.
+ */
+export function findItemByNormalizedPhone(
+  items: Item[],
+  phone: string
+): Item | null {
+  if (!phone || !phone.trim()) return null;
+
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+
+  const matches = items.filter(
+    (item) =>
+      item.isActive !== false && normalizePhone(item.phone || "") === normalized
+  );
+
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+
+  // Se houver múltiplos, priorizar: ativo > vencido, depois mais recente
+  const active = matches.filter(
+    (i) => i.status === "Longe de Vencer" || i.status === "Perto de Vencer"
+  );
+  if (active.length > 0) {
+    // Entre os ativos, pega o que vence mais cedo (o mais urgente)
+    return active.sort((a, b) => {
+      const da = a.dueDate || "9999";
+      const db = b.dueDate || "9999";
+      return da.localeCompare(db);
+    })[0];
+  }
+
+  // Se todos vencidos, pega o mais recente
+  return matches.sort((a, b) => {
+    const da = a.createdAt || "";
+    const db = b.createdAt || "";
+    return db.localeCompare(da);
+  })[0];
+}
+
+/**
  * Extrai o uso de prorrogação das notes do item, se existir.
  */
 export function extractProrrogaUsage(item: Item): ProrrogaUsage | null {
@@ -100,7 +150,25 @@ export function withoutProrrogaUsage(item: Item): Item {
  * Calcula nova data de vencimento baseado no tipo de prorrogação.
  */
 export function calculateNewDueDate(oldDue: string, kind: ProrrogaKind): string {
-  const date = new Date(oldDue + "T23:59:59");
+  // Converte a data do formato brasileiro (DD/MM/YYYY) para ISO (YYYY-MM-DD)
+  let isoDate: string;
+
+  // Verifica se é formato brasileiro DD/MM/YYYY
+  const brazilianMatch = oldDue.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (brazilianMatch) {
+    const [, day, month, year] = brazilianMatch;
+    isoDate = `${year}-${month}-${day}`;
+  }
+  // Verifica se já é formato ISO YYYY-MM-DD
+  else if (oldDue.match(/^\d{4}-\d{2}-\d{2}/)) {
+    isoDate = oldDue;
+  }
+  // Outro formato - tenta parsear
+  else {
+    isoDate = new Date(oldDue).toISOString().split("T")[0];
+  }
+
+  const date = new Date(isoDate + "T23:59:59");
 
   if (kind === "48h") {
     date.setDate(date.getDate() + 2);
@@ -109,5 +177,16 @@ export function calculateNewDueDate(oldDue: string, kind: ProrrogaKind): string 
     // Já está configurado na criação da data
   }
 
-  return date.toISOString().split("T")[0];
+  // Retorna no formato ISO (YYYY-MM-DD)
+  const result = date.toISOString().split("T")[0];
+
+  // DEBUG: Log para verificar cálculo
+  console.log("DEBUG calculateNewDueDate:", {
+    oldDue,
+    isoDate,
+    result,
+    kind
+  });
+
+  return result;
 }

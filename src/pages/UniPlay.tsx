@@ -28,12 +28,13 @@ import { formatBrDate } from "@/lib/format";
 import { normSearch } from "@/lib/utils";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
+import { updateItem } from "@/lib/storage";
 import { useUniplayConnection } from "@/hooks/useUniplayConnection";
 import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { hasUsedProrrogaInCurrentCycle, extractProrrogaUsage } from "@/lib/itemExtensions";
-import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage, ensureIptvToken } from "@/lib/iptvPanelApi";
+import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage, ensureIptvToken, recreateIptvLine } from "@/lib/iptvPanelApi";
 import { applyProrrogaToItem } from "@/lib/iptvAutomation";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -122,6 +123,7 @@ import {
 import {
   fetchEvolutionStatus,
   sendEvolutionText,
+  loadWhatsappSettings,
 } from "@/lib/whatsappAutomation";
 import {
   instanceNameForUser,
@@ -840,42 +842,63 @@ export default function UniPlay() {
         return;
       }
 
+      if (!item.itemId.trim()) {
+        toast.error("Cliente sem usuário (campo Usuário) — preencha na pasta");
+        return;
+      }
       if (!bearer.trim()) {
         toast.error("Conecte sua conta UniPlay antes");
         return;
       }
 
-      // Carrega configurações da plataforma para pegar regPassword
-      const platformConfig = await loadAutomationsConfig();
-      const regPassword = platformConfig?.platform?.regPassword?.trim();
+      // SEGUINDO EXATAMENTE O PADRÃO DE runApiRenew (QUE FUNCIONA)
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
 
-      // Obtém credenciais atualizadas (seguindo o padrão de runApiRenew)
-      const ensured = await ensureIptvToken({
-        apiBaseUrl: config.iptvApiBaseUrl,
-        bearerToken: bearer.trim(),
-        defaultPackage: "1",
-        regPassword: regPassword || undefined,
-      });
-
-      // Cria objeto creds com token atualizado
-      const creds = {
-        apiBaseUrl: config.iptvApiBaseUrl,
-        bearerToken: ensured.token,
-        defaultPackage: "1",
-        regPassword: regPassword || undefined,
-      };
+      // Busca usuário no painel primeiro (como runApiRenew faz)
+      const itemIdTrimmed = item.itemId?.trim() || "";
+      if (!itemIdTrimmed) {
+        throw new Error("Cliente sem usuário (campo Usuário) — preencha na pasta");
+      }
+      const remote = await findIptvUserByUsername(creds, itemIdTrimmed);
+      if (!remote?.id) {
+        throw new Error(
+          `Usuário ${item.itemId} não encontrado no painel. Confira o login/token ou o reg_password.`,
+        );
+      }
 
       // Chama API do painel
       toast.info(`Aplicando prorrogação (${kind}) no painel...`);
-      await prorrogaIptvUser(creds, item.itemId, kind);
+      console.log("DEBUG: Prorrogação - Usuário:", item.itemId);
+      console.log("DEBUG: Prorrogação - remote.id:", remote.id);
+      console.log("DEBUG: Prorrogação - creds.regPassword presente?", !!creds.regPassword);
+      console.log("DEBUG: Prorrogação - kind:", kind);
+      await prorrogaIptvUser(creds, remote.id, kind);
 
-      // Pega a data real do painel
-      toast.info("Confirmando nova data de vencimento...");
-      const panelExp = await fetchIptvExpDate(creds, item.itemId);
+      const issued = getLastIssuedIptvToken();
+      if (issued) persistToken(issued);
+
+      // Busca de novo para pegar o vencimento real do painel → lembrete
+      let panelExp: string | null | undefined;
+      try {
+        const after = await findIptvUserByUsername(creds, itemIdTrimmed);
+        panelExp = after?.exp_date ?? after?.expDate;
+      } catch {
+        // Ignora erro na segunda busca
+      }
 
       // Atualiza item localmente
       const updated = applyProrrogaToItem(item, kind, panelExp);
-      const newData = updateItem(data, updated.id, updated);
+      console.log("DEBUG UI Update:", {
+        itemId: item.id,
+        oldDue: item.dueDate,
+        newDue: updated.dueDate,
+        kind
+      });
+
+      // Força uma cópia profunda para garantir re-render
+      const newData = updateItem(data, updated);
       setData(newData);
 
       // Envia mensagem WhatsApp
@@ -941,6 +964,114 @@ export default function UniPlay() {
         /* ignore */
       }
     })();
+  };
+
+  const runRecreateLinhaAsync = async (itemId: string) => {
+    setBusyId(itemId);
+    try {
+      const item = data.items.find((i) => i.id === itemId);
+      if (!item) throw new Error("Item não encontrado");
+
+      if (!item.itemId.trim()) {
+        toast.error("Cliente sem usuário (campo Usuário) — preencha na pasta");
+        return;
+      }
+      if (!bearer.trim()) {
+        toast.error("Conecte sua conta UniPlay antes");
+        return;
+      }
+
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
+
+      // Busca usuário no painel (ID antigo)
+      const itemIdTrimmed = item.itemId?.trim() || "";
+      const remote = await findIptvUserByUsername(creds, itemIdTrimmed);
+      if (!remote?.id) {
+        throw new Error(
+          `Usuário ${item.itemId} não encontrado no painel. Confira o login/token ou o reg_password.`,
+        );
+      }
+
+      const oldRemoteId = remote.id;
+      console.log("DEBUG recreate: Usuario antigo encontrado", { username: itemIdTrimmed, id: oldRemoteId });
+
+      // Chama API para recriar linha
+      toast.info("Recriando a linha no painel...");
+      console.log("DEBUG recreate: Chamando API recreateIptvLine");
+      const recreateResult = await recreateIptvLine(creds, oldRemoteId);
+      console.log("DEBUG recreate: Resultado da API recreateIptvLine:", recreateResult);
+
+      const issued = getLastIssuedIptvToken();
+      if (issued) persistToken(issued);
+
+      // Aguarda o painel processar
+      console.log("DEBUG recreate: Aguardando painel processar...");
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      // Busca TODOS os usuários para ver qual é o novo
+      console.log("DEBUG recreate: Buscando lista completa de usuários");
+      const allUsers = await listIptvUsers(creds);
+      console.log("DEBUG recreate: Total de usuários no painel:", allUsers.length);
+
+      // Se a API retornou info do novo usuário, tenta usar isso
+      let newUser = null;
+      if (recreateResult && typeof recreateResult === "object") {
+        const result = recreateResult as Record<string, any>;
+        console.log("DEBUG recreate: Chaves do resultado:", Object.keys(result));
+
+        // Procura por campos comuns que identificam o novo usuário
+        const newUsername = result.username || result.user || result.login || result.name;
+        if (newUsername) {
+          console.log("DEBUG recreate: Novo username encontrado na resposta:", newUsername);
+          newUser = allUsers.find(u => u.username?.trim().toLowerCase() === String(newUsername).trim().toLowerCase());
+        }
+      }
+
+      // Se não encontrou a partir da resposta, procura por username antigo (caso tenha mantido)
+      if (!newUser) {
+        console.log("DEBUG recreate: Procurando pelo username antigo na lista");
+        newUser = allUsers.find(u => u.username?.trim().toLowerCase() === itemIdTrimmed.toLowerCase());
+      }
+
+      console.log("DEBUG recreate: Novo usuário encontrado?", newUser ? { id: newUser.id, username: newUser.username } : "NÃO");
+
+      if (!newUser?.id) {
+        throw new Error(
+          `Após recriar, não consegui encontrar o novo usuário. O painel pode ter gerado um novo username. Sincronize manualmente e verifique a lista de clientes.`
+        );
+      }
+
+      // Remove item antigo da lista (evita duplicata)
+      const itemsWithoutOld = data.items.filter((i) => i.id !== itemId);
+
+      // Cria novo item
+      const newItem: Item = {
+        ...item,
+        itemId: newUser.username || itemIdTrimmed, // Atualiza com novo username se mudou
+        id: crypto.randomUUID ? crypto.randomUUID() : `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        dueDate: parseIptvExpToDateTime(newUser.exp_date ?? newUser.expDate) || item.dueDate,
+      };
+
+      console.log("DEBUG recreate: Novo item criado", { oldId: item.id, newId: newItem.id, oldUsername: itemIdTrimmed, newUsername: newUser.username });
+
+      // Atualiza state com item antigo removido e novo adicionado
+      setData({ ...data, items: [...itemsWithoutOld, newItem] });
+
+      toast.success("✅ Linha recriada com sucesso! Cliente atualizado em tempo real.");
+      setDetailClientId(null);
+      setClientDetailAccess(null);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Falha ao recriar linha",
+      );
+      console.error("DEBUG recreate: Erro completo", err);
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const sendRenewalReceipt = async (
@@ -3050,6 +3181,15 @@ export default function UniPlay() {
                   }}
                 >
                   Fechar
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!bearer.trim() || busyId === detailClient.id}
+                  onClick={() => void runRecreateLinhaAsync(detailClient.id)}
+                >
+                  Recriar linha
                 </Button>
                 <Button
                   type="button"
