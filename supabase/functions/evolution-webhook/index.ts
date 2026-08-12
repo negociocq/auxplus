@@ -18,8 +18,6 @@ const corsHeaders: Record<string, string> = {
 
 const PANEL_ORIGIN = "https://searchdefense.top";
 const UPSTREAM = "https://gesapioffice.com/api";
-const PANEL_URL = "http://localhost:32116";
-const HEALTH_CHECK_ENDPOINT = "/ges-api/recargas/credits";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -28,26 +26,61 @@ function json(data: unknown, status = 200) {
   });
 }
 
+/** Rejeita com "timeout" após `ms` — libera o timer quando a promise resolve antes. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const watchdog = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("timeout")), ms);
+  });
+  return Promise.race([promise, watchdog]).finally(() => clearTimeout(timer));
+}
+
 /**
- * Health check rápido do painel (3s timeout).
- * Retorna true se responsivo, false se offline.
+ * Health check do painel UniPlay (tempo total ~8s).
+ * Consulta a MESMA rota usada pelo bot (uniplayFetch/proxy) — nunca localhost.
+ * True = painel respondeu; False = fora/instável.
  */
-async function isPanelHealthy(): Promise<boolean> {
+async function isPanelHealthy(
+  automations: Record<string, unknown>,
+): Promise<boolean> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-    const response = await fetch(`${PANEL_URL}${HEALTH_CHECK_ENDPOINT}`, {
-      method: "GET",
-      signal: controller.signal,
-      credentials: "omit",
-    });
-
-    clearTimeout(timeoutId);
-    return response.ok || response.status < 500; // 2xx ou 4xx = online
+    return await withTimeout(checkPanelReachable(automations), 8000);
   } catch {
     return false;
   }
+}
+
+async function checkPanelReachable(
+  automations: Record<string, unknown>,
+): Promise<boolean> {
+  // 1) Token atual → GET leve autenticado confirma que o painel responde.
+  const bearer = String(automations.iptvBearerToken || "")
+    .trim()
+    .replace(/^Bearer\s+/i, "");
+  if (bearer) {
+    try {
+      await uniplayFetch("/users-iptv", bearer, { method: "GET" });
+      return true;
+    } catch {
+      /* token inválido/expirado → tenta relogar para confirmar */
+    }
+  }
+  // 2) Sem token válido → login confirma que o painel está de pé.
+  const panelUser = String(automations.iptvUsername || "").trim();
+  const panelPass = String(automations.iptvPassword || "");
+  if (panelUser && panelPass) {
+    const data = await uniplayFetch("/login", "", {
+      method: "POST",
+      body: JSON.stringify({
+        username: panelUser,
+        password: panelPass,
+        code: "",
+      }),
+    });
+    return Boolean(extractTokenFromLogin(data));
+  }
+  // Sem credenciais → não dá para confirmar; trata como indisponível.
+  return false;
 }
 
 /**
@@ -226,7 +259,7 @@ const DEFAULT_MESSAGES: Record<string, string> = {
   askIntent:
     "Olá! Aqui é o atendimento automático.\n\n" +
     "👤 Usuário: *{user}*\n" +
-    "📅 Vencimento: *{due}*\n\n" +
+    "📅 Vencimento: *{due}* {dueTime}\n\n" +
     "Como posso ajudar?\n\n" +
     "*1* — {renewLabel}\n" +
     "*2* — Falar com nossos atendentes",
@@ -263,7 +296,7 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "✅ Teste liberado!\n\n" +
     "Usuário: *{user}*\n" +
     "Senha: *{password}*\n" +
-    "Validade: *{hours}h*\n\n" +
+    "Validade: *{hours}h* (expira em *{expiresAt}*)\n\n" +
     "DNS: {dns}\n" +
     "M3U: {m3u}",
   testPcReady:
@@ -273,6 +306,7 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "2) Entre com:\n" +
     "Usuário: *{user}*\n" +
     "Senha: *{password}*\n\n" +
+    "⏳ Expira em: *{expiresAt}*\n\n" +
     "Quando quiser assinar, chame de novo por aqui.",
   testPhoneReady:
     "✅ Teste de *{hours}h* no *celular Android*\n\n" +
@@ -282,6 +316,7 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "3) Conecte com:\n" +
     "Usuário: *{user}*\n" +
     "Senha: *{password}*\n\n" +
+    "⏳ Expira em: *{expiresAt}*\n\n" +
     "Quando quiser assinar, chame de novo por aqui.",
   testPhoneIosReady:
     "✅ Teste de *{hours}h* no *iPhone*\n\n" +
@@ -295,6 +330,7 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "• URL / DNS: *{dns}*\n\n" +
     "4) Em *PIN de acesso*, toque em *Skip* se não quiser colocar pin\n\n" +
     "5) Pronto — toque em *Assistir*\n\n" +
+    "⏳ Expira em: *{expiresAt}*\n\n" +
     "Quando quiser assinar, chame de novo por aqui.",
   testAskPhoneOs:
     "Seu celular é *Android* ou *iPhone*?\n\n" +
@@ -327,6 +363,7 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "✅ Teste de *{hours}h* liberado — app *FunPlay*\n\n" +
     "Usuário: *{user}*\n" +
     "Senha: *{password}*\n\n" +
+    "⏳ Expira em: *{expiresAt}*\n\n" +
     "Agora:\n" +
     "1) Baixe o *FunPlay* na loja do aparelho\n" +
     "2) Abra o app — no *canto inferior direito* aparece o *MAC*\n" +
@@ -338,6 +375,7 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "✅ Teste de *{hours}h* liberado — app *Prime IPTV*\n\n" +
     "Usuário: *{user}*\n" +
     "Senha: *{password}*\n\n" +
+    "⏳ Expira em: *{expiresAt}*\n\n" +
     "Agora:\n" +
     "1) Baixe o *Prime IPTV* na loja do aparelho\n" +
     "2) Abra o app — no *canto inferior direito* aparece o *MAC*\n" +
@@ -351,10 +389,11 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "Provedor: *uniplay*\n" +
     "Usuário: *{user}*\n" +
     "Senha: *{password}*\n\n" +
+    "⏳ Expira em: *{expiresAt}*\n\n" +
     "Quando terminar o teste e quiser assinar, é só mandar mensagem de novo por aqui.",
   testMacOk:
     "✅ *Ativado!* MAC *{mac}* no *{app}*.\n\n" +
-    "Seu teste dura *{hours} horas*.\n\n" +
+    "Seu teste dura *{hours} horas* — expira em *{expiresAt}*.\n\n" +
     "Para a lista atualizar na TV:\n\n" +
     "1. No app, vá em *Recarregar* / *Reload*\n" +
     "2. Depois em *Playlist* / *Lista*\n" +
@@ -364,7 +403,7 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "Quando quiser assinar, mande mensagem aqui.",
   testMacOkRoku:
     "✅ *Ativado!* MAC *{mac}* no *{app}*.\n\n" +
-    "Seu teste dura *{hours} horas*.\n\n" +
+    "Seu teste dura *{hours} horas* — expira em *{expiresAt}*.\n\n" +
     "No *Roku* não existe Recarregar/Reload — faça assim:\n\n" +
     "1. Saia do app *por completo* (não deixe aberto em segundo plano)\n" +
     "2. Abra o app de novo\n" +
@@ -503,9 +542,12 @@ function formatDue(value?: string | null) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-/** Extrai hora do vencimento (padrão: 23:59:59) */
+/**
+ * Extrai hora do vencimento. Aceita "2026-09-11 22:58:05" (com espaço) e
+ * "2026-09-11T22:58:05" (ISO do Supabase/PostgREST). Sem hora → 23:59:59.
+ */
 function formatDueTime(value?: string | null) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(String(value || "").trim());
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(String(value || "").trim());
   if (!m) return "23:59:59";
   const h = String(m[4]).padStart(2, "0");
   const min = String(m[5]).padStart(2, "0");
@@ -565,6 +607,66 @@ function isClientStillActive(dueDate?: string | null) {
   return due >= todayYmdBrazil();
 }
 
+/** "DD/MM/YYYY HH:MM:SS" — data + hora (padrão 23:59:59). */
+function formatDueWithTime(value?: string | null) {
+  return `${formatDue(value)} ${formatDueTime(value)}`;
+}
+
+/**
+ * Data+hora de vencimento do teste = agora + horas (fuso do Brasil).
+ * Ex.: "12/08/2026 às 17:30".
+ */
+function testExpiresAt(hours: number): string {
+  const h = Math.max(1, Math.floor(Number(hours) || 1));
+  const d = new Date(Date.now() + h * 3600_000);
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .format(d)
+      .replace(", ", " às ");
+  } catch {
+    return d.toLocaleString("pt-BR", { hour12: false }).replace(", ", " às ");
+  }
+}
+
+/**
+ * Monta a mensagem de teste pronto garantindo a data+hora de vencimento.
+ * Se o template já usar {expiresAt}/{due} (ou disser "expira"), mantém;
+ * senão anexa a linha no final — vale também para textos customizados.
+ */
+function fillTestReady(
+  tpl: string,
+  vars: Record<string, string | number | undefined | null>,
+  hours: number,
+): string {
+  const expiresAt = testExpiresAt(hours);
+  const msg = fill(tpl, { ...vars, expiresAt });
+  if (
+    !tpl.includes("{expiresAt}") &&
+    !tpl.includes("{due}") &&
+    !/expira/i.test(tpl)
+  ) {
+    return `${msg}\n\n⏳ *Expira em:* ${expiresAt}`;
+  }
+  return msg;
+}
+
+/** Novo vencimento (data + hora) após renovar/estender. */
+function nextDueAfterRenewDisplay(
+  currentDue?: string | null,
+  months = 1,
+): string {
+  const ymd = nextDueAfterRenewYmd(currentDue, months);
+  return `${formatDue(ymd)} ${formatDueTime(currentDue)}`;
+}
+
 function clientRenewLabel(dueDate?: string | null) {
   return isClientStillActive(dueDate) ? "Renovar vencimento" : "Renovar";
 }
@@ -587,11 +689,16 @@ function fillClientAskIntent(
     renewKind: clientRenewKind(opts.dueDate),
   });
   if (isClientStillActive(opts.dueDate)) {
-    // Textos antigos salvos com "Renovar" fixo
+    // Textos antigos salvos com "Renovar" fixo → "Renovar vencimento", uma vez só.
+    // Por linha (evita re-aplicar e duplicar "vencimento").
     msg = msg
-      .replace(/\*1\*\s*[—\-–]\s*Renovar\b/gi, `*1* — ${renewLabel}`)
-      .replace(/(^|\n)\s*\*?1\*?\s*[—\-–]\s*Renovar\b/gi, `$1*1* — ${renewLabel}`)
-      .replace(/\*1\*\s+Renovar\b/gi, `*1* ${renewLabel}`);
+      .split("\n")
+      .map((line) => {
+        if (!/^\s*\*?1\*?\s*[—\-–]?\s*Renovar\b/i.test(line)) return line;
+        if (/Renovar\s+vencimento/i.test(line)) return line; // já aplicado
+        return line.replace(/\bRenovar\b/i, renewLabel);
+      })
+      .join("\n");
   }
   return msg;
 }
@@ -603,9 +710,10 @@ function fillClientRenewPix(
 ) {
   const active = isClientStillActive(dueDate);
   const months = Math.max(1, Math.floor(Number(vars.months) || 1));
-  const newDue = formatDue(nextDueAfterRenewYmd(dueDate, months));
+  const newDue = nextDueAfterRenewDisplay(dueDate, months);
   let msg = fill(template, {
     ...vars,
+    due: formatDueWithTime(dueDate),
     newDue,
     dueTime: formatDueTime(dueDate),
     renewLabel: clientRenewLabel(dueDate),
@@ -2025,22 +2133,39 @@ function pickActivatedMonthTemplate(texts: Record<string, string>) {
   return custom;
 }
 
+/** Usa o menu customizado se tiver opções; senão cai no padrão. */
+function pickTestMenu(
+  custom: unknown,
+  fallback: unknown,
+): Record<string, unknown> {
+  const m = custom as { options?: unknown[] } | null | undefined;
+  if (m && typeof m === "object" && Array.isArray(m.options) && m.options.length) {
+    return m as unknown as Record<string, unknown>;
+  }
+  return (fallback as Record<string, unknown>) || {};
+}
+
 function resolveTestFlowFromBot(bot: Record<string, unknown>) {
   const tf = bot?.testFlow as Record<string, unknown> | undefined;
   const deviceMenu = tf?.deviceMenu as { options?: unknown[] } | undefined;
+  const trigger = String(
+    (tf as { triggerPhrase?: string } | null)?.triggerPhrase ||
+      bot?.testTriggerPhrase ||
+      "",
+  ).trim();
   if (
     tf &&
     typeof tf === "object" &&
-    String(tf.triggerPhrase || "").trim() &&
+    trigger &&
     Array.isArray(deviceMenu?.options) &&
     deviceMenu.options.length
   ) {
     return withFreshTestOffer(tf);
   }
   const messages = (bot?.messages || {}) as Record<string, string>;
-  const trigger = String(bot?.testTriggerPhrase || "").trim();
-  if (!String(messages.testAskDevice || "").trim() && !trigger) return null;
-  return {
+  if (!tf || typeof tf !== "object") {
+    if (!String(messages.testAskDevice || "").trim() && !trigger) return null;
+    return {
     triggerPhrase:
       trigger || "Olá quero testar o T&E no meu aparelho.",
     monthPriceBrl:
@@ -2180,6 +2305,41 @@ function resolveTestFlowFromBot(bot: Record<string, unknown>) {
       notConfigured: "Fluxo de teste não configurado.",
     },
   };
+  }
+  // testFlow salvo porém incompleto (ex.: triggerPhrase/deviceMenu/tvMenu vazios —
+  // o app salva assim quando o dono só mexeu em textos/oferta). Completa com os
+  // padrões preservando o que já estava customizado, para o teste funcionar em
+  // todos os modos (TV/PC/celular) e na ativação por MAC.
+  // Base completa via ramo legacy, com trigger garantido (nunca retorna null).
+  const base = resolveTestFlowFromBot({
+    ...bot,
+    testFlow: undefined,
+    testTriggerPhrase:
+      trigger || String(bot?.testTriggerPhrase || "") || "Olá quero testar o T&E no meu aparelho.",
+  }) as Record<string, unknown>;
+  const tfTexts =
+    tf.texts && typeof tf.texts === "object"
+      ? (tf.texts as Record<string, string>)
+      : {};
+  return withFreshTestOffer({
+    ...base,
+    ...tf,
+    triggerPhrase: trigger || String(base.triggerPhrase || ""),
+    monthPriceBrl:
+      Number(tf.monthPriceBrl) > 0 ? Number(tf.monthPriceBrl) : base.monthPriceBrl,
+    deviceMenu: pickTestMenu(tf.deviceMenu, base.deviceMenu),
+    tvMenu: pickTestMenu(tf.tvMenu, base.tvMenu),
+    phoneMenu: pickTestMenu(tf.phoneMenu, base.phoneMenu),
+    appMenus:
+      Array.isArray(tf.appMenus) && (tf.appMenus as unknown[]).length
+        ? tf.appMenus
+        : base.appMenus,
+    offerMenu: pickTestMenu(tf.offerMenu, base.offerMenu),
+    pcLoginUrl: String(tf.pcLoginUrl || base.pcLoginUrl || ""),
+    phoneApkUrl: String(tf.phoneApkUrl || base.phoneApkUrl || ""),
+    phoneIosUrl: String(tf.phoneIosUrl || base.phoneIosUrl || ""),
+    texts: { ...((base.texts as Record<string, string>) || {}), ...tfTexts },
+  });
 }
 
 function pickMacOkTemplate(
@@ -2223,6 +2383,13 @@ Deno.serve(async (req) => {
     const text = extractText(data).trim();
     const mediaKind = detectInboundMedia(data);
     const messageId = extractMessageId(data);
+
+    // Skip grupos — bot só responde em DM privado
+    const remoteJidStr = String(data.key?.remoteJid || data.remoteJid || "").trim();
+    if (remoteJidStr.includes("@g.us")) {
+      return json({ ok: true, skipped: "group" });
+    }
+
     if (!instance || !phone || (!text && !mediaKind)) {
       return json({
         ok: true,
@@ -2764,6 +2931,10 @@ Deno.serve(async (req) => {
       t === "atendente" ||
       t === "atendentes" ||
       (menuAllowsTwoAsAttendant && t === "2") ||
+      // Menus customizados com 3ª opção ("3 — Falar com atendentes")
+      (session.state === "ask_intent" && t === "3") ||
+      // Quem está no menu de problema escolheu 1/2/3 → sempre quer atendente
+      session.state === "ask_problem_kind" ||
       problemKeys.some(
         (k) =>
           k !== "2" && (t === k || (k.length >= 5 && t.includes(k))),
@@ -3143,11 +3314,15 @@ Deno.serve(async (req) => {
       await persistState();
       const isRoku = sess.testTv === "roku";
       await send(
-        fill(pickMacOkTemplate(tfTexts, isRoku), {
-          mac,
-          hours: sess.testHours || testHours,
-          app: app === "fun" ? "FunPlay" : "Prime IPTV",
-        }),
+        fillTestReady(
+          pickMacOkTemplate(tfTexts, isRoku),
+          {
+            mac,
+            hours: sess.testHours || testHours,
+            app: app === "fun" ? "FunPlay" : "Prime IPTV",
+          },
+          Number(sess.testHours) || testHours,
+        ),
       );
       scheduleMacCheckIn(checkInId);
       return json({ ok: true, action: "test_mac_ok" });
@@ -3223,9 +3398,10 @@ Deno.serve(async (req) => {
         };
         await persistState();
         await send(
-          fill(
+          fillTestReady(
             tfTexts.xcloudReady || "XCloud · uniplay · {user} / {password}",
             { user: username, password, hours },
+            hours,
           ),
         );
         await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
@@ -3239,11 +3415,11 @@ Deno.serve(async (req) => {
           ? DEFAULT_MESSAGES.testAppFunReady
           : DEFAULT_MESSAGES.testAppPrimeReady;
       await send(
-        fill(tpl || askMacFallback, {
-          user: username,
-          password,
+        fillTestReady(
+          tpl || askMacFallback,
+          { user: username, password, hours },
           hours,
-        }),
+        ),
       );
       await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
       return json({ ok: true, action: "test_confirm_install" });
@@ -3304,7 +3480,7 @@ Deno.serve(async (req) => {
         String(flowObj?.phoneIosUrl || "").trim() || DEFAULT_PHONE_IOS;
       if (device === "pc") {
         await send(
-          fill(
+          fillTestReady(
             tfTexts.pcReady ||
               "Abra {loginUrl}\nUsuário: *{user}*\nSenha: *{password}*",
             {
@@ -3313,6 +3489,7 @@ Deno.serve(async (req) => {
               hours,
               loginUrl,
             },
+            hours,
           ),
         );
         await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
@@ -3320,7 +3497,7 @@ Deno.serve(async (req) => {
       }
       if (device === "phone_ios") {
         await send(
-          fill(
+          fillTestReady(
             tfTexts.phoneIosReady || DEFAULT_MESSAGES.testPhoneIosReady,
             {
               user: created.username,
@@ -3330,13 +3507,14 @@ Deno.serve(async (req) => {
               dns: dnsSmartersDefault,
               name: clientName,
             },
+            hours,
           ),
         );
         await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
         return json({ ok: true, action: "test_confirm_install" });
       }
       await send(
-        fill(
+        fillTestReady(
           tfTexts.phoneReady || DEFAULT_MESSAGES.testPhoneReady,
           {
             user: created.username,
@@ -3344,6 +3522,7 @@ Deno.serve(async (req) => {
             hours,
             apk: apkUrl,
           },
+          hours,
         ),
       );
       await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
@@ -3632,7 +3811,7 @@ Deno.serve(async (req) => {
       // Pediu atendente → faz health check do painel antes de encaminhar
       if (wantsAttendant) {
         // Health check rápido (sem bloquear)
-        const panelOk = await isPanelHealthy();
+        const panelOk = await isPanelHealthy(automations);
 
         // Mensagem dinâmica baseada no status do painel
         const statusMsg = getPanelStatusMessage(panelOk);
@@ -4132,7 +4311,12 @@ Deno.serve(async (req) => {
 
     // Cliente conhecido
     if (clientItem && String(clientItem.folder_id) !== syncResellersFolderId) {
-      if (session.state !== "ask_intent") {
+      // Só mostra o menu do zero quando a conversa está em repouso (primeira
+      // mensagem ou depois de um PIX). Fluxos em andamento (ask_problem_kind)
+      // NÃO resetam — senão a resposta do menu de problema volta pro início.
+      const isFreshClientSession =
+        !session.state || session.state === "idle";
+      if (isFreshClientSession) {
         sessions[phone] = {
           state: "ask_intent",
           role: "client",
@@ -4196,8 +4380,31 @@ Deno.serve(async (req) => {
 
           // Problema em assistir (painel)
           if (t === "1" || t === "assistir" || t === "consigo") {
-            const panelOk = await isPanelHealthy();
-            const statusMsg = getPanelStatusMessage(panelOk);
+            // Consulta a comunicação com a UniPlay de verdade (via proxy).
+            const panelOk = await isPanelHealthy(automations);
+
+            // Painel fora → informa instabilidade e pede pra aguardar normalizar.
+            if (!panelOk) {
+              sessions[phone] = {
+                state: "idle",
+                role: "client",
+                itemRefId: String(clientItem.id),
+                updatedAt: new Date().toISOString(),
+              };
+              await persistState();
+              await send(getPanelStatusMessage(false));
+              await reportClientProblem(
+                client,
+                userId,
+                phone,
+                String(clientItem.name || clientItem.item_id || ""),
+                "assist",
+              );
+              return json({ ok: true, action: "problem_panel_offline" });
+            }
+
+            // Painel online → transfere para o atendimento humano.
+            const statusMsg = getPanelStatusMessage(true);
             sessions[phone] = {
               state: "human",
               role: "client",

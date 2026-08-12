@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
   emptyWaTestFlow,
+  exampleWaTestFlow,
   normalizeWaTestFlow,
   type WaTestFlowConfig,
 } from "@/lib/waTestFlow";
@@ -110,6 +111,24 @@ const stateDbKey = (userId: string) => `wa_bot_state_user_${userId}`;
 const instanceMapKey = (instanceName: string) =>
   `wa_instance_${instanceName.trim().toLowerCase()}`;
 
+/**
+ * Padrão de atendimento — o mesmo fluxo do dono (já vem configurado para quem
+ * ativa a UniPlay): oferta com preços, menus de aparelho/TV/apps, URLs e textos.
+ */
+function defaultWaTestFlow(): WaTestFlowConfig {
+  const flow = exampleWaTestFlow();
+  return {
+    ...flow,
+    texts: {
+      ...flow.texts,
+      // Fiel ao dono: usa o texto longo de "não configurado" e deixa o
+      // activatedMonth vazio (cai no padrão do webhook, igual ao dono).
+      notConfigured: emptyWaTestFlow().texts.notConfigured,
+      activatedMonth: "",
+    },
+  };
+}
+
 export function defaultWhatsappBotConfig(): WhatsappBotConfig {
   return {
     enabled: false,
@@ -118,7 +137,7 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
     testPcLoginUrl: "",
     testPhoneApkUrl: "",
     testPhoneIosUrl: "",
-    testFlow: emptyWaTestFlow(),
+    testFlow: defaultWaTestFlow(),
     messages: {
       askIntent:
         "Olá! Aqui é o atendimento automático.\n\n" +
