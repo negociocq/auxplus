@@ -584,11 +584,21 @@ export async function releasePaidMpOrder(
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha ao liberar";
+    // Erros permanentes (usuário não encontrado) devem bloquear o pedido
+    const isPermanentError =
+      msg.includes("não encontrado") ||
+      msg.includes("sem ID numérico") ||
+      msg.includes("não vinculado");
+
     persistOrders(
       user.id,
       patchMpOrder(loadMpOrders(user.id), order.id, {
         status: "approved",
         error: msg,
+        ...(isPermanentError && {
+          blocked: true,
+          blockedAt: new Date().toISOString(),
+        }),
       }),
     );
     await releaseClaim(order.id);
