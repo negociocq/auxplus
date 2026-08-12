@@ -1694,7 +1694,7 @@ export default function UniPlay() {
       });
       persistJobs(nextJobs);
       setDetailJobId(job.id);
-      notifyUniplayCreditsChanged({ spent: 1, source: "create_test" });
+      notifyUniplayCreditsChanged({ spent: 0, source: "create_test" });
       void refreshPanelCredits(true);
       toast.success(
         createdUser

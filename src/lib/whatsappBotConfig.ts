@@ -125,8 +125,9 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
         "👤 Usuário: *{user}*\n" +
         "📅 Vencimento: *{due}*\n\n" +
         "Como posso ajudar?\n\n" +
-        "*1* — {renewLabel}\n" +
-        "*2* — Falar com nossos atendentes",
+        "*1* — Renovar acesso\n" +
+        "*2* — Relatar um problema\n" +
+        "*3* — Falar com nossos atendentes",
       askProblemKind:
         "Qual é o problema?\n\n" +
         "*1* — Não consigo assistir\n" +
