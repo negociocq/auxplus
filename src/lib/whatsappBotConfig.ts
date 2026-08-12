@@ -123,7 +123,7 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
       askIntent:
         "Olá! Aqui é o atendimento automático.\n\n" +
         "👤 Usuário: *{user}*\n" +
-        "📅 Vencimento: *{due}*\n\n" +
+        "📅 Vencimento: *{due}* {dueTime}\n\n" +
         "Como posso ajudar?\n\n" +
         "*1* — Renovar acesso\n" +
         "*2* — Relatar um problema\n" +
