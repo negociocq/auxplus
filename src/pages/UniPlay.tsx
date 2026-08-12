@@ -816,7 +816,7 @@ export default function UniPlay() {
         item.itemId,
         oldDue,
         newDue,
-        kind,
+        kind || "48h",
         waSettings.prorrogaMessage
       );
       await sendEvolutionText(runtime, phone, text);
@@ -912,7 +912,7 @@ export default function UniPlay() {
       toast.error(
         err instanceof Error
           ? err.message
-          : `Falha ao prorrogar (${kind})`
+          : "Falha ao prorrogar"
       );
     } finally {
       setBusyId(null);
