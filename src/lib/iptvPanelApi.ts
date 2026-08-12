@@ -1997,6 +1997,27 @@ export const IPTV_RENEW_OPTIONS = [
 export type IptvRenewOption = (typeof IPTV_RENEW_OPTIONS)[number];
 
 /**
+ * Estende cliente com 1 crédito (1 mês) — forma simples.
+ * Uso: await extendClientOneMonth(creds, userId)
+ */
+export async function extendClientOneMonth(
+  creds: IptvPanelCreds,
+  remoteUserId: string | number,
+): Promise<unknown> {
+  try {
+    const result = await renewIptvUser(creds, remoteUserId, {
+      months: 1,
+      credits: 1,
+    });
+    console.log(`[extendClientOneMonth] ✅ Cliente ${remoteUserId} estendido por 1 mês`);
+    return result;
+  } catch (error) {
+    console.error(`[extendClientOneMonth] ❌ Erro ao estender cliente ${remoteUserId}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Renova/estende usuário (Extend Line — consome crédito no painel).
  * No painel: action=1 + credits (= créditos gastos do plano, ex. 6m=5, 12m=10).
  * Algumas builds da UniPlay só aceitam PUT/PATCH em /users-iptv/{id} (POST → 405).
