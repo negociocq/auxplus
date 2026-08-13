@@ -1069,8 +1069,14 @@ async function processApprovedPayment(
     // Para outros erros, marca como erro normal
     let sentNotification = false;
 
-    // Avisa cliente (apenas se ainda não foi notificado)
-    if (!claimed.errorNotificationSent) {
+    // Só envia notificação de erro se passou 30+ segundos desde a primeira tentativa
+    // Isso dá tempo pro MP confirmar e liberar tudo
+    const createdAt = Date.parse(String(claimed.createdAt || "")) || Date.now();
+    const timeSinceCreation = Date.now() - createdAt;
+    const shouldNotifyError = timeSinceCreation > 30 * 1000; // 30 segundos
+
+    // Avisa cliente (apenas se ainda não foi notificado E passou tempo suficiente)
+    if (!claimed.errorNotificationSent && shouldNotifyError) {
       try {
         const phone = String(claimed.phone || "").replace(/\D/g, "");
         if (phone.length >= 10) {
