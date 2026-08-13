@@ -1160,11 +1160,9 @@ function uniplayErrorMessage(status: number, data: unknown, via: string) {
   const msg = String(obj.message || obj.error || "").trim();
   if (msg && !/^UniPlay\s*\d+$/i.test(msg)) return msg;
   if (status === 404 || status === 403) {
-    return (
-      "A UniPlay bloqueou a nuvem (404). Em Admin → Automações, configure o " +
-      "Proxy API (ngrok + ges-proxy) e salve — o WhatsApp usa o mesmo proxy. " +
-      `(via ${via})`
-    );
+    // Retorna marcador genérico que será detectado pelo fluxo de erro amigável
+    // Não expõe detalhes técnicos (Proxy API, ngrok, etc.) ao cliente
+    return "UNIPLAY_CLOUD_BLOCKED";
   }
   return msg || `UniPlay ${status}`;
 }
@@ -1260,7 +1258,7 @@ async function uniplayFetch(
         continue;
       }
       // mensagem já tratada de 404 → próximo candidate
-      if (/bloqueou a nuvem|UniPlay 404/i.test(lastErr.message)) {
+      if (/bloqueou a nuvem|UniPlay 404|UNIPLAY_CLOUD_BLOCKED/i.test(lastErr.message)) {
         continue;
       }
       throw lastErr;
@@ -1269,7 +1267,7 @@ async function uniplayFetch(
   throw (
     lastErr ||
     new Error(
-      "Não foi possível falar com a UniPlay. Configure o Proxy API em Admin → Automações.",
+      "UNIPLAY_CLOUD_BLOCKED",
     )
   );
 }
@@ -4134,8 +4132,8 @@ Deno.serve(async (req) => {
           e instanceof Error
             ? e.message
             : messages.errorGeneric || "Falha no teste";
-        const errMsg = /bloqueou a nuvem|Proxy API|UniPlay 404/i.test(raw)
-          ? "Não consegui liberar o teste agora (painel UniPlay indisponível da nuvem). Peça ao dono para conferir o *Proxy API* em Automações, ou escreva *atendente*."
+        const errMsg = /bloqueou a nuvem|Proxy API|UniPlay 404|UNIPLAY_CLOUD_BLOCKED/i.test(raw)
+          ? "Não consegui liberar o teste agora. Tente de novo em alguns minutos ou escreva *atendente*."
           : raw;
         await send(
           `${errMsg}\n\n_Digite *voltar* para tentar de novo ou *atendente* para falar com a equipe._`,
