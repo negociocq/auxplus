@@ -585,7 +585,7 @@ export function buildTodayQueue(
         queuedKeys.add(key);
         queue.push({
           id: `${item.id}:onday`,
-          itemId: item.id,
+          itemId: item.itemId,
           folderId: item.folderId,
           name: item.name,
           phone,
@@ -611,7 +611,7 @@ export function buildTodayQueue(
           queuedKeys.add(key);
           queue.push({
             id: `${item.id}:before`,
-            itemId: item.id,
+            itemId: item.itemId,
             folderId: item.folderId,
             name: item.name,
             phone,
