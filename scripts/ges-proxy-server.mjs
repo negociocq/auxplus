@@ -16,7 +16,8 @@ const PORT = Number(process.env.GES_PROXY_PORT || 8787);
 const UPSTREAM = "https://gesapioffice.com/api";
 const PANEL_ORIGIN = "https://searchdefense.top";
 
-const server = http.createServer(async (req, res) => {
+/** Aplica headers CORS necessários para Cloudflare Tunnel + navegadores */
+function applyCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
     "Access-Control-Allow-Methods",
@@ -26,6 +27,13 @@ const server = http.createServer(async (req, res) => {
     "Access-Control-Allow-Headers",
     "authorization, content-type, x-iptv-authorization, x-iptv-path, apikey, ngrok-skip-browser-warning",
   );
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
+const server = http.createServer(async (req, res) => {
+  applyCorsHeaders(res);
+
   if (req.method === "OPTIONS") {
     res.writeHead(200);
     res.end("ok");
@@ -94,6 +102,7 @@ const server = http.createServer(async (req, res) => {
     res.end(text);
   } catch (e) {
     // Reaplica CORS (já setado acima) para o browser não mascarar como falha de CORS
+    applyCorsHeaders(res);
     res.writeHead(502, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({

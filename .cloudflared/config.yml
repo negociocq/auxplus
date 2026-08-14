@@ -1,0 +1,10 @@
+tunnel: auxplus-ges-proxy
+credentials-file: /path/to/credentials.json
+
+ingress:
+  - hostname: "*.trycloudflare.com"
+    service: http://127.0.0.1:8787
+    originRequest:
+      http2Origin: false
+      noTLSVerify: false
+  - service: http://127.0.0.1:8787
