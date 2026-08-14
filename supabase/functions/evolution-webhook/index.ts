@@ -3721,6 +3721,7 @@ Deno.serve(async (req) => {
             months: 1,
             credits: 1,
             amount: planAmount,
+            price: planAmount,
             pixCopyPaste: pix.qr_code,
             kind: "test_activate",
             screens,

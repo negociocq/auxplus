@@ -28,6 +28,8 @@ export interface MpRenewOrder {
   months: number;
   credits: number;
   amount: number;
+  /** Preço do plano para test_activate */
+  price?: number;
   pixCopyPaste: string;
   ticketUrl?: string;
   /** Quando o PIX deixa de ser pagável */

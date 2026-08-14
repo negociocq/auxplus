@@ -162,6 +162,7 @@ import {
 } from "@/lib/iptvPanelApi";
 import {
   applyResellerMovementsToFolder,
+  buildPriceMapFromMpOrders,
   syncIptvResellersToFolder,
   syncIptvUsersToFolder,
 } from "@/lib/iptvAutomation";
@@ -175,6 +176,7 @@ import {
   loadSyncExclusionsRemote,
   setFolderSyncDisabled,
 } from "@/lib/syncExclusions";
+import { loadMpOrdersRemote } from "@/lib/mercadoPagoOrders";
 
 type DueMode = "com" | "sem";
 
@@ -476,9 +478,14 @@ export default function FolderItems() {
             iptvBearerToken: issued,
           });
         }
+        // Carrega pedidos para extrair preços de test_activate
+        const orders = await loadMpOrdersRemote(user.id);
+        const priceMap = buildPriceMapFromMpOrders(orders);
+
         setData((prev) => {
           const result = syncIptvUsersToFolder(prev, folder.id, users, {
             excludedUsernames: excluded,
+            priceByUsername: priceMap,
           });
           created = result.created;
           updated = result.updated;

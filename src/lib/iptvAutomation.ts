@@ -480,6 +480,22 @@ export type SyncIptvResult = {
   skipped: number;
 };
 
+/** Extrai preços dos pedidos test_activate por username */
+export function buildPriceMapFromMpOrders(
+  orders: Array<{ kind?: string; panelUsername?: string; price?: number }>,
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const order of orders) {
+    if (order.kind === "test_activate" && order.panelUsername && order.price) {
+      const username = String(order.panelUsername).trim().toLowerCase();
+      if (username && !map.has(username)) {
+        map.set(username, Number(order.price));
+      }
+    }
+  }
+  return map;
+}
+
 /**
  * Sincroniza só a partir dos usuários do UniPlay.
  * - Já existe → atualiza vencimento e nome (nota do painel)
@@ -490,13 +506,19 @@ export function syncIptvUsersToFolder(
   data: AppData,
   folderId: string,
   users: IptvRemoteUser[],
-  opts?: { /** Logins excluídos manualmente — não recriar */ excludedUsernames?: Set<string> },
+  opts?: {
+    /** Logins excluídos manualmente — não recriar */
+    excludedUsernames?: Set<string>;
+    /** Mapa de preços por username (para test_activate) */
+    priceByUsername?: Map<string, number>;
+  },
 ): SyncIptvResult {
   let next = data;
   let created = 0;
   let updated = 0;
   let skipped = 0;
   const excluded = opts?.excludedUsernames;
+  const priceMap = opts?.priceByUsername;
 
   const folderItems = () =>
     next.items.filter((i) => i.folderId === folderId && i.isActive !== false);
@@ -551,7 +573,7 @@ export function syncIptvUsersToFolder(
       // Telefone só preenche se vazio no AuxPlus — nunca sobrescreve o editado
       const remotePhone = String(remote.phone || "").trim();
       if (remotePhone && !(existing.phone || "").trim()) patch.phone = remotePhone;
-      // “Criado em” do painel → só preenche se vazio no AuxPlus (nunca sobrescreve)
+      // "Criado em" do painel → só preenche se vazio no AuxPlus (nunca sobrescreve)
       if (remote.createdAt && !existing.createdAt) {
         patch.createdAt = remote.createdAt.slice(0, 19);
       }
@@ -562,13 +584,14 @@ export function syncIptvUsersToFolder(
       next = updateItem(next, { ...existing, ...patch });
       updated += 1;
     } else {
+      const planPrice = priceMap?.get(username.toLowerCase()) ?? 0;
       next = createItem(next, {
         folderId,
         itemId: username,
         name,
         dueDate,
         phone: String(remote.phone || "").trim(),
-        price: 0,
+        price: planPrice,
         createdAt: remote.createdAt ? remote.createdAt.slice(0, 19) : null,
         isActive: true,
       });
@@ -623,7 +646,7 @@ function buildResellerSyncNotes(
 
 /**
  * Registra recarga de revendedor: +créditos no saldo, soma em
- * créditos comprados (Consultar Anual), PIX no histórico e “Última recarga”.
+ * créditos comprados (Consultar Anual), PIX no histórico e "Última recarga".
  */
 export function applyResellerRechargeToItem(
   item: Item,
@@ -861,7 +884,7 @@ export type SyncPanelTestsResult = {
  * - Remove da aba Testes o que foi apagado no painel (ghost local/WhatsApp)
  * - Mantém só jobs locais ainda em andamento (pending/doing)
  * - Não mexe em jobs de renovação
- * - Nunca promove cliente AuxPlus (excludeUsernames) a “teste”
+ * - Nunca promove cliente AuxPlus (excludeUsernames) a "teste"
  */
 export function mergePanelTestsIntoJobs(
   jobs: IptvJob[],
@@ -880,12 +903,12 @@ export function mergePanelTestsIntoJobs(
   );
 
   /**
-   * Só teste “de verdade” no painel:
+   * Só teste "de verdade" no painel:
    * - flag / test_hours do UniPlay, ou
    * - vida útil curta (horas), ou
-   * - nome “teste” SOMENTE se ainda acaba em poucas horas
+   * - nome "teste" SOMENTE se ainda acaba em poucas horas
    *
-   * Evita plano mensal que ficou com nota “Teste WhatsApp…” após ativar.
+   * Evita plano mensal que ficou com nota "Teste WhatsApp…" após ativar.
    */
   const isTestForSync = (u: IptvRemoteUser) => {
     const username = String(u.username || u.user || "")
@@ -933,7 +956,7 @@ export function mergePanelTestsIntoJobs(
       return true;
     }
 
-    // Nome/nota “teste” só conta se acaba em até 18h (teste ativo)
+    // Nome/nota "teste" só conta se acaba em até 18h (teste ativo)
     const label = [row.nota, row.note, row.obs, row.notes, row.name]
       .map((v) => String(v ?? "").toLowerCase())
       .join(" ");
