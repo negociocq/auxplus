@@ -38,10 +38,10 @@ const DialogContent = React.forwardRef<
         ref={ref}
         className={cn(
           "fixed z-50 grid w-full gap-4 border bg-background p-4 shadow-lg duration-200",
-          // Mobile: sheet inferior que se adapta com o viewport
-          "inset-x-0 bottom-0 max-h-[100dvh] overflow-y-auto rounded-t-2xl",
+          // Mobile: modal no topo fixado, teclado fica embaixo
+          "inset-x-0 top-0 bottom-auto max-h-[80vh] overflow-y-auto rounded-b-2xl",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-          "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+          "data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
           "data-[state=closed]:pointer-events-none",
           "min-h-fit",
           // Desktop: modal centralizado
