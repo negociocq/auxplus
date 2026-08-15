@@ -32,7 +32,6 @@ import { useApp } from "@/context/AppContext";
 import { updateItem } from "@/lib/storage";
 import { useUniplayConnection } from "@/hooks/useUniplayConnection";
 import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
-import { useBackButton } from "@/hooks/useBackButton";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { hasUsedProrrogaInCurrentCycle, extractProrrogaUsage } from "@/lib/itemExtensions";
@@ -547,20 +546,6 @@ export default function UniPlay() {
     !!creditTarget,
     () => setCreditTarget(null),
     "credits-dialog",
-  );
-
-  // Fecha todos os modals abertos quando o botão voltar do celular é pressionado
-  useBackButton(
-    () => !!detailJobId || !!detailClientId || !!renewTargetId || !!renewTargetJobId || testDialogOpen || !!creditTarget,
-    () => {
-      if (detailJobId) setDetailJobId(null);
-      else if (detailClientId) setDetailClientId(null);
-      else if (renewTargetId || renewTargetJobId) {
-        setRenewTargetId(null);
-        setRenewTargetJobId(null);
-      } else if (testDialogOpen) setTestDialogOpen(false);
-      else if (creditTarget) setCreditTarget(null);
-    }
   );
 
   // Busca senha ao carregar usuário em cada formulário (clientes / testes).
