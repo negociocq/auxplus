@@ -6,26 +6,12 @@ import { useEffect, useRef } from "react";
  */
 export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
   const scrollTimeoutRef = useRef<NodeJS.Timeout>();
-  const focusHandlerRef = useRef<((e: FocusEvent) => void) | null>(null);
 
   useEffect(() => {
     if (!ref.current) return;
 
     const element = ref.current;
     let lastViewportHeight = window.visualViewport?.height ?? window.innerHeight;
-
-    // Handler para quando input recebe foco
-    const handleInputFocus = (e: FocusEvent) => {
-      const input = e.target as HTMLElement;
-
-      // Aguarda um pouco para o teclado estar totalmente aberto
-      setTimeout(() => {
-        input.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }, 300);
-    };
 
     const handleViewportChange = () => {
       if (!window.visualViewport) return;
@@ -38,6 +24,13 @@ export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
         // Aguarda um pouco para o teclado estar totalmente aberto
         clearTimeout(scrollTimeoutRef.current);
         scrollTimeoutRef.current = setTimeout(() => {
+          // Move o modal para cima quando o teclado abre
+          const keyboardHeight = heightDiff;
+          const moveUp = Math.min(keyboardHeight + 20, 200);
+
+          // Aplica transform para mover modal para cima
+          element.style.transform = `translateY(-${moveUp}px)`;
+
           // Encontra o input focado e faz scroll para ele
           const input = element.querySelector("input:focus, textarea:focus") as HTMLElement | null;
           if (input) {
@@ -46,28 +39,14 @@ export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
               block: "center",
             });
           }
-
-          // Ajusta padding inferior no modal para dar espaço do teclado
-          const keyboardHeight = heightDiff;
-          element.style.paddingBottom = `${Math.max(
-            keyboardHeight + 20,
-            60
-          )}px`;
         }, 150);
       } else if (heightDiff < -50) {
-        // O teclado fechou - remove o padding
-        element.style.paddingBottom = "";
+        // O teclado fechou - volta à posição original
+        element.style.transform = "translateY(0)";
       }
 
       lastViewportHeight = currentHeight;
     };
-
-    // Adiciona listener para quando input recebe foco
-    focusHandlerRef.current = handleInputFocus;
-    const inputs = element.querySelectorAll("input, textarea, select");
-    inputs.forEach((input) => {
-      input.addEventListener("focus", focusHandlerRef.current!);
-    });
 
     // Event listeners para detectar mudanças no viewport
     window.visualViewport?.addEventListener("resize", handleViewportChange);
@@ -77,19 +56,14 @@ export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
     window.addEventListener("orientationchange", handleViewportChange);
 
     return () => {
-      // Remove event listeners
-      if (focusHandlerRef.current) {
-        inputs.forEach((input) => {
-          input.removeEventListener("focus", focusHandlerRef.current!);
-        });
-      }
       window.visualViewport?.removeEventListener("resize", handleViewportChange);
       window.visualViewport?.removeEventListener("scroll", handleViewportChange);
       window.removeEventListener("orientationchange", handleViewportChange);
       clearTimeout(scrollTimeoutRef.current);
-      element.style.paddingBottom = "";
+      element.style.transform = "translateY(0)";
     };
   }, [ref]);
 }
+
 
 
