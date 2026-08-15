@@ -52,8 +52,8 @@ const DialogContent = React.forwardRef<
         ref={mergedRef}
         className={cn(
           "fixed z-50 grid w-full gap-4 border bg-background p-4 shadow-lg duration-200",
-          // Mobile: sheet inferior com altura limitada e scroll interno
-          "inset-x-0 bottom-0 top-auto max-h-[90vh] overflow-y-auto rounded-t-2xl",
+          // Mobile: ocupa todo o espaço disponível sem fixar no bottom
+          "inset-x-0 inset-y-0 top-auto overflow-y-auto rounded-t-2xl",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
           "data-[state=closed]:pointer-events-none",
