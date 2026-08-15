@@ -349,6 +349,12 @@ export default function LogsPage() {
 
   if (!user) return null;
 
+  // Verifica se tem Mercado Pago E UniPlay vinculados
+  const cfg = loadAutomationsConfig(user.id);
+  const hasMercadoPago = Boolean(cfg.mpAccessToken?.trim());
+  const hasUniplay = Boolean(cfg.iptvBearerToken?.trim() || cfg.iptvUsername?.trim());
+  const showRecargas = hasMercadoPago && hasUniplay;
+
   const movementFiltered = useMemo(() => {
     const qn = normSearch(movementQ);
     return movementRows.filter(
@@ -399,18 +405,20 @@ export default function LogsPage() {
               </Badge>
             ) : null}
           </TabsTrigger>
-          <TabsTrigger value="recargas" className="gap-1.5">
-            <Coins className="h-3.5 w-3.5" />
-            Recargas
-            {movementRows.length > 0 ? (
-              <Badge
-                variant="secondary"
-                className="ml-0.5 h-5 px-1.5 text-[10px]"
-              >
-                {movementRows.length}
-              </Badge>
-            ) : null}
-          </TabsTrigger>
+          {showRecargas && (
+            <TabsTrigger value="recargas" className="gap-1.5">
+              <Coins className="h-3.5 w-3.5" />
+              Recargas
+              {movementRows.length > 0 ? (
+                <Badge
+                  variant="secondary"
+                  className="ml-0.5 h-5 px-1.5 text-[10px]"
+                >
+                  {movementRows.length}
+                </Badge>
+              ) : null}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="renovacoes" className="mt-0 space-y-4">
@@ -695,7 +703,8 @@ export default function LogsPage() {
           </section>
         </TabsContent>
 
-        <TabsContent value="recargas" className="mt-0 space-y-4">
+        {showRecargas && (
+          <TabsContent value="recargas" className="mt-0 space-y-4">
           <section className="ax-surface space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
@@ -784,6 +793,7 @@ export default function LogsPage() {
             )}
           </section>
         </TabsContent>
+        )}
       </Tabs>
 
       <Dialog

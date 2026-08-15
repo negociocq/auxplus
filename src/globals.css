@@ -171,3 +171,45 @@
     fill: hsl(var(--muted-foreground));
   }
 }
+
+/* Mobile keyboard adjustment para modais */
+@layer base {
+  /* No mobile, garante que inputs dentro de modais scrollam quando o teclado abre */
+  @media (max-width: 640px) {
+    /* Permite ao viewport se ajustar com o teclado */
+    html {
+      /* Garante que a altura do viewport se ajusta com o teclado */
+      height: 100%;
+      height: 100dvh;
+      height: 100svh;
+    }
+
+    /* Para elementos com overflow dentro de modais */
+    [class*="overflow-y-auto"] input:focus,
+    [class*="overflow-y-auto"] textarea:focus {
+      /* Força scroll do parent quando o input ganha foco */
+      scroll-behavior: smooth;
+    }
+
+    /* Garante padding suficiente para não ficar embaixo do teclado */
+    input:focus,
+    textarea:focus,
+    select:focus {
+      /* Pequeno delay antes de auto-scroll */
+      scroll-margin: 2rem;
+      scroll-margin-block-end: 2rem;
+    }
+
+    /* Previne que inputs sejam cobertos pelo teclado em modais */
+    @supports (padding: max(0px)) {
+      input,
+      textarea,
+      select {
+        padding-bottom: max(
+          0.5rem,
+          env(safe-area-inset-bottom)
+        );
+      }
+    }
+  }
+}

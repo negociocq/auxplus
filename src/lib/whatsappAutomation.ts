@@ -81,21 +81,23 @@ export function releaseWhatsappSendLock() {
 
 export const DEFAULT_MESSAGE_BEFORE = `{getGreeting}
 
-🔔 Lembrete de vencimento
+🔔 Lembrete da T&E 🔔
 
-Usuário: {item_id}
+👤 Usuário: {phone}
 
-Vai vencer em: {due_date}
+📅 Seu acesso vence em: {due_date}
 
-Renove com antecedência para evitar interrupções.
+Renove antecipadamente para continuar assistindo sem interrupções. 📺✨
 
-Obrigado!`;
+💬 Responda esta mensagem para receber as opções de renovação automática.
+
+Obrigado pela preferência! 💙`;
 
 export const DEFAULT_MESSAGE_ONDAY = `{getGreeting}
 
 🔔 Vencimento hoje
 
-Usuário: {item_id}
+👤 Usuário: {phone}
 
 Vence hoje: {due_date}
 
@@ -107,7 +109,7 @@ export const DEFAULT_PRORROGA_MESSAGE = `{getGreeting}
 
 ✅ Prorrogação concedida!
 
-Usuário: {item_id}
+👤 Usuário: {phone}
 
 Vencimento anterior: {due_date}
 Novo vencimento: {new_due}
@@ -431,15 +433,17 @@ function formatDueForMessage(value: string | null | undefined): string {
 
 export function fillWhatsappTemplate(
   template: string,
-  item: Pick<Item, "name" | "itemId" | "dueDate" | "price">,
+  item: Pick<Item, "name" | "itemId" | "dueDate" | "price" | "phone">,
   kind: "before" | "onday",
 ) {
   const due = formatDueForMessage(item.dueDate);
   const dateText =
     kind === "onday" ? "Vence hoje:" : "Vai vencer em:";
+  const phoneFormatted = item.phone || item.itemId || "";
   return template
     .replace(/\{getGreeting\}/g, greeting())
     .replace(/\{item_id\}/g, item.itemId || "")
+    .replace(/\{phone\}/g, phoneFormatted)
     .replace(/\{name\}/g, item.name || "")
     .replace(/\{dateText\}/g, dateText)
     .replace(/\{due_date\}/g, due)
@@ -537,6 +541,20 @@ export function resolveWhatsappAttempt(
     error: ok ? undefined : error || next[idx].error || "erro",
     sentAt: new Date().toISOString(),
   };
+  saveSendLog(userId, next);
+}
+
+/** Remove um cliente específico do log de envios de hoje (recoloca na fila). */
+export function requeWhatsappItem(
+  userId: string,
+  phone: string,
+  kind: "before" | "onday",
+): void {
+  const day = format(new Date(), "yyyy-MM-dd");
+  const logs = loadSendLog(userId);
+  const next = logs.filter(
+    (l) => !(l.day === day && l.phone === phone && l.kind === kind),
+  );
   saveSendLog(userId, next);
 }
 

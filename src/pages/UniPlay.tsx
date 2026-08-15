@@ -94,6 +94,7 @@ import {
   buildRenewalReceiptMessage,
   createIptvTest,
   deleteSmartApp,
+  deleteIptvUser,
   fetchIptvUserPassword,
   findIptvUserByUsername,
   formatIptvCredits,
@@ -164,6 +165,7 @@ export default function UniPlay() {
     config,
     renewMonths,
     testHours,
+    syncFolderId,
     syncResellersFolderId,
     panelCredits,
     setRenewMonths,
@@ -193,6 +195,9 @@ export default function UniPlay() {
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [testHoursPick, setTestHoursPick] = useState<number>(6);
   const [testNota, setTestNota] = useState("");
+  const [testUsername, setTestUsername] = useState("");
+  const [testPhone, setTestPhone] = useState("");
+  const [testCountryCode, setTestCountryCode] = useState("+55");
   const [syncingTests, setSyncingTests] = useState(false);
   const [jobsQ, setJobsQ] = useState("");
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
@@ -373,15 +378,17 @@ export default function UniPlay() {
   );
 
   const clients = useMemo(() => {
-    const folderIds = new Set(myFolders.map((f) => f.id));
+    // Se não há pasta vinculada, retorna array vazio
+    if (!syncFolderId) return [];
+
     return data.items
-      .filter((i) => folderIds.has(i.folderId) && i.isActive !== false)
+      .filter((i) => i.folderId === syncFolderId && i.isActive !== false)
       .sort((a, b) => {
         const da = a.dueDate || "9999";
         const db = b.dueDate || "9999";
         return da.localeCompare(db);
       });
-  }, [data.items, myFolders]);
+  }, [data.items, syncFolderId]);
 
   /** Ativos: Longe / Perto de vencer (contagem sem vencidos) */
   const activeClients = useMemo(
@@ -499,28 +506,6 @@ export default function UniPlay() {
     [jobs, clientUsernameSet],
   );
 
-  // Limpa fantasmas da aba Testes (cliente AuxPlus ou “teste” que já virou plano longo)
-  useEffect(() => {
-    if (!user) return;
-    const now = Date.now();
-    const next = jobs.filter((j) => {
-      if (j.kind !== "test") return true;
-      const u = j.panelUsername.trim().toLowerCase();
-      if (u && clientUsernameSet.has(u)) return false;
-      // Plano longo gravado como teste (vence daqui a >2 dias) → some da lista
-      if (j.status === "pending" || j.status === "doing") return true;
-      const dueRaw = String(j.dueDate || "").trim();
-      if (dueRaw) {
-        const due = Date.parse(dueRaw.replace(" ", "T"));
-        if (Number.isFinite(due) && due - now > 2 * 86_400_000) return false;
-      }
-      return true;
-    });
-    if (next.length === jobs.length) return;
-    persistJobs(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, clientUsernameSet, jobs.length]);
-
   const detailJob = useMemo(
     () => (detailJobId ? jobs.find((j) => j.id === detailJobId) || null : null),
     [detailJobId, jobs],
@@ -591,6 +576,240 @@ export default function UniPlay() {
   const persistJobs = (next: IptvJob[]) => {
     setJobs(next);
     saveIptvJobs(user.id, next);
+  };
+
+  const runApiTest = async (hours: number, notaRaw?: string, usernameRaw?: string) => {
+    if (!bearer.trim()) {
+      toast.error("Conecte sua conta UniPlay antes");
+      return;
+    }
+    const hoursSafe = Math.max(1, Math.min(6, hours || 6));
+    const nota = (notaRaw ?? testNota).trim();
+    const username = (usernameRaw ?? testUsername).trim();
+    const phone = testPhone.trim() ? `${testCountryCode}${testPhone}` : "";
+    setTestHours(hoursSafe);
+    setTestDialogOpen(false);
+    setTestUsername(""); // Limpa o campo após criar
+    setTestNota(""); // Limpa nota
+    setTestPhone(""); // Limpa telefone
+    const job = createIptvJob({
+      kind: "test",
+      status: "doing",
+      itemRefId: "",
+      clientName: nota || "Teste avulso",
+      panelUsername: username || "",
+      phone: phone,
+      dueDate: null,
+      months: renewMonths,
+      testHours: hoursSafe,
+      note: `API · teste avulso ${hoursSafe}h${nota ? ` · ${nota}` : ""}`,
+    });
+    let nextJobs = [job, ...jobs];
+    persistJobs(nextJobs);
+    setBusyId(job.id);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
+      // Avulso: painel gera usuário/senha novos; nota opcional
+      const result = await createIptvTest(creds, {
+        testHours: hoursSafe,
+        packageId: platform.packageId,
+        nota: nota || undefined,
+        username: username || undefined, // Passa o usuário customizado
+        whatsapp: phone || undefined, // Passa o telefone/WhatsApp
+      });
+      const issued = getLastIssuedIptvToken();
+      if (issued) persistToken(issued);
+
+      let access = result;
+      if (
+        (!access.m3u || !access.dnsSmarters || !access.dueDate) &&
+        access.username
+      ) {
+        try {
+          const remote = await findIptvUserByUsername(creds, access.username);
+          if (remote) {
+            const row = remote as Record<string, unknown>;
+            access = {
+              ...access,
+              m3u:
+                access.m3u ||
+                (typeof row.m3u === "string" ? row.m3u : undefined) ||
+                (typeof row.url_m3u === "string" ? row.url_m3u : undefined),
+              dnsSmarters:
+                access.dnsSmarters ||
+                (typeof row.dns === "string" ? row.dns : undefined) ||
+                (typeof row.server === "string" ? row.server : undefined) ||
+                (typeof row.url === "string" ? row.url : undefined) ||
+                (typeof row.ip === "string" ? row.ip : undefined),
+              password:
+                access.password ||
+                (typeof row.password === "string" ? row.password : undefined),
+              dueDate:
+                access.dueDate ||
+                (typeof row.exp_date === "string" ? row.exp_date : undefined) ||
+                (typeof row.expDate === "string" ? row.expDate : undefined),
+            };
+            access = enrichCreateTestResult({ ...access, raw: remote });
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const createdUser = access.username || "";
+      let password = access.password?.trim() || "";
+      // Último recurso: busca senha na ficha do painel
+      if (!password && createdUser) {
+        try {
+          password = (await fetchIptvUserPassword(creds, createdUser)) || "";
+        } catch {
+          /* ignore */
+        }
+      }
+      const links = resolveTestAccessLinks({
+        username: createdUser,
+        password,
+        m3u: access.m3u,
+        dnsSmarters: access.dnsSmarters,
+        m3uHost: platform.m3uHost,
+        dnsFallback: platform.dnsSmarters,
+      });
+      const testDue = access.dueDate || null;
+      setLastTest({
+        jobId: job.id,
+        username: createdUser,
+        password,
+        m3u: links.m3u,
+        dnsSmarters: links.dnsSmarters,
+        clientName: nota || "Teste avulso",
+        hours: hoursSafe,
+        dueDate: testDue,
+      });
+      if (createdUser) {
+        fillActivateFromLogin("testes", createdUser, password, { silentToast: true });
+      }
+      let remoteId = access.remoteId;
+      if ((remoteId == null || remoteId === "") && createdUser) {
+        try {
+          const remote = await findIptvUserByUsername(creds, createdUser, {
+            exactOnly: true,
+          });
+          remoteId = remote?.id;
+        } catch {
+          /* ignore */
+        }
+      }
+      nextJobs = patchIptvJob(nextJobs, job.id, {
+        status: "done",
+        panelUsername: createdUser || job.panelUsername,
+        panelRemoteId: remoteId,
+        panelPassword: password || undefined,
+        m3u: links.m3u || undefined,
+        dnsSmarters: links.dnsSmarters || undefined,
+        dueDate: testDue,
+        note: createdUser
+          ? `Teste OK · ${createdUser}${password ? ` / ${password}` : ""} · ${hoursSafe}h`
+          : access.message || "Teste criado via API",
+      });
+      persistJobs(nextJobs);
+      setDetailJobId(job.id);
+      notifyUniplayCreditsChanged({ spent: 0, source: "create_test" });
+      void refreshPanelCredits(true);
+      toast.success(
+        createdUser
+          ? `Teste de ${hoursSafe}h criado: ${createdUser}. Preencha o MAC e ative o app.`
+          : `Teste de ${hoursSafe}h criado. Ative o app abaixo.`,
+      );
+    } catch (e) {
+      const nextJob = patchIptvJob(nextJobs, job.id, {
+        status: "failed",
+        note: e instanceof Error ? e.message : "erro",
+      });
+      persistJobs(nextJob);
+      toast.error(e instanceof Error ? e.message : "Falha ao gerar teste");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const recreateTest = async (jobId: string) => {
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job || !job.panelRemoteId) {
+      toast.error("Teste não encontrado ou sem ID no painel");
+      return;
+    }
+
+    setBusyId(job.id);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
+
+      // Recria a linha no painel (mantém vencimento, apenas recria a linha)
+      await recreateIptvLine(creds, job.panelRemoteId);
+
+      // Atualiza o job com nota de sucesso
+      const nextJobs = patchIptvJob(jobs, job.id, {
+        status: "done",
+        note: `${job.note} · linha recriada em ${formatBrDate(new Date())}`,
+      });
+      persistJobs(nextJobs);
+      setDetailJobId(job.id);
+      toast.success(`Linha recriada: ${job.panelUsername}`);
+
+      // Sincroniza imediatamente com o painel para atualizar a lista
+      await refreshPanelTests();
+    } catch (e) {
+      const nextJobs = patchIptvJob(jobs, job.id, {
+        status: "failed",
+        note: `Falha ao recriar: ${e instanceof Error ? e.message : "erro"}`,
+      });
+      persistJobs(nextJobs);
+      toast.error(e instanceof Error ? e.message : "Falha ao recriar linha");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteTest = async (jobId: string) => {
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job || !job.panelRemoteId) {
+      toast.error("Teste não encontrado ou sem ID no painel");
+      return;
+    }
+
+    // Confirma antes de deletar
+    if (!window.confirm(`Deletar teste ${job.panelUsername}? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setBusyId(job.id);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      const creds = { ...panelCreds(), bearerToken: ensured.token };
+
+      // Deleta o usuário no painel
+      await deleteIptvUser(creds, job.panelRemoteId, {
+        username: job.panelUsername,
+        idIptv: job.panelRemoteId,
+      });
+
+      // Remove o job da lista local
+      const nextJobs = jobs.filter((j) => j.id !== jobId);
+      persistJobs(nextJobs);
+      setDetailJobId(null);
+      toast.success(`Teste ${job.panelUsername} deletado`);
+
+      // Sincroniza com o painel para confirmar a deleção
+      await refreshPanelTests();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao deletar teste");
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const refreshResellers = async (silent = false) => {
@@ -916,7 +1135,6 @@ export default function UniPlay() {
       IPTV_RENEW_OPTIONS[0];
     setRenewOption(preferred);
     setRenewTargetId(null);
-    setDetailJobId(null);
     setRenewTargetJobId(jobId);
   };
 
@@ -1562,154 +1780,6 @@ export default function UniPlay() {
       );
     } finally {
       setSyncingTests(false);
-    }
-  };
-
-  const runApiTest = async (hours: number, notaRaw?: string) => {
-    if (!bearer.trim()) {
-      toast.error("Conecte sua conta UniPlay antes");
-      return;
-    }
-    const hoursSafe = Math.max(1, Math.min(6, hours || 6));
-    const nota = (notaRaw ?? testNota).trim();
-    setTestHours(hoursSafe);
-    setTestDialogOpen(false);
-    const job = createIptvJob({
-      kind: "test",
-      status: "doing",
-      itemRefId: "",
-      clientName: nota || "Teste avulso",
-      panelUsername: "",
-      phone: "",
-      dueDate: null,
-      months: renewMonths,
-      testHours: hoursSafe,
-      note: `API · teste avulso ${hoursSafe}h${nota ? ` · ${nota}` : ""}`,
-    });
-    let nextJobs = [job, ...jobs];
-    persistJobs(nextJobs);
-    setBusyId(job.id);
-    try {
-      const ensured = await ensureIptvToken(panelCreds());
-      if (ensured.renewed) persistToken(ensured.token);
-      const creds = { ...panelCreds(), bearerToken: ensured.token };
-      // Avulso: painel gera usuário/senha novos; nota opcional
-      const result = await createIptvTest(creds, {
-        testHours: hoursSafe,
-        packageId: platform.packageId,
-        nota: nota || undefined,
-      });
-      const issued = getLastIssuedIptvToken();
-      if (issued) persistToken(issued);
-
-      let access = result;
-      if (
-        (!access.m3u || !access.dnsSmarters || !access.dueDate) &&
-        access.username
-      ) {
-        try {
-          const remote = await findIptvUserByUsername(creds, access.username);
-          if (remote) {
-            const row = remote as Record<string, unknown>;
-            access = {
-              ...access,
-              m3u:
-                access.m3u ||
-                (typeof row.m3u === "string" ? row.m3u : undefined) ||
-                (typeof row.url_m3u === "string" ? row.url_m3u : undefined),
-              dnsSmarters:
-                access.dnsSmarters ||
-                (typeof row.dns === "string" ? row.dns : undefined) ||
-                (typeof row.server === "string" ? row.server : undefined) ||
-                (typeof row.url === "string" ? row.url : undefined),
-              password:
-                access.password ||
-                (typeof row.password === "string" ? row.password : undefined),
-              dueDate:
-                access.dueDate ||
-                (typeof row.exp_date === "string" ? row.exp_date : undefined) ||
-                (typeof row.expDate === "string" ? row.expDate : undefined),
-            };
-            access = enrichCreateTestResult({ ...access, raw: remote });
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-
-      const createdUser = access.username || "";
-      let password = access.password?.trim() || "";
-      // Último recurso: busca senha na ficha do painel
-      if (!password && createdUser) {
-        try {
-          password = (await fetchIptvUserPassword(creds, createdUser)) || "";
-        } catch {
-          /* ignore */
-        }
-      }
-      const links = resolveTestAccessLinks({
-        username: createdUser,
-        password,
-        m3u: access.m3u,
-        dnsSmarters: access.dnsSmarters,
-        m3uHost: platform.m3uHost,
-        dnsFallback: platform.dnsSmarters,
-      });
-      const testDue = access.dueDate || null;
-      setLastTest({
-        jobId: job.id,
-        username: createdUser,
-        password,
-        m3u: links.m3u,
-        dnsSmarters: links.dnsSmarters,
-        clientName: nota || "Teste avulso",
-        hours: hoursSafe,
-        dueDate: testDue,
-      });
-      if (createdUser) {
-        fillActivateFromLogin("testes", createdUser, password, { silentToast: true });
-      }
-      let remoteId = access.remoteId;
-      if ((remoteId == null || remoteId === "") && createdUser) {
-        try {
-          const remote = await findIptvUserByUsername(creds, createdUser, {
-            exactOnly: true,
-          });
-          remoteId = remote?.id;
-        } catch {
-          /* ignore */
-        }
-      }
-      nextJobs = patchIptvJob(nextJobs, job.id, {
-        status: "done",
-        panelUsername: createdUser || job.panelUsername,
-        panelRemoteId: remoteId,
-        panelPassword: password || undefined,
-        m3u: links.m3u || undefined,
-        dnsSmarters: links.dnsSmarters || undefined,
-        dueDate: testDue,
-        note: createdUser
-          ? `Teste OK · ${createdUser}${password ? ` / ${password}` : ""} · ${hoursSafe}h`
-          : access.message || "Teste criado via API",
-      });
-      persistJobs(nextJobs);
-      setDetailJobId(job.id);
-      notifyUniplayCreditsChanged({ spent: 0, source: "create_test" });
-      void refreshPanelCredits(true);
-      toast.success(
-        createdUser
-          ? `Teste de ${hoursSafe}h criado: ${createdUser}. Preencha o MAC e ative o app.`
-          : `Teste de ${hoursSafe}h criado. Ative o app abaixo.`,
-      );
-    } catch (e) {
-      nextJobs = patchIptvJob(nextJobs, job.id, {
-        status: "failed",
-        note: e instanceof Error ? e.message : "erro",
-      });
-      persistJobs(nextJobs);
-      toast.error(e instanceof Error ? e.message : "Falha ao gerar teste");
-    } finally {
-      setBusyId(null);
     }
   };
 
@@ -2779,6 +2849,16 @@ export default function UniPlay() {
                             Concluí
                           </Button>
                         ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 px-2.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => void deleteTest(job.id)}
+                          disabled={busyId === job.id}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </li>
                   );
@@ -2892,6 +2972,7 @@ export default function UniPlay() {
           if (!open) {
             setRenewTargetId(null);
             setRenewTargetJobId(null);
+            // Mantém a dialog de detalhes aberta
           }
         }}
       >
@@ -2916,7 +2997,11 @@ export default function UniPlay() {
               <>
                 <DialogHeader>
                   <DialogTitle>
-                    {isExtend ? "Estender UniPlay" : "Renovação UniPlay"}
+                    {renewJob
+                      ? "Ativar cliente"
+                      : isExtend
+                        ? "Estender UniPlay"
+                        : "Renovação UniPlay"}
                   </DialogTitle>
                   <DialogDescription>
                     {renewItem || renewJob
@@ -3002,6 +3087,25 @@ export default function UniPlay() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
+            <Label htmlFor="test-username" className="text-xs">
+              Usuário (números - opcional)
+            </Label>
+            <Input
+              id="test-username"
+              value={testUsername}
+              onChange={(e) => {
+                // Aceita apenas números
+                const numOnly = e.target.value.replace(/\D/g, "");
+                setTestUsername(numOnly);
+              }}
+              placeholder="123456"
+              className="h-9"
+              type="number"
+              min="0"
+              inputMode="numeric"
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="test-nota" className="text-xs">
               Nota (nome no painel)
             </Label>
@@ -3012,6 +3116,44 @@ export default function UniPlay() {
               placeholder="Nome do teste"
               className="h-9"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="test-phone" className="text-xs">
+              Número de celular (opcional)
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="test-country"
+                value={testCountryCode}
+                onChange={(e) => {
+                  // Aceita apenas + e números
+                  let value = e.target.value.replace(/[^0-9+]/g, "");
+                  if (value && !value.startsWith("+")) {
+                    value = "+" + value;
+                  }
+                  setTestCountryCode(value || "+55");
+                }}
+                placeholder="+55"
+                className="h-9 w-20"
+                maxLength="4"
+              />
+              <Input
+                id="test-phone"
+                value={testPhone}
+                onChange={(e) => {
+                  const numOnly = e.target.value.replace(/\D/g, "");
+                  setTestPhone(numOnly);
+                }}
+                placeholder="11900000000"
+                className="h-9 flex-1"
+                inputMode="numeric"
+              />
+            </div>
+            {testPhone && (
+              <p className="text-[11px] text-muted-foreground">
+                {testCountryCode} {testPhone.slice(0, 2)}-{testPhone.slice(2)}
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-3 gap-1.5 py-1">
             {IPTV_TEST_HOURS.map((h) => {
@@ -3037,14 +3179,18 @@ export default function UniPlay() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setTestDialogOpen(false)}
+              onClick={() => {
+                setTestDialogOpen(false);
+                setTestUsername("");
+                setTestNota("");
+              }}
             >
               Cancelar
             </Button>
             <Button
               type="button"
               disabled={Boolean(busyId)}
-              onClick={() => void runApiTest(testHoursPick, testNota)}
+              onClick={() => void runApiTest(testHoursPick, testNota, testUsername)}
             >
               {busyId ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -3389,6 +3535,20 @@ export default function UniPlay() {
                 >
                   Fechar
                 </Button>
+                {detailJob.kind === "test" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!bearer.trim() || Boolean(busyId)}
+                    onClick={() => {
+                      void recreateTest(detailJob.id);
+                      setDetailJobId(null);
+                    }}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Recriar linha
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   disabled={
@@ -3404,7 +3564,6 @@ export default function UniPlay() {
                       detailJob.itemRefId
                     ) {
                       openRenewDialog(detailJob.itemRefId);
-                      setDetailJobId(null);
                       return;
                     }
                     openTestRenewDialog(detailJob.id);
@@ -3415,9 +3574,11 @@ export default function UniPlay() {
                   ) : (
                     <RefreshCw className="h-4 w-4" />
                   )}
-                  {isClientStillActive(detailJob.dueDate)
-                    ? "Estender"
-                    : "Renovar"}
+                  {detailJob.kind === "test"
+                    ? "Ativar"
+                    : isClientStillActive(detailJob.dueDate)
+                      ? "Estender"
+                      : "Renovar"}
                 </Button>
               </DialogFooter>
             </>

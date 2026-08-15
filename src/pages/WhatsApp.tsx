@@ -54,6 +54,7 @@ import {
   nextDelayMs,
   releaseWhatsappSendLock,
   resolveWhatsappAttempt,
+  requeWhatsappItem,
   saveSendLog,
   saveWhatsappSettings,
   sendEvolutionText,
@@ -526,6 +527,21 @@ export default function WhatsAppPage() {
                         <span className="text-xs tabular-nums text-muted-foreground">
                           {format(new Date(r.log.sentAt), "HH:mm")}
                         </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          title="Recolocar este cliente na fila para testar"
+                          onClick={() => {
+                            if (!user) return;
+                            requeWhatsappItem(user.id, r.log.phone, r.log.kind);
+                            setLogs(loadSendLog(user.id));
+                            toast.success(`${r.name} recolocado na fila`);
+                          }}
+                        >
+                          Recolocar
+                        </Button>
                       </div>
                     </li>
                   ))}

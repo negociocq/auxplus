@@ -2189,7 +2189,13 @@ export async function deleteIptvUser(
   if (regPassword) body.reg_password = regPassword;
 
   const attempts: Array<() => Promise<unknown>> = [
-    // Formato oficial do painel (sendActionUserIPTV)
+    // Formato oficial do painel com PUT (sendActionUserIPTV)
+    () =>
+      panelFetch(creds, `/users-iptv/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    // Formato POST (fallback para builds antigas)
     () =>
       panelFetch(creds, `/users-iptv/${id}`, {
         method: "POST",
