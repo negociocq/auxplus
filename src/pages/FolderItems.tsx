@@ -1584,13 +1584,13 @@ export default function FolderItems() {
 
       {/* Create / Edit item */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="sm:max-w-md fixed inset-x-0 top-4 bottom-auto max-h-[calc(100vh-2rem)] overflow-y-auto rounded-b-2xl sm:inset-auto sm:left-[50%] sm:top-[50%] sm:bottom-auto sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:max-h-[90vh]">
+        <DialogContent className="sm:max-w-md flex flex-col max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>
               {editing ? "Editar Item" : "Adicionar Novo Item"}
             </DialogTitle>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={onSave}>
+          <form className="space-y-4 overflow-y-auto flex-1 pr-2" onSubmit={onSave}>
             <div className="space-y-2">
               <Label htmlFor="item-user">Usuário</Label>
               <Input

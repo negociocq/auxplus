@@ -37,15 +37,15 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed z-50 grid w-full gap-4 border bg-background p-4 shadow-lg duration-200",
+          "fixed z-50 flex flex-col w-full gap-4 border bg-background p-4 shadow-lg duration-200",
           // Mobile: sheet inferior com altura limitada e scroll interno
-          "inset-x-0 bottom-0 top-auto max-h-[90vh] overflow-y-auto rounded-t-2xl",
+          "inset-x-0 bottom-0 top-auto max-h-[85vh] overflow-y-auto rounded-t-2xl",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
           "data-[state=closed]:pointer-events-none",
           "min-h-fit",
           // Desktop: modal centralizado
-          "sm:inset-auto sm:left-[50%] sm:top-[50%] sm:bottom-auto sm:max-h-[90vh] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:p-6",
+          "sm:inset-auto sm:left-[50%] sm:top-[50%] sm:bottom-auto sm:max-h-[85vh] sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:p-6",
           "sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
           "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%]",
           "sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]",

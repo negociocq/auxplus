@@ -2893,7 +2893,7 @@ export default function UniPlay() {
           if (!open && !addingCredits) setCreditTarget(null);
         }}
       >
-        <DialogContent className="sm:max-w-md fixed inset-x-0 top-0 bottom-auto max-h-[80vh] rounded-b-2xl sm:inset-auto sm:left-[50%] sm:top-[50%] sm:bottom-auto sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Adicionar créditos</DialogTitle>
             <DialogDescription>
