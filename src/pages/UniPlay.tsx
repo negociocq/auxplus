@@ -2429,12 +2429,12 @@ export default function UniPlay() {
                           </p>
                         ) : null}
                       </div>
-                      <div className="flex shrink-0 flex-wrap gap-1">
+                      <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap">
                       <Button
                         type="button"
                         size="sm"
                         variant="secondary"
-                        className="h-8 px-2.5"
+                        className="h-8 px-2.5 flex-1 sm:flex-initial"
                         onClick={() => openClientDetail(item.id)}
                       >
                         Detalhes
@@ -2446,7 +2446,7 @@ export default function UniPlay() {
                               type="button"
                               size="sm"
                               variant="secondary"
-                              className="h-8 px-2.5"
+                              className="h-8 px-2.5 flex-1 sm:flex-initial"
                               disabled={!bearer.trim() || busyId === item.id || hasUsedProrrogaInCurrentCycle(item)}
                             >
                               {busyId === item.id ? (
@@ -2491,7 +2491,7 @@ export default function UniPlay() {
                             type="button"
                             size="sm"
                             variant="secondary"
-                            className="h-8 px-2.5"
+                            className="h-8 px-2.5 flex-1 sm:flex-initial"
                             disabled={!bearer.trim() || busyId === item.id}
                             onClick={() => openRenewDialog(item.id)}
                           >
@@ -2510,7 +2510,7 @@ export default function UniPlay() {
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="h-8 px-2.5"
+                        className="h-8 px-2.5 flex-1 sm:flex-initial"
                         onClick={() => fillActivateFromClient(item.id)}
                       >
                         <Smartphone className="h-3.5 w-3.5" />
