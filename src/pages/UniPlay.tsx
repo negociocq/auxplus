@@ -2431,90 +2431,90 @@ export default function UniPlay() {
                         ) : null}
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 px-2.5"
-                        onClick={() => openClientDetail(item.id)}
-                      >
-                        Detalhes
-                      </Button>
-                      {(() => {
-                        const extend = isClientStillActive(item.dueDate);
-                        return (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="h-8 px-2.5"
-                            disabled={!bearer.trim() || busyId === item.id}
-                            onClick={() => openRenewDialog(item.id)}
-                          >
-                            {busyId === item.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : extend ? (
-                              <CalendarPlus className="h-3.5 w-3.5" />
-                            ) : (
-                              <RefreshCw className="h-3.5 w-3.5" />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="h-8 px-2.5"
+                          onClick={() => openClientDetail(item.id)}
+                        >
+                          Detalhes
+                        </Button>
+                        {(() => {
+                          const extend = isClientStillActive(item.dueDate);
+                          return (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              className="h-8 px-2.5"
+                              disabled={!bearer.trim() || busyId === item.id}
+                              onClick={() => openRenewDialog(item.id)}
+                            >
+                              {busyId === item.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : extend ? (
+                                <CalendarPlus className="h-3.5 w-3.5" />
+                              ) : (
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              )}
+                              <span className="hidden sm:inline ml-1">
+                                {extend ? "Estender" : "Renovar"}
+                              </span>
+                            </Button>
+                          );
+                        })()}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {isClientStillActive(item.dueDate) && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => runProrroga(item.id, "48h")}
+                                  disabled={busyId === item.id || hasUsedProrrogaInCurrentCycle(item)}
+                                >
+                                  <CalendarClock className="h-3.5 w-3.5 mr-2" />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">Prorrogar +48h</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      Confiança ao cliente
+                                    </span>
+                                  </div>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => runProrroga(item.id, "23:59")}
+                                  disabled={busyId === item.id || hasUsedProrrogaInCurrentCycle(item)}
+                                >
+                                  <CalendarClock className="h-3.5 w-3.5 mr-2" />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">Prorrogar até 23:59</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      Mesmo dia do vencimento
+                                    </span>
+                                  </div>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
                             )}
-                            <span className="hidden sm:inline ml-1">
-                              {extend ? "Estender" : "Renovar"}
-                            </span>
-                          </Button>
-                        );
-                      })()}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {isClientStillActive(item.dueDate) && (
-                            <>
-                              <DropdownMenuItem
-                                onClick={() => runProrroga(item.id, "48h")}
-                                disabled={busyId === item.id || hasUsedProrrogaInCurrentCycle(item)}
-                              >
-                                <CalendarClock className="h-3.5 w-3.5 mr-2" />
-                                <div className="flex flex-col">
-                                  <span className="font-medium">Prorrogar +48h</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    Confiança ao cliente
-                                  </span>
-                                </div>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => runProrroga(item.id, "23:59")}
-                                disabled={busyId === item.id || hasUsedProrrogaInCurrentCycle(item)}
-                              >
-                                <CalendarClock className="h-3.5 w-3.5 mr-2" />
-                                <div className="flex flex-col">
-                                  <span className="font-medium">Prorrogar até 23:59</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    Mesmo dia do vencimento
-                                  </span>
-                                </div>
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                            </>
-                          )}
-                          <DropdownMenuItem
-                            onClick={() => fillActivateFromClient(item.id)}
-                          >
-                            <Smartphone className="h-3.5 w-3.5 mr-2" />
-                            Ativar app
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </li>
+                            <DropdownMenuItem
+                              onClick={() => fillActivateFromClient(item.id)}
+                            >
+                              <Smartphone className="h-3.5 w-3.5 mr-2" />
+                              Ativar app
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </li>
                   );
                 })}
               </ul>
