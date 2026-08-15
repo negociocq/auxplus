@@ -37,7 +37,7 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed z-50 flex flex-col w-full border bg-background p-4 shadow-lg duration-200",
+          "fixed z-50 flex flex-col w-full border bg-background shadow-lg duration-200",
           // Mobile: sheet inferior PEQUENO com scroll
           "inset-x-0 bottom-0 top-auto max-h-[70vh] min-h-[200px] overflow-y-auto rounded-t-2xl",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
