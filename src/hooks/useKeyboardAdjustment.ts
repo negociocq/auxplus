@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Hook que ajusta o modal para não ficar coberto pelo teclado no mobile.
+ * Hook que faz o modal subir quando o teclado abre no mobile.
  * Usa visualViewport para detectar a mudança de altura quando o teclado abre.
  */
 export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
@@ -21,28 +21,24 @@ export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
 
       // Se a altura diminuiu significativamente, o teclado abriu
       if (heightDiff > 80) {
-        // Aguarda um pouco para o teclado estar totalmente aberto
         clearTimeout(scrollTimeoutRef.current);
         scrollTimeoutRef.current = setTimeout(() => {
-          // Move o modal para cima quando o teclado abre
-          const keyboardHeight = heightDiff;
-          const moveUp = Math.min(keyboardHeight + 20, 200);
+          // Calcula quanto o modal deve subir
+          const moveUp = Math.min(heightDiff + 40, 300);
+          element.style.bottom = `${moveUp}px`;
 
-          // Aplica transform para mover modal para cima
-          element.style.transform = `translateY(-${moveUp}px)`;
-
-          // Encontra o input focado e faz scroll para ele
+          // Faz scroll para o input focado
           const input = element.querySelector("input:focus, textarea:focus") as HTMLElement | null;
           if (input) {
             input.scrollIntoView({
               behavior: "smooth",
-              block: "center",
+              block: "nearest",
             });
           }
-        }, 150);
+        }, 100);
       } else if (heightDiff < -50) {
         // O teclado fechou - volta à posição original
-        element.style.transform = "translateY(0)";
+        element.style.bottom = "0";
       }
 
       lastViewportHeight = currentHeight;
@@ -60,7 +56,7 @@ export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
       window.visualViewport?.removeEventListener("scroll", handleViewportChange);
       window.removeEventListener("orientationchange", handleViewportChange);
       clearTimeout(scrollTimeoutRef.current);
-      element.style.transform = "translateY(0)";
+      element.style.bottom = "0";
     };
   }, [ref]);
 }
