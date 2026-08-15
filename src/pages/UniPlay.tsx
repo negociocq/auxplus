@@ -33,7 +33,7 @@ import { updateItem } from "@/lib/storage";
 import { useUniplayConnection } from "@/hooks/useUniplayConnection";
 import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { hasUsedProrrogaInCurrentCycle, extractProrrogaUsage } from "@/lib/itemExtensions";
 import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage, ensureIptvToken, recreateIptvLine } from "@/lib/iptvPanelApi";
 import { applyProrrogaToItem } from "@/lib/iptvAutomation";
