@@ -1030,6 +1030,10 @@ export function mergePanelTestsIntoJobs(
       Number.isFinite(testHoursRaw) && testHoursRaw > 0
         ? Math.max(1, Math.min(6, Math.round(testHoursRaw)))
         : 6;
+    // Data de criação do painel UniPlay para ordenação correta
+    const panelCreatedAt = parseIptvExpToDateTime(
+      String(row.created_at ?? row.createdAt ?? row.created ?? ""),
+    );
     const links = resolveTestAccessLinks({
       username,
       password,
@@ -1052,7 +1056,7 @@ export function mergePanelTestsIntoJobs(
     const existing = matchExisting(remote);
     if (existing) {
       usedJobIds.add(existing.id);
-      nextTests.push({
+      const updated_job: IptvJob = {
         ...existing,
         status: existing.status === "failed" ? "done" : existing.status,
         panelUsername: username,
@@ -1067,27 +1071,35 @@ export function mergePanelTestsIntoJobs(
         phone: String(remote.phone || "").trim() || existing.phone,
         note: `UniPlay · ${username}${password ? ` / ${password}` : ""}`,
         updatedAt: new Date().toISOString(),
-      });
+      };
+      // Se createdAt do painel disponível e AuxPlus não tem, usa a do painel
+      if (panelCreatedAt && !existing.createdAt) {
+        updated_job.createdAt = panelCreatedAt.replace(" ", "T");
+      }
+      nextTests.push(updated_job);
       updated += 1;
     } else {
-      nextTests.push(
-        createIptvJob({
-          kind: "test",
-          status: "done",
-          itemRefId: "",
-          clientName,
-          panelUsername: username,
-          panelRemoteId: remote.id,
-          panelPassword: password || undefined,
-          m3u: links.m3u || undefined,
-          dnsSmarters: links.dnsSmarters || undefined,
-          phone: String(remote.phone || "").trim(),
-          dueDate,
-          months: 1,
-          testHours,
-          note: `UniPlay · ${username}${password ? ` / ${password}` : ""}`,
-        }),
-      );
+      const job = createIptvJob({
+        kind: "test",
+        status: "done",
+        itemRefId: "",
+        clientName,
+        panelUsername: username,
+        panelRemoteId: remote.id,
+        panelPassword: password || undefined,
+        m3u: links.m3u || undefined,
+        dnsSmarters: links.dnsSmarters || undefined,
+        phone: String(remote.phone || "").trim(),
+        dueDate,
+        months: 1,
+        testHours,
+        note: `UniPlay · ${username}${password ? ` / ${password}` : ""}`,
+      });
+      // Usa data de criação do painel se disponível, para ordenação correta
+      if (panelCreatedAt) {
+        job.createdAt = panelCreatedAt.replace(" ", "T");
+      }
+      nextTests.push(job);
       created += 1;
     }
   }
