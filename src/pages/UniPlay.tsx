@@ -468,9 +468,6 @@ export default function UniPlay() {
     return jobs
       .filter((j) => {
         if (j.kind !== "test") return false;
-        const u = j.panelUsername.trim().toLowerCase();
-        // Cliente ativo no AuxPlus não aparece em Testes
-        if (u && clientUsernameSet.has(u)) return false;
         // Plano longo (vence daqui a >2 dias) não é teste ativo
         if (j.status !== "pending" && j.status !== "doing") {
           const dueRaw = String(j.dueDate || "").trim();
@@ -498,8 +495,6 @@ export default function UniPlay() {
   }, [jobs, jobsQ, showTestsList, clientUsernameSet]);
   const isRealTestJob = (j: (typeof jobs)[number]) => {
     if (j.kind !== "test") return false;
-    const u = j.panelUsername.trim().toLowerCase();
-    if (u && clientUsernameSet.has(u)) return false;
     if (j.status === "pending" || j.status === "doing") return true;
     const dueRaw = String(j.dueDate || "").trim();
     if (dueRaw) {
