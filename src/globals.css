@@ -184,6 +184,12 @@
       height: 100svh;
     }
 
+    /* Reduz altura do modal no mobile para deixar espaço do teclado */
+    [role="dialog"] {
+      max-height: 85dvh !important;
+      max-height: 85vh !important;
+    }
+
     /* Para elementos com overflow dentro de modais */
     [class*="overflow-y-auto"] input:focus,
     [class*="overflow-y-auto"] textarea:focus {
@@ -213,3 +219,4 @@
     }
   }
 }
+
