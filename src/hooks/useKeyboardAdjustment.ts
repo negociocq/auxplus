@@ -23,22 +23,26 @@ export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
       if (heightDiff > 80) {
         clearTimeout(scrollTimeoutRef.current);
         scrollTimeoutRef.current = setTimeout(() => {
-          // Calcula quanto o modal deve subir
-          const moveUp = Math.min(heightDiff + 40, 300);
-          element.style.bottom = `${moveUp}px`;
+          // Calcula quanto o modal deve subir (move para cima = valor negativo)
+          const moveUp = Math.min(heightDiff + 60, 350);
+          element.style.transform = `translateY(-${moveUp}px)`;
+          element.style.transition = "transform 0.3s ease-out";
 
           // Faz scroll para o input focado
           const input = element.querySelector("input:focus, textarea:focus") as HTMLElement | null;
           if (input) {
-            input.scrollIntoView({
-              behavior: "smooth",
-              block: "nearest",
-            });
+            setTimeout(() => {
+              input.scrollIntoView({
+                behavior: "smooth",
+                block: "nearest",
+              });
+            }, 150);
           }
         }, 100);
       } else if (heightDiff < -50) {
         // O teclado fechou - volta à posição original
-        element.style.bottom = "0";
+        element.style.transform = "translateY(0)";
+        element.style.transition = "transform 0.3s ease-out";
       }
 
       lastViewportHeight = currentHeight;
@@ -56,7 +60,8 @@ export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
       window.visualViewport?.removeEventListener("scroll", handleViewportChange);
       window.removeEventListener("orientationchange", handleViewportChange);
       clearTimeout(scrollTimeoutRef.current);
-      element.style.bottom = "0";
+      element.style.transform = "translateY(0)";
+      element.style.transition = "";
     };
   }, [ref]);
 }
