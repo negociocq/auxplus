@@ -32,6 +32,7 @@ import { useApp } from "@/context/AppContext";
 import { updateItem } from "@/lib/storage";
 import { useUniplayConnection } from "@/hooks/useUniplayConnection";
 import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { hasUsedProrrogaInCurrentCycle, extractProrrogaUsage } from "@/lib/itemExtensions";
@@ -547,6 +548,16 @@ export default function UniPlay() {
     () => setCreditTarget(null),
     "credits-dialog",
   );
+
+  // Hooks para fechar modals com botão voltar do celular
+  useModalBackButton(!!detailJobId, () => setDetailJobId(null));
+  useModalBackButton(!!detailClientId, () => setDetailClientId(null));
+  useModalBackButton(!!renewTargetId || !!renewTargetJobId, () => {
+    setRenewTargetId(null);
+    setRenewTargetJobId(null);
+  });
+  useModalBackButton(testDialogOpen, () => setTestDialogOpen(false));
+  useModalBackButton(!!creditTarget, () => setCreditTarget(null));
 
   // Busca senha ao carregar usuário em cada formulário (clientes / testes).
   // Antes dos guards: hook sempre roda, em toda renderização.

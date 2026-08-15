@@ -58,6 +58,7 @@ import {
 } from "@/lib/format";
 import { normSearch } from "@/lib/utils";
 import { useHideBalance } from "@/hooks/useHideBalance";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 import {
   annualPaymentBalance,
   getRecordedPayments,
@@ -337,6 +338,13 @@ export default function FolderItems() {
   const [movementsOpen, setMovementsOpen] = useState(false);
   const [movementsUsername, setMovementsUsername] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Hooks para fechar modals com botão voltar do celular
+  useModalBackButton(formOpen, () => setFormOpen(false));
+  useModalBackButton(settingsOpen, () => setSettingsOpen(false));
+  useModalBackButton(whatsOpen, () => setWhatsOpen(false));
+  useModalBackButton(moveOpen, () => setMoveOpen(false));
+  useModalBackButton(movementsOpen, () => setMovementsOpen(false));
 
   const folder = data.folders.find(
     (f) => f.id === folderId && f.userId === user?.id,
