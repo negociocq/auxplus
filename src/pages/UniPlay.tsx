@@ -485,11 +485,14 @@ export default function UniPlay() {
       })
       .slice()
       .sort((a, b) => {
-        // Ordena por createdAt (mais recentes em cima), depois por updatedAt
-        const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        if (aCreated !== bCreated) return bCreated - aCreated;
-        return b.updatedAt.localeCompare(a.updatedAt);
+        // Ordena por createdAt numérico (mais recentes em cima)
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        // Se mesmo createdAt, ordena por updatedAt (mais recentes em cima)
+        if (aTime === bTime) {
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        }
+        return bTime - aTime; // Mais recentes em cima
       })
       .slice(0, showTestsList && term.length < 2 ? 100 : 50);
   }, [jobs, jobsQ, showTestsList, clientUsernameSet]);
