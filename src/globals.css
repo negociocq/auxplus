@@ -174,49 +174,44 @@
 
 /* Mobile keyboard adjustment para modais */
 @layer base {
-  /* No mobile, garante que inputs dentro de modais scrollam quando o teclado abre */
+  /* No mobile, garante que modais se comportam bem com o teclado */
   @media (max-width: 640px) {
-    /* Permite ao viewport se ajustar com o teclado */
     html {
-      /* Garante que a altura do viewport se ajusta com o teclado */
       height: 100%;
       height: 100dvh;
       height: 100svh;
     }
 
-    /* Reduz altura do modal no mobile para deixar espaço do teclado */
+    /* Modal scrollável que se adapta ao viewport */
     [role="dialog"] {
-      max-height: 85dvh !important;
-      max-height: 85vh !important;
+      /* Usa dynamic viewport height para se adaptar com o teclado */
+      max-height: 100dvh;
+      max-height: 100svh;
+      height: auto;
+      overflow: visible;
     }
 
-    /* Para elementos com overflow dentro de modais */
-    [class*="overflow-y-auto"] input:focus,
-    [class*="overflow-y-auto"] textarea:focus {
-      /* Força scroll do parent quando o input ganha foco */
-      scroll-behavior: smooth;
+    /* Container interno do modal deve scrollar */
+    [role="dialog"] > div {
+      overflow-y: auto;
+      max-height: inherit;
     }
 
-    /* Garante padding suficiente para não ficar embaixo do teclado */
+    /* Inputs dentro do modal ficam visíveis */
     input:focus,
     textarea:focus,
     select:focus {
-      /* Pequeno delay antes de auto-scroll */
-      scroll-margin: 2rem;
-      scroll-margin-block-end: 2rem;
+      scroll-margin: 1rem;
+      scroll-margin-block-end: 1rem;
     }
 
-    /* Previne que inputs sejam cobertos pelo teclado em modais */
-    @supports (padding: max(0px)) {
-      input,
-      textarea,
-      select {
-        padding-bottom: max(
-          0.5rem,
-          env(safe-area-inset-bottom)
-        );
+    /* Previne que o modal seja muito grande quando o teclado abre */
+    @supports (max-height: 100dvh) {
+      [role="dialog"] {
+        max-height: 100dvh;
       }
     }
   }
 }
+
 

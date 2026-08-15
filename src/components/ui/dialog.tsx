@@ -3,7 +3,6 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useKeyboardAdjustment } from "@/hooks/useKeyboardAdjustment";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -32,28 +31,15 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
-  const contentRef = React.useRef<HTMLDivElement>(null);
-  const mergedRef = React.useCallback(
-    (node: HTMLDivElement | null) => {
-      contentRef.current = node;
-      if (typeof ref === "function") ref(node);
-      else if (ref) ref.current = node;
-    },
-    [ref]
-  );
-
-  // Aplica ajuste de teclado no mobile
-  useKeyboardAdjustment(contentRef);
-
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
-        ref={mergedRef}
+        ref={ref}
         className={cn(
           "fixed z-50 grid w-full gap-4 border bg-background p-4 shadow-lg duration-200",
-          // Mobile: ocupa todo o espaço disponível sem fixar no bottom
-          "inset-x-0 inset-y-0 top-auto overflow-y-auto rounded-t-2xl",
+          // Mobile: sheet inferior que se adapta com o viewport
+          "inset-x-0 bottom-0 max-h-[100dvh] overflow-y-auto rounded-t-2xl",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
           "data-[state=closed]:pointer-events-none",
