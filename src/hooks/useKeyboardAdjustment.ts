@@ -24,40 +24,25 @@ export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
         // Aguarda um pouco para o teclado estar totalmente aberto
         clearTimeout(scrollTimeoutRef.current);
         scrollTimeoutRef.current = setTimeout(() => {
-          // Calcula o espaço disponível após o teclado
-          const keyboardHeight = heightDiff;
-          const viewportTop = window.visualViewport?.offsetTop ?? 0;
-
           // Foca no input dentro do modal para scroll automático
-          const input = element.querySelector("input:focus, textarea:focus");
+          const input = element.querySelector("input:focus, textarea:focus") as HTMLElement | null;
           if (input) {
             input.scrollIntoView({
               behavior: "smooth",
-              block: "nearest",
+              block: "center",
             });
           }
 
-          // Ajusta padding inferior para dar espaço do teclado
-          const scrollableArea = element.closest(
-            '[class*="overflow-y-auto"], [class*="max-h"]'
-          ) as HTMLElement | null;
-
-          if (scrollableArea) {
-            scrollableArea.style.paddingBottom = `${Math.max(
-              keyboardHeight + 20,
-              40
-            )}px`;
-          }
+          // Ajusta padding inferior no modal para dar espaço do teclado
+          const keyboardHeight = heightDiff;
+          element.style.paddingBottom = `${Math.max(
+            keyboardHeight + 20,
+            40
+          )}px`;
         }, 100);
       } else if (heightDiff < -50) {
-        // O teclado fechou
-        const scrollableArea = element.closest(
-          '[class*="overflow-y-auto"], [class*="max-h"]'
-        ) as HTMLElement | null;
-
-        if (scrollableArea) {
-          scrollableArea.style.paddingBottom = "";
-        }
+        // O teclado fechou - remove o padding
+        element.style.paddingBottom = "";
       }
 
       lastViewportHeight = currentHeight;
@@ -81,6 +66,8 @@ export function useKeyboardAdjustment(ref: React.RefObject<HTMLElement>) {
       );
       window.removeEventListener("orientationchange", handleViewportChange);
       clearTimeout(scrollTimeoutRef.current);
+      element.style.paddingBottom = "";
     };
   }, [ref]);
 }
+
