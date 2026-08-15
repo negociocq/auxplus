@@ -2895,37 +2895,33 @@ export default function UniPlay() {
               <span className="font-medium text-foreground">
                 {creditTarget?.name || creditTarget?.username || "revendedor"}
               </span>
+              . A UniPlay não aceita menos de {IPTV_RESELLER_CREDITS_MIN}.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              A UniPlay não aceita menos de {IPTV_RESELLER_CREDITS_MIN}.
-            </p>
+          <div className="space-y-3 px-1">
             <div className="space-y-2">
               <Label htmlFor="reseller-credits-amount">Quantidade</Label>
-              <div className="max-w-xs">
-                <Input
-                  id="reseller-credits-amount"
-                  type="number"
-                  min={IPTV_RESELLER_CREDITS_MIN}
-                  step={1}
-                  inputMode="numeric"
-                  value={creditAmount}
-                  onChange={(e) => {
-                    const raw = e.target.value.replace(/[^\d]/g, "");
-                    setCreditAmount(raw);
-                  }}
-                  onBlur={() => {
-                    const n = Math.floor(Number(creditAmount));
-                    if (!Number.isFinite(n) || n < IPTV_RESELLER_CREDITS_MIN) {
-                      setCreditAmount(String(IPTV_RESELLER_CREDITS_MIN));
-                    } else {
-                      setCreditAmount(String(n));
-                    }
-                  }}
-                  autoComplete="off"
-                />
-              </div>
+              <Input
+                id="reseller-credits-amount"
+                type="number"
+                min={IPTV_RESELLER_CREDITS_MIN}
+                step={1}
+                inputMode="numeric"
+                value={creditAmount}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^\d]/g, "");
+                  setCreditAmount(raw);
+                }}
+                onBlur={() => {
+                  const n = Math.floor(Number(creditAmount));
+                  if (!Number.isFinite(n) || n < IPTV_RESELLER_CREDITS_MIN) {
+                    setCreditAmount(String(IPTV_RESELLER_CREDITS_MIN));
+                  } else {
+                    setCreditAmount(String(n));
+                  }
+                }}
+                autoComplete="off"
+              />
               {creditAmount !== "" && !creditAmountValid ? (
                 <p className="text-xs font-medium text-destructive">
                   Não pode menos de {IPTV_RESELLER_CREDITS_MIN}. Use{" "}
@@ -2933,7 +2929,7 @@ export default function UniPlay() {
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Seu saldo:{" "}
+                  Somente {IPTV_RESELLER_CREDITS_MIN} ou mais. Seu saldo:{" "}
                   {panelCredits == null
                     ? "—"
                     : maskNum(formatIptvCredits(panelCredits))}
