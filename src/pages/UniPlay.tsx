@@ -525,7 +525,7 @@ export default function UniPlay() {
     "client-detail",
   );
   useDialogHistoryBack(
-    !!renewTargetId || !!renewTargetJobId,
+    (!!renewTargetId || !!renewTargetJobId) && !detailJobId,
     () => {
       setRenewTargetId(null);
       setRenewTargetJobId(null);
