@@ -1071,11 +1071,11 @@ export function mergePanelTestsIntoJobs(
         phone: String(remote.phone || "").trim() || existing.phone,
         note: `UniPlay · ${username}${password ? ` / ${password}` : ""}`,
         updatedAt: new Date().toISOString(),
+        // Sempre sincroniza createdAt com o painel para ordenação correta
+        createdAt: panelCreatedAt
+          ? panelCreatedAt.replace(" ", "T")
+          : existing.createdAt,
       };
-      // Se createdAt do painel disponível e AuxPlus não tem, usa a do painel
-      if (panelCreatedAt && !existing.createdAt) {
-        updated_job.createdAt = panelCreatedAt.replace(" ", "T");
-      }
       nextTests.push(updated_job);
       updated += 1;
     } else {
