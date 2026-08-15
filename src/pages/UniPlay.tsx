@@ -484,7 +484,13 @@ export default function UniPlay() {
         return term.length < 2 || jobMatchesQuery(j, jobsQ);
       })
       .slice()
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .sort((a, b) => {
+        // Ordena por createdAt (mais recentes em cima), depois por updatedAt
+        const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (aCreated !== bCreated) return bCreated - aCreated;
+        return b.updatedAt.localeCompare(a.updatedAt);
+      })
       .slice(0, showTestsList && term.length < 2 ? 100 : 50);
   }, [jobs, jobsQ, showTestsList, clientUsernameSet]);
   const isRealTestJob = (j: (typeof jobs)[number]) => {

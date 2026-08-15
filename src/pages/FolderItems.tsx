@@ -1584,7 +1584,7 @@ export default function FolderItems() {
 
       {/* Create / Edit item */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="sm:max-w-md overflow-y-auto max-h-[100vh]">
           <DialogHeader>
             <DialogTitle>
               {editing ? "Editar Item" : "Adicionar Novo Item"}
