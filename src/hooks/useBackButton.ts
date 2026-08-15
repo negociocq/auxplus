@@ -1,26 +1,35 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * Hook que intercepta o botão voltar do celular
- * Quando pressionado, executa a callback fornecida
- * Útil para fechar modals/dialogs no mobile
+ * Monitora mudanças no histórico e executa callback quando modal está aberto
+ * Se não houver modal, permite navegação normal
  */
-export function useBackButton(callback: () => void) {
+export function useBackButton(shouldIntercept: () => boolean, callback: () => void) {
+  const historyLengthRef = useRef(window.history.length);
+
   useEffect(() => {
-    const handleBackButton = (event: PopStateEvent) => {
-      event.preventDefault();
-      callback();
-      // Mantém a entrada no histórico
+    const handlePopState = () => {
+      if (shouldIntercept()) {
+        // Modal está aberto - fecha sem navegar
+        callback();
+        // Re-adiciona a entrada no histórico
+        window.history.pushState(null, "", window.location.href);
+      }
+      // Se não há modal, deixa a navegação acontecer normalmente
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [shouldIntercept, callback]);
+
+  // Adiciona entrada ao histórico quando modal abre
+  useEffect(() => {
+    if (shouldIntercept()) {
       window.history.pushState(null, "", window.location.href);
-    };
-
-    // Adiciona uma entrada ao histórico quando o componente monta
-    window.history.pushState(null, "", window.location.href);
-
-    window.addEventListener("popstate", handleBackButton);
-
-    return () => {
-      window.removeEventListener("popstate", handleBackButton);
-    };
-  }, [callback]);
+      historyLengthRef.current = window.history.length;
+    }
+  }, [shouldIntercept]);
 }
+
+

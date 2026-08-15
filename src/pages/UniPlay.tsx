@@ -550,15 +550,18 @@ export default function UniPlay() {
   );
 
   // Fecha todos os modals abertos quando o botão voltar do celular é pressionado
-  useBackButton(() => {
-    if (detailJobId) setDetailJobId(null);
-    else if (detailClientId) setDetailClientId(null);
-    else if (renewTargetId || renewTargetJobId) {
-      setRenewTargetId(null);
-      setRenewTargetJobId(null);
-    } else if (testDialogOpen) setTestDialogOpen(false);
-    else if (creditTarget) setCreditTarget(null);
-  });
+  useBackButton(
+    () => !!detailJobId || !!detailClientId || !!renewTargetId || !!renewTargetJobId || testDialogOpen || !!creditTarget,
+    () => {
+      if (detailJobId) setDetailJobId(null);
+      else if (detailClientId) setDetailClientId(null);
+      else if (renewTargetId || renewTargetJobId) {
+        setRenewTargetId(null);
+        setRenewTargetJobId(null);
+      } else if (testDialogOpen) setTestDialogOpen(false);
+      else if (creditTarget) setCreditTarget(null);
+    }
+  );
 
   // Busca senha ao carregar usuário em cada formulário (clientes / testes).
   // Antes dos guards: hook sempre roda, em toda renderização.
