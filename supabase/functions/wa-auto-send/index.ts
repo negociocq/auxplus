@@ -114,27 +114,31 @@ interface QueueItem {
 
 const DEFAULT_MESSAGE_BEFORE = `{getGreeting}
 
-🔔 Lembrete de vencimento
+🔔 *Lembrete da T&E* 🔔
 
-Usuário: {item_id}
+👤 *Usuário:* \`{item_id}\`
 
-Vai vencer em: {due_date}
+📅 *Seu acesso vence em:* *{due_date}*
 
-Renove com antecedência para evitar interrupções.
+Renove antecipadamente para continuar assistindo *sem interrupções*. 📺✨
 
-Obrigado!`;
+💬 *Responda esta mensagem* para receber as opções de renovação automática.
+
+Obrigado pela preferência! 💙`;
 
 const DEFAULT_MESSAGE_ONDAY = `{getGreeting}
 
-🔔 Vencimento hoje
+⚠️ *Seu acesso vence hoje!* ⚠️
 
-Usuário: {item_id}
+👤 *Usuário:* \`{item_id}\`
 
-Vence hoje: {due_date}
+🕒 *Vencimento:* *{due_date}*
 
-Evite bloqueios — renove o quanto antes.
+Para evitar a interrupção do serviço, faça sua renovação agora. 📺✨
 
-Obrigado!`;
+💬 *Responda esta mensagem* para renovar automaticamente.
+
+Obrigado pela preferência! 💙`;
 
 function defaultSettings(): WaSettings {
   return {
