@@ -292,6 +292,13 @@ function buildTodayQueue(
       .map((l) => `${l.phone}:${l.kind}`),
   );
 
+  // Rastreia quais telefones já foram notificados como "onday" em qualquer dia anterior
+  const alreadyNotifiedOnday = new Set(
+    alreadySent
+      .filter((l) => l.kind === "onday")
+      .map((l) => l.phone),
+  );
+
   const queue: QueueItem[] = [];
   const queuedKeys = new Set<string>();
 
@@ -316,19 +323,33 @@ function buildTodayQueue(
 
     if (settings.sendOnDay && dueKey === todayKey) {
       const key = `${phone}:onday`;
-      if (!sentKeys.has(key) && !queuedKeys.has(key)) {
-        queuedKeys.add(key);
-        queue.push({
-          id: `${itemId}:onday`,
-          itemId,
-          folderId: String(item.folder_id),
-          name,
-          phone,
-          dueDate: dueKey,
-          kind: "onday",
-          message: fillWhatsappTemplate(settings.messageOnDay, row, "onday"),
-          scheduledAt,
+      // Não enviar se já foi notificado como "onday" em qualquer dia anterior
+      if (!sentKeys.has(key) && !queuedKeys.has(key) && !alreadyNotifiedOnday.has(phone)) {
+        // Verifica se há um item mais recente do mesmo telefone com vencimento futuro
+        const hasNewerItem = myItems.some((other) => {
+          if (other.phone !== item.phone) return false;
+          if (String(other.id) === String(item.id)) return false;
+          if (other.is_active === false) return false;
+          const otherDue = ymdOnly(other.due_date);
+          if (!otherDue) return false;
+          // Se há item com vencimento DEPOIS de hoje, ignora o antigo
+          return otherDue > todayKey;
         });
+
+        if (!hasNewerItem) {
+          queuedKeys.add(key);
+          queue.push({
+            id: `${itemId}:onday`,
+            itemId,
+            folderId: String(item.folder_id),
+            name,
+            phone,
+            dueDate: dueKey,
+            kind: "onday",
+            message: fillWhatsappTemplate(settings.messageOnDay, row, "onday"),
+            scheduledAt,
+          });
+        }
       }
     }
 
