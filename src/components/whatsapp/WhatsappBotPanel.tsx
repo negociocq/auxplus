@@ -3,7 +3,6 @@ import {
   Loader2,
   Save,
   Bot,
-  UserRound,
   Power,
   Users,
   Store,
@@ -122,10 +121,6 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
     }
   }, [uniplayOn, botTab]);
 
-  const pausedPhones = Object.entries(state.humanPaused)
-    .filter(([, v]) => v)
-    .map(([phone]) => phone);
-
   const setAutoAtendimento = async (on: boolean) => {
     if (!user) return;
     setToggling(true);
@@ -161,24 +156,6 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
     } finally {
       setSaving(false);
     }
-  };
-
-  const endHuman = async (phone: string) => {
-    if (!user) return;
-    const next: WaBotStateStore = {
-      ...state,
-      humanPaused: { ...state.humanPaused, [phone]: false },
-      sessions: {
-        ...state.sessions,
-        [phone]: {
-          state: "idle",
-          updatedAt: new Date().toISOString(),
-        },
-      },
-    };
-    setState(next);
-    await saveWaBotStateRemote(user.id, next);
-    toast.success(`Bot reativado para ${phone}`);
   };
 
   const resetBotConfig = async () => {
@@ -270,11 +247,6 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
           <TabsTrigger value="atendimento" className="gap-1.5">
             <Headset className="h-3.5 w-3.5" />
             Atendimento
-            {pausedPhones.length > 0 ? (
-              <Badge variant="secondary" className="ml-0.5 h-5 px-1.5 text-[10px]">
-                {pausedPhones.length}
-              </Badge>
-            ) : null}
           </TabsTrigger>
           <TabsTrigger value="clientes" className="gap-1.5">
             <Users className="h-3.5 w-3.5" />
@@ -303,71 +275,21 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
             <p className="text-sm text-muted-foreground">
               {uniplayOn
                 ? "Clientes e revendedores cadastrados: o bot responde. Número desconhecido: só cria teste se enviarem *teste*."
-                : "Clientes cadastrados: o bot responde renovação. Revendedores e testes só com UniPlay conectada em Conexões."}{" "}
-              No chat da pessoa, digite{" "}
-              <span className="font-medium text-foreground">“assumir”</span>{" "}
-              — o bot avisa que virou atendimento humano e fica pausado. Quando
-              terminar, digite{" "}
-              <span className="font-medium text-foreground">
-                “{cfg.endHumanPhrase}”
-              </span>{" "}
-              — o bot avisa e volta a responder.
-              {uniplayOn ? (
-                <>
-                  {" "}
-                  Quem já fez o teste não consegue outro — digite{" "}
-                  <span className="font-medium text-foreground">
-                    “liberar teste”
-                  </span>{" "}
-                  nesse chat para permitir de novo.
-                </>
-              ) : null}
+                : "Clientes cadastrados: o bot responde renovação. Revendedores e testes só com UniPlay conectada em Conexões."}
             </p>
-          </section>
-
-          <section className="ax-surface space-y-3 p-4">
-            <h3 className="text-sm font-semibold">Frase para encerrar</h3>
-            <div className="space-y-2">
-              <Label className="text-xs">
-                Encerrar atendimento (atendentes)
-              </Label>
-              <Input
-                value={cfg.endHumanPhrase}
-                onChange={(e) =>
-                  setCfg((p) => ({ ...p, endHumanPhrase: e.target.value }))
-                }
-              />
-              <p className="text-[11px] text-muted-foreground">
-                No chat:{" "}
-                <span className="font-medium text-foreground">assumir</span>{" "}
-                (você atende) ·{" "}
-                <span className="font-medium text-foreground">
-                  {cfg.endHumanPhrase || "atendimento encerrado"}
-                </span>{" "}
-                (bot volta) ·{" "}
-                <span className="font-medium text-foreground">
-                  liberar teste
-                </span>{" "}
-                (permite novo teste).
-              </p>
-            </div>
           </section>
 
           <section className="ax-surface space-y-3 p-4">
             <div>
               <h3 className="text-sm font-semibold">Mensagens</h3>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Textos usados quando o contato pede nossos atendentes.
+                Textos usados no autoatendimento.
               </p>
             </div>
             <MessageFields
               cfg={cfg}
               setCfg={setCfg}
               fields={[
-                ["problemHuman", "Passou para atendentes"],
-                ["humanAssumed", "Você digitou assumir"],
-                ["humanBusy", "Com atendentes (cliente manda msg)"],
-                ["humanEnded", "Atendimento encerrado"],
                 ["pixAlreadyOpen", "PIX já existe"],
                 ["errorGeneric", "Erro genérico"],
               ]}
@@ -387,41 +309,6 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
               )}
               Redefinir Configuração do Bot
             </Button>
-          </section>
-
-          <section className="ax-surface space-y-3 p-4">
-            <div className="flex items-center gap-2">
-              <UserRound className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold">Com nossos atendentes</h3>
-            </div>
-            {pausedPhones.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Nenhum contato pausado.
-              </p>
-            ) : (
-              <ul className="space-y-1.5">
-                {pausedPhones.map((phone) => (
-                  <li
-                    key={phone}
-                    className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">atendentes</Badge>
-                      <span className="tabular-nums">{phone}</span>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="h-8"
-                      onClick={() => void endHuman(phone)}
-                    >
-                      Reativar bot
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
           </section>
         </TabsContent>
 

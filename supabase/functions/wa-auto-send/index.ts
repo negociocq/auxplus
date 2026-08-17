@@ -326,7 +326,7 @@ function buildTodayQueue(
       // Não enviar se já foi notificado como "onday" em qualquer dia anterior
       if (!sentKeys.has(key) && !queuedKeys.has(key) && !alreadyNotifiedOnday.has(phone)) {
         // Verifica se há um item mais recente do mesmo telefone com vencimento futuro
-        const hasNewerItem = myItems.some((other) => {
+        const hasNewerItem = items.some((other) => {
           if (other.phone !== item.phone) return false;
           if (String(other.id) === String(item.id)) return false;
           if (other.is_active === false) return false;

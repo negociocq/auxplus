@@ -83,7 +83,7 @@ export const DEFAULT_MESSAGE_BEFORE = `{getGreeting}
 
 🔔 Lembrete da T&E 🔔
 
-👤 Usuário: {phone}
+👤 Usuário: {item_id}
 
 📅 Seu acesso vence em: {due_date}
 
@@ -97,7 +97,7 @@ export const DEFAULT_MESSAGE_ONDAY = `{getGreeting}
 
 🔔 Vencimento hoje
 
-👤 Usuário: {phone}
+👤 Usuário: {item_id}
 
 Vence hoje: {due_date}
 
