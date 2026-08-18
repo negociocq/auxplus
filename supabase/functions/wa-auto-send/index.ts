@@ -302,7 +302,13 @@ function buildTodayQueue(
   const queue: QueueItem[] = [];
   const queuedKeys = new Set<string>();
 
-  for (const item of items) {
+  // Ordena items por itemId para garantir consistência quando há múltiplos
+  // com o mesmo telefone/vencimento
+  const sortedItems = [...items].sort((a, b) =>
+    String(a.id ?? a.item_id ?? "").localeCompare(String(b.id ?? b.item_id ?? ""))
+  );
+
+  for (const item of sortedItems) {
     if (!revenueIds.has(String(item.folder_id))) continue;
     if (item.is_active === false) continue;
     if (!item.due_date) continue;
@@ -325,10 +331,9 @@ function buildTodayQueue(
       const key = `${phone}:onday`;
       // Não enviar se já foi notificado como "onday" em qualquer dia anterior
       if (!sentKeys.has(key) && !queuedKeys.has(key) && !alreadyNotifiedOnday.has(phone)) {
-        // Verifica se há um item mais recente do mesmo telefone com vencimento futuro
+        // Verifica se há um item mais recente do mesmo cliente com vencimento futuro
         const hasNewerItem = items.some((other) => {
-          if (other.phone !== item.phone) return false;
-          if (String(other.id) === String(item.id)) return false;
+          if (String(other.id ?? other.item_id) !== itemId) return false;
           if (other.is_active === false) return false;
           const otherDue = ymdOnly(other.due_date);
           if (!otherDue) return false;

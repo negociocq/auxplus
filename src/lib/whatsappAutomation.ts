@@ -549,6 +549,7 @@ export function requeWhatsappItem(
   userId: string,
   phone: string,
   kind: "before" | "onday",
+  itemId?: string,
 ): void {
   const day = format(new Date(), "yyyy-MM-dd");
   const logs = loadSendLog(userId);
@@ -587,7 +588,13 @@ export function buildTodayQueue(
   // Mesmo telefone já enfileirado hoje (ainda que não enviado) → pula.
   const queuedKeys = new Set<string>();
 
-  for (const item of items) {
+  // Ordena items por itemId para garantir consistência quando há múltiplos
+  // com o mesmo telefone/vencimento
+  const sortedItems = [...items].sort((a, b) =>
+    (a.itemId || "").localeCompare(b.itemId || "")
+  );
+
+  for (const item of sortedItems) {
     if (!revenueIds.has(item.folderId)) continue;
     if (!item.dueDate || !item.isActive) continue;
     const phone = normalizeBrPhone(item.phone || "");

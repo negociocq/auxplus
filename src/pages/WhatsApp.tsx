@@ -535,7 +535,7 @@ export default function WhatsAppPage() {
                           title="Recolocar este cliente na fila para testar"
                           onClick={() => {
                             if (!user) return;
-                            requeWhatsappItem(user.id, r.log.phone, r.log.kind);
+                            requeWhatsappItem(user.id, r.log.phone, r.log.kind, r.log.itemId);
                             setLogs(loadSendLog(user.id));
                             toast.success(`${r.name} recolocado na fila`);
                           }}
