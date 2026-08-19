@@ -536,7 +536,21 @@ export default function WhatsAppPage() {
                           onClick={() => {
                             if (!user) return;
                             requeWhatsappItem(user.id, r.log.phone, r.log.kind, r.log.itemId);
-                            setLogs(loadSendLog(user.id));
+                            // Persiste imediatamente para evitar que o sync automático
+                            // recoloque o item de volta nos logs do servidor
+                            const currentLogs = loadSendLog(user.id);
+                            void syncWhatsappAccountData(user.id).then(({ logs: l }) => {
+                              // Mescla: mantém a remoção local e atualiza com server
+                              const merged = [...currentLogs, ...l].filter((log, i, arr) =>
+                                arr.findIndex(
+                                  (x) =>
+                                    x.day === log.day &&
+                                    x.phone === log.phone &&
+                                    x.kind === log.kind
+                                ) === i
+                              );
+                              setLogs(merged);
+                            });
                             toast.success(`${r.name} recolocado na fila`);
                           }}
                         >
