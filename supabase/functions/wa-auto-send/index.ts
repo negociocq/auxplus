@@ -228,14 +228,19 @@ function formatDueForMessage(value: unknown): string {
 
 function fillWhatsappTemplate(
   template: string,
-  item: { name?: string; itemId?: string; dueDate?: unknown; price?: unknown },
+  item: { name?: string; itemId?: string; dueDate?: unknown; price?: unknown; phone?: string },
   kind: "before" | "onday",
 ): string {
   const due = formatDueForMessage(item.dueDate);
   const dateText = kind === "onday" ? "Vence hoje:" : "Vai vencer em:";
+  // Usa o itemId se for um número "longo" (> 5 caracteres, tipo username do painel)
+  // Caso contrário, usa o phone como fallback
+  const displayItemId = item.itemId && String(item.itemId).trim().length > 5
+    ? String(item.itemId).trim()
+    : (String(item.phone || "").replace(/\D/g, "") || String(item.itemId || ""));
   return String(template || "")
     .replace(/\{getGreeting\}/g, getWhatsappGreeting())
-    .replace(/\{item_id\}/g, String(item.itemId || ""))
+    .replace(/\{item_id\}/g, displayItemId)
     .replace(/\{name\}/g, String(item.name || ""))
     .replace(/\{dateText\}/g, dateText)
     .replace(/\{due_date\}/g, due)
@@ -319,7 +324,7 @@ function buildTodayQueue(
     if (!dueKey) continue;
 
     const name = String(item.name || "");
-    const itemId = String(item.id ?? item.item_id ?? "");
+    const itemId = String(item.item_id ?? item.id ?? "");
     const row = {
       name,
       itemId,

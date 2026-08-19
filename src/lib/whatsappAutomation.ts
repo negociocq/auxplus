@@ -440,9 +440,14 @@ export function fillWhatsappTemplate(
   const dateText =
     kind === "onday" ? "Vence hoje:" : "Vai vencer em:";
   const phoneFormatted = item.phone || item.itemId || "";
+  // Usa o itemId se for um número "longo" (> 5 caracteres, tipo username do painel)
+  // Caso contrário, usa o phone como fallback
+  const displayItemId = item.itemId && String(item.itemId).trim().length > 5
+    ? String(item.itemId).trim()
+    : (item.phone || item.itemId || "");
   return template
     .replace(/\{getGreeting\}/g, greeting())
-    .replace(/\{item_id\}/g, item.itemId || "")
+    .replace(/\{item_id\}/g, displayItemId)
     .replace(/\{phone\}/g, phoneFormatted)
     .replace(/\{name\}/g, item.name || "")
     .replace(/\{dateText\}/g, dateText)
