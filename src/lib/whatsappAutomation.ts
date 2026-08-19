@@ -564,13 +564,19 @@ export function requeWhatsappItem(
   saveSendLog(userId, next);
   // Sincroniza com o servidor para evitar que o sync automático recoloque o item
   if (supabase) {
-    void supabase
+    supabase
       .from("platform_settings")
-      .upsert({
-        key: `wa_send_log_user_${userId}`,
-        value: { logs: next },
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "key" })
+      .upsert(
+        {
+          key: `wa_send_log_user_${userId}`,
+          value: { logs: next },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "key" }
+      )
+      .then(() => {
+        /* sync ok */
+      })
       .catch(() => {
         /* ignore sync errors */
       });
