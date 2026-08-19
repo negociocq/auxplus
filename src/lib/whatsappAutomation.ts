@@ -562,6 +562,19 @@ export function requeWhatsappItem(
     (l) => !(l.day === day && l.phone === phone && l.kind === kind),
   );
   saveSendLog(userId, next);
+  // Sincroniza com o servidor para evitar que o sync automático recoloque o item
+  if (supabase) {
+    void supabase
+      .from("platform_settings")
+      .upsert({
+        key: `wa_send_log_user_${userId}`,
+        value: { logs: next },
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "key" })
+      .catch(() => {
+        /* ignore sync errors */
+      });
+  }
 }
 
 /** Monta fila do dia (lembretes elegíveis pela regra de dias). */
