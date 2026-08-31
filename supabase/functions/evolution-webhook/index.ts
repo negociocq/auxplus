@@ -1941,13 +1941,19 @@ function defaultTestOfferMenu() {
         key: "3",
         label: "Promo 6 meses — R$ 155 (atendente)",
         keywords: "6 meses,6meses,155",
-        action: "human",
+        action: "activate_month",
+        amountBrl: 155,
+        screens: 2,
+        months: 6,
       },
       {
         key: "4",
         label: "Promo 12 meses — R$ 290 (atendente)",
         keywords: "12 meses,12meses,290,anual",
-        action: "human",
+        action: "activate_month",
+        amountBrl: 290,
+        screens: 2,
+        months: 12,
       },
       {
         key: "atendente",
@@ -3545,7 +3551,7 @@ Deno.serve(async (req) => {
       sess: Session,
       action: string,
       nextMenuId?: string,
-      meta?: { amountBrl?: number; screens?: number },
+      meta?: { amountBrl?: number; screens?: number; months?: number },
     ) => {
       if (action === "ask_tv") {
         sessions[phone] = {
@@ -3665,6 +3671,11 @@ Deno.serve(async (req) => {
           if (Number.isFinite(s) && s >= 1) return Math.min(10, Math.floor(s));
           return 1;
         })();
+        const planMonths = (() => {
+          const m = Number(meta?.months);
+          if (Number.isFinite(m) && m >= 1) return Math.min(24, Math.floor(m));
+          return 1;
+        })();
         if (!mpToken || !mpEmail) {
           await send(
             "PIX não configurado. Peça ao responsável para ligar o Mercado Pago nas Automações, ou escreva *atendente*.",
@@ -3714,11 +3725,11 @@ Deno.serve(async (req) => {
             id: `mp_${Date.now().toString(36)}`,
             mpPaymentId: pix.id,
             status: "pending",
-            itemRefId: "",
+            itemRefId: clientItem ? String(clientItem.id) : "",
             clientName: username,
             panelUsername: username,
             phone,
-            months: 1,
+            months: planMonths,
             credits: 1,
             amount: planAmount,
             price: planAmount,
@@ -4113,6 +4124,9 @@ Deno.serve(async (req) => {
         const screensRaw = Number(
           (opt as { screens?: unknown }).screens,
         );
+        const monthsRaw = Number(
+          (opt as { months?: unknown }).months,
+        );
         return await runTestAction(
           sessForAction,
           String(opt.action || ""),
@@ -4125,6 +4139,10 @@ Deno.serve(async (req) => {
             screens:
               Number.isFinite(screensRaw) && screensRaw >= 1
                 ? Math.min(10, Math.floor(screensRaw))
+                : undefined,
+            months:
+              Number.isFinite(monthsRaw) && monthsRaw >= 1
+                ? Math.min(24, Math.floor(monthsRaw))
                 : undefined,
           },
         );

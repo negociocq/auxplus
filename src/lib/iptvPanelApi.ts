@@ -1090,8 +1090,23 @@ export function isShortLivedIptvTest(
   const left = Number.isFinite(expMs) ? expMs - Date.now() : NaN;
   // Mais de 2 dias de validade → plano ativo (mesmo com flag de teste antiga)
   if (Number.isFinite(left) && left > 2 * 86_400_000) return false;
-  // Sem data de expiração ou vida curta → usa a heurística original
-  return isIptvTestOrTrialUser(u);
+  // Sem data de expiração ou vida curta → só considera teste se tiver flag
+  // explícita (is_test/test_hours) ou vida útil < 3 dias. NÃO usa nota/nome
+  // com "teste" — evita falsos positivos (ex.: "Teste WhatsApp AuxPlus").
+  if (hasIptvTestFlag(row)) return true;
+  const created = parseIptvExpToYmd(
+    String(row.created_at ?? row.createdAt ?? row.created ?? row.date ?? ""),
+  );
+  const exp = parseIptvExpToYmd(
+    String(row.exp_date ?? row.expDate ?? row.expira ?? ""),
+  );
+  if (created && exp) {
+    const c = new Date(`${created}T12:00:00`);
+    const e = new Date(`${exp}T12:00:00`);
+    const days = (e.getTime() - c.getTime()) / 86_400_000;
+    if (days >= 0 && days < 3) return true;
+  }
+  return false;
 }
 
 /**

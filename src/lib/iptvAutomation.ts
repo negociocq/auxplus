@@ -548,40 +548,58 @@ export function syncIptvUsersToFolder(
       (i) => i.itemId.trim().toLowerCase() === username.toLowerCase(),
     );
 
-    if (!existing && excluded?.has(username.toLowerCase())) {
+    // Se não encontrou pelo username, tenta pelo nome (nota) — cliente recriado
+    // no painel pode ter novo login mas o mesmo nome. Atualiza o item antigo
+    // em vez de criar duplicata.
+    const existingByName = !existing
+      ? folderItems().find(
+          (i) =>
+            i.itemId.trim().toLowerCase() !== username.toLowerCase() &&
+            (i.name || "").trim().toLowerCase() === name.toLowerCase() &&
+            name.length > 0,
+        )
+      : undefined;
+
+    const target = existing || existingByName;
+
+    if (!target && excluded?.has(username.toLowerCase())) {
       skipped += 1;
       continue;
     }
 
-    if (existing) {
-      const patch: Partial<typeof existing> = {};
-      const existingDue = existing.dueDate
-        ? parseIptvExpToDateTime(existing.dueDate) ||
-          `${ymdOnly(existing.dueDate)} 00:00:00`
+    if (target) {
+      const patch: Partial<typeof target> = {};
+      // Se encontrou pelo nome (username mudou), atualiza o itemId também
+      if (existingByName && existingByName.itemId.trim().toLowerCase() !== username.toLowerCase()) {
+        patch.itemId = username;
+      }
+      const existingDue = target.dueDate
+        ? parseIptvExpToDateTime(target.dueDate) ||
+          `${ymdOnly(target.dueDate)} 00:00:00`
         : "";
       if (dueDate && existingDue !== dueDate) {
         patch.dueDate = dueDate;
       }
-      if (name && name !== (existing.name || "").trim()) {
+      if (name && name !== (target.name || "").trim()) {
         patch.name = name;
       } else {
-        const fixedLocal = fixUtf8Mojibake(existing.name || "");
-        if (fixedLocal && fixedLocal !== existing.name) {
+        const fixedLocal = fixUtf8Mojibake(target.name || "");
+        if (fixedLocal && fixedLocal !== target.name) {
           patch.name = fixedLocal;
         }
       }
       // Telefone só preenche se vazio no AuxPlus — nunca sobrescreve o editado
       const remotePhone = String(remote.phone || "").trim();
-      if (remotePhone && !(existing.phone || "").trim()) patch.phone = remotePhone;
+      if (remotePhone && !(target.phone || "").trim()) patch.phone = remotePhone;
       // "Criado em" do painel → só preenche se vazio no AuxPlus (nunca sobrescreve)
-      if (remote.createdAt && !existing.createdAt) {
+      if (remote.createdAt && !target.createdAt) {
         patch.createdAt = remote.createdAt.slice(0, 19);
       }
       if (Object.keys(patch).length === 0) {
         skipped += 1;
         continue;
       }
-      next = updateItem(next, { ...existing, ...patch });
+      next = updateItem(next, { ...target, ...patch });
       updated += 1;
     } else {
       const planPrice = priceMap?.get(username.toLowerCase()) ?? 0;

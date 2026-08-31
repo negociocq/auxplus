@@ -493,6 +493,71 @@ async function sendEvolutionText(
   return res.ok;
 }
 
+async function fetchEvolutionOwnerPhone(
+  apiBaseUrl: string,
+  apiKey: string,
+  instance: string,
+): Promise<string> {
+  const base = apiBaseUrl.replace(/\/$/, "");
+  const name = encodeURIComponent(instance);
+  try {
+    const res = await fetch(
+      `${base}/instance/fetchInstances?instanceName=${name}`,
+      { headers: { apikey: apiKey } },
+    );
+    const raw = await res.json().catch(() => null);
+    const list = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+        ? [raw]
+        : [];
+    for (const row of list) {
+      if (!row || typeof row !== "object") continue;
+      const obj = row as Record<string, unknown>;
+      const nested =
+        obj.instance && typeof obj.instance === "object"
+          ? (obj.instance as Record<string, unknown>)
+          : obj;
+      const owner = String(
+        nested.ownerJid ||
+          nested.owner ||
+          nested.wuid ||
+          nested.number ||
+          obj.ownerJid ||
+          obj.owner ||
+          obj.number ||
+          "",
+      ).trim();
+      const digits = String(owner || "").replace(/\D/g, "");
+      if (digits.length >= 10) return digits;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
+async function notifyOwnerManualActivation(
+  apiBaseUrl: string,
+  apiKey: string,
+  instance: string,
+  contactPhone: string,
+  username: string,
+  amount: number,
+  reason?: string,
+) {
+  const owner = await fetchEvolutionOwnerPhone(apiBaseUrl, apiKey, instance);
+  if (!owner) return;
+  if (owner === String(contactPhone || "").replace(/\D/g, "")) return;
+  const reasonText = reason ? `\nMotivo: *${reason}*` : "";
+  const text =
+    `🔔 *Ativação manual*\n\n` +
+    `Cliente *${username}* pagou o plano (R$ ${amount.toFixed(2)}).\n` +
+    `Número: *${contactPhone}*${reasonText}\n\n` +
+    `_Responda no chat dessa pessoa para concluir a ativação._`;
+  await sendEvolutionText(apiBaseUrl, apiKey, instance, owner, text);
+}
+
 async function resolveInstanceName(
   client: ReturnType<typeof createClient>,
   userId: string,
@@ -696,6 +761,7 @@ async function updateItemDue(
   itemId: string,
   dueDate: string,
   notesExtra?: string,
+  price?: number,
 ) {
   if (!itemId) return;
   const patch: Record<string, unknown> = {
@@ -709,6 +775,9 @@ async function updateItemDue(
       .maybeSingle();
     const prev = String(data?.notes || "").trim();
     patch.notes = prev ? `${prev}\n${notesExtra}` : notesExtra;
+  }
+  if (typeof price === "number" && Number.isFinite(price) && price > 0) {
+    patch.price = Math.round(price * 100) / 100;
   }
   await client.from("items").update(patch).eq("id", itemId);
 }
@@ -754,7 +823,14 @@ async function releaseOrder(
     if (remoteId == null || remoteId === "") {
       throw new Error(`Usuário ${username} não encontrado no UniPlay`);
     }
-    await renewIptvUser(bearer, remoteId, credits);
+
+    const planAmount = Math.round((Number(order.amount) || 0) * 100) / 100;
+    const isManual = planAmount >= 155;
+    const needsSecondScreen = planAmount >= 44.9 && !isManual;
+
+    if (!isManual) {
+      await renewIptvUser(bearer, remoteId, credits);
+    }
     await appendIptvJob(client, userId, {
       kind: "renew",
       clientName: order.clientName || username,
@@ -765,10 +841,56 @@ async function releaseOrder(
       months,
       note: `Webhook MP · teste→plano · ${months}m · ${order.mpPaymentId}`,
     });
-    waText =
-      `✅ *Pagamento confirmado!*\n\n` +
-      `Plano liberado no usuário *${username}*.\n` +
-      `Bom proveito!`;
+    const newDue = nextDueAfterRenew(order.dueDate, months);
+    if (order.itemRefId) {
+      await updateItemDue(client, order.itemRefId, newDue, undefined, planAmount);
+    }
+
+    if (isManual) {
+      waText =
+        `✅ *Pagamento confirmado!*\n\n` +
+        `Vou encaminhar para um atendente concluir sua ativação. Em breve alguém responde por aqui.`;
+      try {
+        const evo =
+          (await getSetting<{
+            apiBaseUrl?: string;
+            apiKey?: string;
+          }>(client, "evolution_api")) || {};
+        const apiBaseUrl = String(evo.apiBaseUrl || "").trim();
+        const apiKey = String(evo.apiKey || "").trim();
+        if (apiBaseUrl && apiKey) {
+          const instance = await resolveInstanceName(client, userId);
+          await notifyOwnerManualActivation(apiBaseUrl, apiKey, instance, phone, username, planAmount);
+        }
+      } catch {
+        /* notificação opcional */
+      }
+    } else if (needsSecondScreen) {
+      waText =
+        `✅ *Pagamento confirmado!*\n\n` +
+        `1ª tela liberada no usuário *${username}*.\n` +
+        `Vou encaminhar para um atendente ativar a 2ª tela. Em breve alguém responde por aqui.`;
+      try {
+        const evo =
+          (await getSetting<{
+            apiBaseUrl?: string;
+            apiKey?: string;
+          }>(client, "evolution_api")) || {};
+        const apiBaseUrl = String(evo.apiBaseUrl || "").trim();
+        const apiKey = String(evo.apiKey || "").trim();
+        if (apiBaseUrl && apiKey) {
+          const instance = await resolveInstanceName(client, userId);
+          await notifyOwnerManualActivation(apiBaseUrl, apiKey, instance, phone, username, planAmount, "Ativar 2ª tela");
+        }
+      } catch {
+        /* notificação opcional */
+      }
+    } else {
+      waText =
+        `✅ *Pagamento confirmado!*\n\n` +
+        `Plano liberado no usuário *${username}*.\n` +
+        `Bom proveito!`;
+    }
   } else if (kind === "reseller_credits") {
     if (!username) throw new Error("Pedido sem revendedor");
     const packCredits = Math.max(10, Math.floor(Number(order.credits) || 10));
@@ -870,7 +992,7 @@ async function releaseOrder(
       /* usa cálculo local */
     }
     if (order.itemRefId) {
-      await updateItemDue(client, order.itemRefId, newDue);
+      await updateItemDue(client, order.itemRefId, newDue, undefined, Number(order.amount));
     }
     await appendIptvJob(client, userId, {
       kind: "renew",

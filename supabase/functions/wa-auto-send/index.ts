@@ -324,12 +324,13 @@ function buildTodayQueue(
     if (!dueKey) continue;
 
     const name = String(item.name || "");
-    const itemId = String(item.item_id ?? item.id ?? "");
+    const itemId = String(item.item_id ?? "");
     const row = {
       name,
       itemId,
       dueDate: item.due_date as unknown,
       price: item.price as unknown,
+      phone: String(item.phone || ""),
     };
 
     if (settings.sendOnDay && dueKey === todayKey) {
@@ -368,18 +369,27 @@ function buildTodayQueue(
       if (daysLeft === settings.daysBefore) {
         const key = `${phone}:before`;
         if (!sentKeys.has(key) && !queuedKeys.has(key)) {
-          queuedKeys.add(key);
-          queue.push({
-            id: `${itemId}:before`,
-            itemId,
-            folderId: String(item.folder_id),
-            name,
-            phone,
-            dueDate: dueKey,
-            kind: "before",
-            message: fillWhatsappTemplate(settings.messageBefore, row, "before"),
-            scheduledAt,
+          const hasNewerItem = items.some((other) => {
+            if (String(other.id ?? other.item_id) !== itemId) return false;
+            if (other.is_active === false) return false;
+            const otherDue = ymdOnly(other.due_date);
+            if (!otherDue) return false;
+            return otherDue > todayKey;
           });
+          if (!hasNewerItem) {
+            queuedKeys.add(key);
+            queue.push({
+              id: `${itemId}:before`,
+              itemId,
+              folderId: String(item.folder_id),
+              name,
+              phone,
+              dueDate: dueKey,
+              kind: "before",
+              message: fillWhatsappTemplate(settings.messageBefore, row, "before"),
+              scheduledAt,
+            });
+          }
         }
       }
     }

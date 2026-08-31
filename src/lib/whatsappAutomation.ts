@@ -651,28 +651,35 @@ export function buildTodayQueue(
     }
 
     if (settings.sendBefore && settings.daysBefore > 0) {
-      // Só no DIA EXATO (daysBefore dias antes) — não na janela 1..daysBefore,
-      // senão o lembrete repete todo dia enquanto o cliente está "Perto".
       const daysLeft = differenceInCalendarDays(due, parseLocalYmd(todayKey));
       if (daysLeft === settings.daysBefore) {
         const key = `${phone}:before`;
         if (!sentKeys.has(key) && !queuedKeys.has(key)) {
-          queuedKeys.add(key);
-          queue.push({
-            id: `${item.id}:before`,
-            itemId: item.itemId,
-            folderId: item.folderId,
-            name: item.name,
-            phone,
-            dueDate: dueKey,
-            kind: "before",
-            message: fillWhatsappTemplate(
-              settings.messageBefore,
-              item,
-              "before",
-            ),
-            scheduledAt: scheduledAt.toISOString(),
+          const hasNewerItem = items.some((other) => {
+            if (other.id !== item.id) return false;
+            if (!other.isActive) return false;
+            const otherDue = ymdOnly(other.dueDate);
+            if (!otherDue) return false;
+            return otherDue > todayKey;
           });
+          if (!hasNewerItem) {
+            queuedKeys.add(key);
+            queue.push({
+              id: `${item.id}:before`,
+              itemId: item.itemId,
+              folderId: item.folderId,
+              name: item.name,
+              phone,
+              dueDate: dueKey,
+              kind: "before",
+              message: fillWhatsappTemplate(
+                settings.messageBefore,
+                item,
+                "before",
+              ),
+              scheduledAt: scheduledAt.toISOString(),
+            });
+          }
         }
       }
     }

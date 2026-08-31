@@ -29,14 +29,14 @@ import { formatBrDate } from "@/lib/format";
 import { normSearch } from "@/lib/utils";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { useApp } from "@/context/AppContext";
-import { updateItem } from "@/lib/storage";
+import { createItem, updateItem } from "@/lib/storage";
 import { useUniplayConnection } from "@/hooks/useUniplayConnection";
 import { useDialogHistoryBack } from "@/hooks/useDialogHistoryBack";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { hasUsedProrrogaInCurrentCycle, extractProrrogaUsage } from "@/lib/itemExtensions";
-import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage, ensureIptvToken, recreateIptvLine } from "@/lib/iptvPanelApi";
+import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage, ensureIptvToken, recreateIptvLine, isShortLivedIptvTest, isConfirmedIptvTestUser } from "@/lib/iptvPanelApi";
 import { applyProrrogaToItem } from "@/lib/iptvAutomation";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -223,6 +223,7 @@ export default function UniPlay() {
     hours: number;
     dueDate: string | null;
   } | null>(null);
+  const [panelUsernames, setPanelUsernames] = useState<Set<string>>(new Set());
   const emptyActivateForm = (): ActivateAppForm => ({
     appId: "prime",
     username: "",
@@ -324,6 +325,7 @@ export default function UniPlay() {
         if (cancelled) return;
 
         setResellers(rows);
+        setPanelUsernames(new Set(users.map((u) => u.username).filter(Boolean)));
 
         const clientUsernames = data.items
           .filter((i) => i.isActive !== false)
@@ -994,14 +996,6 @@ export default function UniPlay() {
     }
   };
 
-  /** Ainda não venceu (hoje ou futuro) → Estender; já passou → Renovar */
-  const isClientStillActive = (dueDate?: string | null) => {
-    const due = String(dueDate || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return false;
-    const today = format(new Date(), "yyyy-MM-dd");
-    return due >= today;
-  };
-
   const openRenewDialog = (itemId: string) => {
     const preferred =
       IPTV_RENEW_OPTIONS.find((o) => o.months === renewMonths) ||
@@ -1009,6 +1003,15 @@ export default function UniPlay() {
     setRenewOption(preferred);
     setRenewTargetJobId(null);
     setRenewTargetId(itemId);
+    setRenewDialogOpen(true);
+  };
+
+  /** Ainda não venceu (hoje ou futuro) → Estender; já passou → Renovar */
+  const isClientStillActive = (dueDate?: string | null) => {
+    const due = String(dueDate || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return false;
+    const today = format(new Date(), "yyyy-MM-dd");
+    return due >= today;
   };
 
   const sendProrrogaMessage = async (item: Item, kind: "48h" | "23:59") => {
@@ -1212,77 +1215,89 @@ export default function UniPlay() {
 
       // Busca usuário no painel (ID antigo)
       const itemIdTrimmed = item.itemId?.trim() || "";
-      const remote = await findIptvUserByUsername(creds, itemIdTrimmed);
-      if (!remote?.id) {
-        throw new Error(
-          `Usuário ${item.itemId} não encontrado no painel. Confira o login/token ou o reg_password.`,
-        );
-      }
+       const remote = await findIptvUserByUsername(creds, itemIdTrimmed);
 
-      const oldRemoteId = remote.id;
-      console.log("DEBUG recreate: Usuario antigo encontrado", { username: itemIdTrimmed, id: oldRemoteId });
+      let newItem: Item;
+      let createdUsername: string;
 
-      // Chama API para recriar linha
-      toast.info("Recriando a linha no painel...");
-      console.log("DEBUG recreate: Chamando API recreateIptvLine");
-      const recreateResult = await recreateIptvLine(creds, oldRemoteId);
-      console.log("DEBUG recreate: Resultado da API recreateIptvLine:", recreateResult);
+      if (remote?.id) {
+        const oldRemoteId = remote.id;
 
-      const issued = getLastIssuedIptvToken();
-      if (issued) persistToken(issued);
+        toast.info("Recriando a linha no painel...");
+        const recreateResult = await recreateIptvLine(creds, oldRemoteId);
 
-      // Aguarda o painel processar
-      console.log("DEBUG recreate: Aguardando painel processar...");
-      await new Promise(resolve => setTimeout(resolve, 2500));
+        const issued = getLastIssuedIptvToken();
+        if (issued) persistToken(issued);
 
-      // Busca TODOS os usuários para ver qual é o novo
-      console.log("DEBUG recreate: Buscando lista completa de usuários");
-      const allUsers = await listIptvUsers(creds);
-      console.log("DEBUG recreate: Total de usuários no painel:", allUsers.length);
+        await new Promise(resolve => setTimeout(resolve, 2500));
 
-      // Se a API retornou info do novo usuário, tenta usar isso
-      let newUser = null;
-      if (recreateResult && typeof recreateResult === "object") {
-        const result = recreateResult as Record<string, any>;
-        console.log("DEBUG recreate: Chaves do resultado:", Object.keys(result));
+        const allUsers = await listIptvUsers(creds);
 
-        // Procura por campos comuns que identificam o novo usuário
-        const newUsername = result.username || result.user || result.login || result.name;
-        if (newUsername) {
-          console.log("DEBUG recreate: Novo username encontrado na resposta:", newUsername);
-          newUser = allUsers.find(u => u.username?.trim().toLowerCase() === String(newUsername).trim().toLowerCase());
+        let newUser = null;
+        if (recreateResult && typeof recreateResult === "object") {
+          const result = recreateResult as Record<string, any>;
+          const newUsername = result.username || result.user || result.login || result.name;
+          if (newUsername) {
+            newUser = allUsers.find(u => u.username?.trim().toLowerCase() === String(newUsername).trim().toLowerCase());
+          }
         }
+
+        if (!newUser) {
+          newUser = allUsers.find(u => u.username?.trim().toLowerCase() === itemIdTrimmed.toLowerCase());
+        }
+
+        if (!newUser?.id) {
+          throw new Error(
+            `Após recriar, não consegui encontrar o novo usuário. O painel pode ter gerado um novo username. Sincronize manualmente e verifique a lista de clientes.`
+          );
+        }
+
+        newItem = {
+          ...item,
+          itemId: newUser.username || itemIdTrimmed,
+          id: String(Date.now()),
+          dueDate: parseIptvExpToDateTime(newUser.exp_date ?? newUser.expDate) || item.dueDate,
+        };
+        createdUsername = newItem.itemId;
+      } else {
+        const testResult = await createIptvTest(creds, {
+          testHours: 6,
+          packageId: platform.packageId,
+          nota: item.name || undefined,
+          username: itemIdTrimmed,
+          whatsapp: item.phone || undefined,
+          credits: 0,
+        });
+
+        const issued = getLastIssuedIptvToken();
+        if (issued) persistToken(issued);
+
+        createdUsername = testResult.username || itemIdTrimmed;
+        const createdPassword = testResult.password?.trim() || "";
+        let newDue = testResult.dueDate ? parseIptvExpToDateTime(testResult.dueDate) : null;
+        if (!newDue) {
+          const sixHoursLater = new Date(Date.now() + 6 * 60 * 60 * 1000);
+          newDue = format(sixHoursLater, "yyyy-MM-dd HH:mm:ss");
+        }
+
+        // Cria novo item com os dados do teste criado
+        newItem = {
+          ...item,
+          itemId: createdUsername,
+          id: String(Date.now()),
+          dueDate: newDue || item.dueDate,
+        };
+
       }
-
-      // Se não encontrou a partir da resposta, procura por username antigo (caso tenha mantido)
-      if (!newUser) {
-        console.log("DEBUG recreate: Procurando pelo username antigo na lista");
-        newUser = allUsers.find(u => u.username?.trim().toLowerCase() === itemIdTrimmed.toLowerCase());
-      }
-
-      console.log("DEBUG recreate: Novo usuário encontrado?", newUser ? { id: newUser.id, username: newUser.username } : "NÃO");
-
-      if (!newUser?.id) {
-        throw new Error(
-          `Após recriar, não consegui encontrar o novo usuário. O painel pode ter gerado um novo username. Sincronize manualmente e verifique a lista de clientes.`
-        );
-      }
-
-      // Remove item antigo da lista (evita duplicata)
-      const itemsWithoutOld = data.items.filter((i) => i.id !== itemId);
-
-      // Cria novo item
-      const newItem: Item = {
-        ...item,
-        itemId: newUser.username || itemIdTrimmed, // Atualiza com novo username se mudou
-        id: crypto.randomUUID ? crypto.randomUUID() : `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        dueDate: parseIptvExpToDateTime(newUser.exp_date ?? newUser.expDate) || item.dueDate,
-      };
-
-      console.log("DEBUG recreate: Novo item criado", { oldId: item.id, newId: newItem.id, oldUsername: itemIdTrimmed, newUsername: newUser.username });
 
       // Atualiza state com item antigo removido e novo adicionado
-      setData({ ...data, items: [...itemsWithoutOld, newItem] });
+      setData((prev) => ({ ...prev, items: [...prev.items.filter((i) => i.id !== itemId), newItem] }));
+      setPanelUsernames((prev) => {
+        const next = new Set(prev);
+        next.delete(item.itemId.trim());
+        if (createdUsername) next.add(createdUsername);
+        return next;
+      });
 
       toast.success("✅ Linha recriada com sucesso! Cliente atualizado em tempo real.");
       setDetailClientId(null);
@@ -1293,7 +1308,6 @@ export default function UniPlay() {
           ? err.message
           : "Falha ao recriar linha",
       );
-      console.error("DEBUG recreate: Erro completo", err);
     } finally {
       setBusyId(null);
     }
@@ -1758,6 +1772,8 @@ export default function UniPlay() {
       if (ensured.renewed) persistToken(ensured.token);
       const creds = { ...panelCreds(), bearerToken: ensured.token };
       const users = await listIptvUsers(creds);
+      console.log("[DEBUG sync] usuarios do painel:", users.length, "clientes ativos:", users.filter(u => !isConfirmedIptvTestUser(u)).length);
+      console.log("[DEBUG sync] clientUsernames existentes:", data.items.filter(i => i.isActive !== false).map(i => i.itemId));
       const issued = getLastIssuedIptvToken();
       if (issued) persistToken(issued);
       const clientUsernames = data.items
@@ -1769,6 +1785,52 @@ export default function UniPlay() {
         excludeUsernames: clientUsernames,
       });
       persistJobs(result.jobs);
+
+      setData((prev) => {
+        const clientMap = new Map(
+          prev.items
+            .filter((i) => i.isActive !== false)
+            .map((i) => [i.itemId.trim().toLowerCase(), i]),
+        );
+        let next: typeof prev = prev;
+        let synced = 0;
+        const refFolder =
+          Array.from(clientMap.values())[0]?.folderId ??
+          next.folders.filter((f) => f.type !== "Dívida")[0]?.id;
+        for (const u of users) {
+          if (isConfirmedIptvTestUser(u)) continue;
+          const username = String(u.username || u.user || "").trim();
+          if (!username) continue;
+          const dueDate = parseIptvExpToDateTime(u.exp_date ?? u.expDate);
+          if (!dueDate) continue;
+          const lower = username.toLowerCase();
+          const existing = clientMap.get(lower);
+          if (existing?.id) {
+            if (dueDate !== existing.dueDate) {
+              next = updateItem(next, existing.id, { dueDate });
+              synced++;
+            }
+          } else {
+            const folderId = refFolder;
+            if (folderId) {
+              next = createItem(next, {
+                folderId,
+                itemId: username,
+                name: String(u.nota || u.notes || u.name || "").trim() || undefined,
+                dueDate,
+                phone: String(u.phone || "").trim(),
+                price: 0,
+                isActive: true,
+              });
+              synced++;
+            }
+          }
+        }
+        if (synced > 0) {
+          toast.success(`${synced} cliente(s) importado(s) da UniPlay`);
+        }
+        return next;
+      });
       const exclude = new Set(
         clientUsernames.map((u) => u.trim().toLowerCase()).filter(Boolean),
       );
@@ -2457,6 +2519,8 @@ export default function UniPlay() {
                         </Button>
                         {(() => {
                           const extend = isClientStillActive(item.dueDate);
+                          const existsInPanel = panelUsernames.has(item.itemId);
+                          const showRecreate = !extend && !existsInPanel;
                           return (
                             <Button
                               type="button"
@@ -2464,17 +2528,25 @@ export default function UniPlay() {
                               variant="secondary"
                               className="h-8 px-2.5"
                               disabled={!bearer.trim() || busyId === item.id}
-                              onClick={() => openRenewDialog(item.id)}
+                              onClick={() => {
+                                if (showRecreate) {
+                                  runRecreateLinhaAsync(item.id);
+                                } else {
+                                  openRenewDialog(item.id);
+                                }
+                              }}
                             >
                               {busyId === item.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               ) : extend ? (
                                 <CalendarPlus className="h-3.5 w-3.5" />
+                              ) : showRecreate ? (
+                                <RefreshCw className="h-3.5 w-3.5" />
                               ) : (
                                 <RefreshCw className="h-3.5 w-3.5" />
                               )}
                               <span className="hidden sm:inline ml-1">
-                                {extend ? "Estender" : "Renovar"}
+                                {extend ? "Estender" : showRecreate ? "Recriar" : "Renovar"}
                               </span>
                             </Button>
                           );
@@ -2491,7 +2563,7 @@ export default function UniPlay() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {isClientStillActive(item.dueDate) && (
+                            {(isClientStillActive(item.dueDate) || panelUsernames.has(item.itemId)) && (
                               <>
                                 <DropdownMenuItem
                                   onClick={() => runProrroga(item.id, "48h")}
