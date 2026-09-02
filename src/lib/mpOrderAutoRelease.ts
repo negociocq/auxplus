@@ -234,6 +234,35 @@ export function revenueItemsFromData(data: AppData, userId: string): Item[] {
   );
 }
 
+function applyTestActivatePrice({
+  items,
+  setData,
+  order,
+  username,
+}: {
+  items: Item[];
+  setData: MpReleaseCtx["setData"];
+  order: MpRenewOrder;
+  username?: string;
+}) {
+  const planPrice = Number(order.price || order.amount || 0);
+  const target =
+    order.itemRefId
+      ? items.find((i) => i.id === order.itemRefId)
+      : username
+        ? items.find(
+            (i) => i.itemId.trim().toLowerCase() === username.toLowerCase(),
+          )
+        : undefined;
+  if (target && planPrice > 0 && target.price !== planPrice) {
+    const updatedItem = { ...target, price: planPrice };
+    setData((prev) => ({
+      ...prev,
+      items: prev.items.map((i) => (i.id === target.id ? updatedItem : i)),
+    }));
+  }
+}
+
 export async function releasePaidMpOrder(
   ctx: MpReleaseCtx,
   order: MpRenewOrder,
@@ -244,7 +273,10 @@ export async function releasePaidMpOrder(
   // (mp-webhook) antes de liberar — evita renovar o mesmo PIX 2×.
   await loadMpOrdersRemote(user.id).catch(() => undefined);
   let latest = loadMpOrders(user.id).find((o) => o.id === order.id) || order;
-  if (latest.status === "released" || latest.releasedAt) return;
+  if (latest.status === "released" || latest.releasedAt) {
+    applyTestActivatePrice({ items, setData, order, username: order.panelUsername });
+    return;
+  }
   // Servidor (mp-webhook) já está liberando — evita renovar 2×
   if (latest.error === "__releasing__") {
     const t = Date.parse(String(latest.updatedAt || "")) || 0;
@@ -322,21 +354,7 @@ export async function releasePaidMpOrder(
         ...currentJobs,
       ]);
 
-      const planPrice = Number(order.price || order.amount || 0);
-      const target =
-        item ??
-        (username
-          ? items.find(
-              (i) => i.itemId.trim().toLowerCase() === username.toLowerCase(),
-            )
-          : undefined);
-      if (target && planPrice > 0 && target.price !== planPrice) {
-        const updatedItem = { ...target, price: planPrice };
-        setData((prev) => ({
-          ...prev,
-          items: prev.items.map((i) => (i.id === target.id ? updatedItem : i)),
-        }));
-      }
+      applyTestActivatePrice({ items, setData, order, username });
 
       persistOrders(
         user.id,
