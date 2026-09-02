@@ -301,6 +301,21 @@ export function buildPixWhatsappIntro(
   ].join("\n");
 }
 
+export function buildPriceMapFromMpOrders(
+  orders: Array<{ kind?: string; panelUsername?: string; price?: number }>,
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const order of orders) {
+    if (order.kind === "test_activate" && order.panelUsername && order.price) {
+      const username = String(order.panelUsername).trim().toLowerCase();
+      if (username && !map.has(username)) {
+        map.set(username, Number(order.price));
+      }
+    }
+  }
+  return map;
+}
+
 /** Só o código — facilita copiar no WhatsApp Business. */
 export function buildPixWhatsappCodeOnly(order: MpRenewOrder): string {
   return String(order.pixCopyPaste || "").trim();

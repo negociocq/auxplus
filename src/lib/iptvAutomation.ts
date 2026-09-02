@@ -588,6 +588,10 @@ export function syncIptvUsersToFolder(
           patch.name = fixedLocal;
         }
       }
+      const planPrice = priceMap?.get(username.toLowerCase());
+      if (planPrice && target.price === 0) {
+        patch.price = planPrice;
+      }
       // Telefone só preenche se vazio no AuxPlus — nunca sobrescreve o editado
       const remotePhone = String(remote.phone || "").trim();
       if (remotePhone && !(target.phone || "").trim()) patch.phone = remotePhone;

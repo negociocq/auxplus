@@ -86,7 +86,7 @@ import {
   syncIptvResellersToFolder,
   type IptvJob,
 } from "@/lib/iptvAutomation";
-import { loadMpOrdersRemote } from "@/lib/mercadoPagoOrders";
+import { buildPriceMapFromMpOrders, loadMpOrdersRemote } from "@/lib/mercadoPagoOrders";
 import { loadWaBotStateRemote } from "@/lib/whatsappBotConfig";
 import { notifyUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
 import {
@@ -1786,6 +1786,9 @@ export default function UniPlay() {
       });
       persistJobs(result.jobs);
 
+      const mpOrders = await loadMpOrdersRemote(user.id);
+      const priceMap = buildPriceMapFromMpOrders(mpOrders);
+
       setData((prev) => {
         const clientMap = new Map(
           prev.items
@@ -1819,7 +1822,7 @@ export default function UniPlay() {
                 name: String(u.nota || u.notes || u.name || "").trim() || undefined,
                 dueDate,
                 phone: String(u.phone || "").trim(),
-                price: 0,
+                price: priceMap?.get(lower) ?? 0,
                 isActive: true,
               });
               synced++;

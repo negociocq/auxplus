@@ -322,6 +322,22 @@ export async function releasePaidMpOrder(
         ...currentJobs,
       ]);
 
+      const planPrice = Number(order.price || order.amount || 0);
+      const target =
+        item ??
+        (username
+          ? items.find(
+              (i) => i.itemId.trim().toLowerCase() === username.toLowerCase(),
+            )
+          : undefined);
+      if (target && planPrice > 0 && target.price !== planPrice) {
+        const updatedItem = { ...target, price: planPrice };
+        setData((prev) => ({
+          ...prev,
+          items: prev.items.map((i) => (i.id === target.id ? updatedItem : i)),
+        }));
+      }
+
       persistOrders(
         user.id,
         patchMpOrder(loadMpOrders(user.id), order.id, {
