@@ -164,28 +164,46 @@ export async function finalizeEmailConfirmation(): Promise<{
 
   const payload = { email, pending_email: null as string | null };
 
+  const isSchemaCacheError = (msg: string) =>
+    /schema cache|could not find the.*column/i.test(msg);
+
+  async function updateUsersTable(
+    retries = 3,
+  ): Promise<{ data?: unknown; error?: string }> {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      const { data, error } = appUserId
+        ? await supabase
+            .from("users")
+            .update(payload)
+            .eq("id", Number(appUserId))
+            .select("id")
+            .maybeSingle()
+        : await supabase
+            .from("users")
+            .update(payload)
+            .eq("pending_email", email)
+            .select("id")
+            .maybeSingle();
+      if (!error) return { data, error: undefined };
+      if (!isSchemaCacheError(error.message) || attempt === retries - 1) {
+        return { data, error: error.message };
+      }
+      await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+    }
+    return { error: "Tentativas esgotadas" };
+  }
+
   if (appUserId) {
-    const { data, error } = await supabase
-      .from("users")
-      .update(payload)
-      .eq("id", Number(appUserId))
-      .select("id")
-      .maybeSingle();
-    if (error) return { error: error.message };
+    const { data, error } = await updateUsersTable();
+    if (error) return { error };
     if (!data) {
       return { error: "Conta AuxPlus não encontrada para vincular o e-mail." };
     }
     return { email, appUserId: String(data.id) };
   }
 
-  const { data, error } = await supabase
-    .from("users")
-    .update(payload)
-    .eq("pending_email", email)
-    .select("id")
-    .maybeSingle();
-
-  if (error) return { error: error.message };
+  const { data, error } = await updateUsersTable();
+  if (error) return { error };
   if (!data) {
     return {
       error:

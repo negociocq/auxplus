@@ -129,6 +129,7 @@ export function AdminUsers() {
                       disabled={u.id === user?.id}
                       onClick={() => {
                         if (u.id === user?.id) return;
+                        if (!window.confirm(`Excluir "${u.username}"? Esta ação não pode ser desfeita.`)) return;
                         setData({
                           ...data,
                           users: data.users.filter((x) => x.id !== u.id),

@@ -21,6 +21,7 @@ import {
   listIptvResellers,
   resolveIptvResellerPanelId,
   summarizeResellerMovements,
+  getMovementDisplayValues,
   type IptvPanelCreds,
   type IptvResellerMovement,
 } from "@/lib/iptvPanelApi";
@@ -250,17 +251,20 @@ export function ResellerMovementsDialog({
                       <span>
                         Unidade:{" "}
                         <b className="tabular-nums">
-                          {m.unitPrice > 0
-                            ? m.unitPrice.toLocaleString("pt-BR", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })
-                            : "—"}
+                          {(() => {
+                            const v = getMovementDisplayValues(m, movements);
+                            return v.unitPrice > 0
+                              ? v.unitPrice.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })
+                              : "—";
+                          })()}
                         </b>
                       </span>
                       <span>
                         Faturado:{" "}
-                        <b className="tabular-nums">{formatMoney(m.faturado)}</b>
+                        <b className="tabular-nums">{formatMoney(getMovementDisplayValues(m, movements).faturado)}</b>
                       </span>
                     </div>
                     {m.toUser || m.fromUser || m.obs ? (
@@ -297,18 +301,21 @@ export function ResellerMovementsDialog({
                           {m.credits}
                         </TableCell>
                         <TableCell className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
-                          {formatMoney(m.faturado)}
+                          {formatMoney(getMovementDisplayValues(m, movements).faturado)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap px-3 py-2 text-muted-foreground">
                           {formatLogAt(m.at)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
-                          {m.unitPrice > 0
-                            ? m.unitPrice.toLocaleString("pt-BR", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })
-                            : "—"}
+                          {(() => {
+                            const v = getMovementDisplayValues(m, movements);
+                            return v.unitPrice > 0
+                              ? v.unitPrice.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })
+                              : "—";
+                          })()}
                         </TableCell>
                         <TableCell className="w-full px-3 py-2 break-words text-muted-foreground">
                           {m.toUser || m.fromUser

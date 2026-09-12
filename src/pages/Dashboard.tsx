@@ -255,7 +255,13 @@ export default function Dashboard() {
           {
             count: items.length,
             activeCount: activeItems.length,
-            total: activeItems.reduce((s, i) => s + (i.price || 0), 0),
+            total:
+              folder.id === resellersFolderId
+                ? sumResellerCreditsValueByItems(
+                    activeItems,
+                    resellerCreditPriceBrl,
+                  )
+                : activeItems.reduce((s, i) => s + (i.price || 0), 0),
             overdue,
           },
         ];
@@ -264,7 +270,7 @@ export default function Dashboard() {
       string,
       { count: number; activeCount: number; total: number; overdue: number }
     >;
-  }, [folders, myItems]);
+  }, [folders, myItems, resellersFolderId, resellerCreditPriceBrl]);
 
   const kpis = useMemo(() => {
     const today = startOfDay(new Date());

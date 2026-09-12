@@ -30,6 +30,7 @@ import {
   isShortLivedIptvTest,
   parseIptvExpToDateTime,
   resolveTestAccessLinks,
+  resellerDisplayAmount,
   type IptvRemoteUser,
   type IptvReseller,
   type IptvResellerMovement,
@@ -580,14 +581,6 @@ export function syncIptvUsersToFolder(
       if (dueDate && existingDue !== dueDate) {
         patch.dueDate = dueDate;
       }
-      if (name && name !== (target.name || "").trim()) {
-        patch.name = name;
-      } else {
-        const fixedLocal = fixUtf8Mojibake(target.name || "");
-        if (fixedLocal && fixedLocal !== target.name) {
-          patch.name = fixedLocal;
-        }
-      }
       const planPrice = priceMap?.get(username.toLowerCase());
       if (planPrice && target.price === 0) {
         patch.price = planPrice;
@@ -777,9 +770,9 @@ export function syncIptvResellersToFolder(
           Math.floor(credits),
         );
       }
-      // Limpa pagamentos sintéticos (saldo antigo contado como R$)
+      // Mantém todos os pagamentos reais (recargas), filtra apenas valores zero/negativos
       const recorded = getRecordedPayments(existing).filter(
-        (p) => Number(p.amount) >= 10,
+        (p) => Number(p.amount) > 0,
       );
       const nextNotes = buildResellerSyncNotes(
         remote,
@@ -853,12 +846,14 @@ export function applyResellerMovementsToFolder(
   folderId: string,
   movementLogs: Map<string, IptvResellerMovement[]>,
 ): AppData {
+  console.log("[APPLY-MOV] start", { folderId, movementCount: movementLogs.size });
   if (!movementLogs.size) return data;
   let changed = false;
   const items = data.items.map((i) => {
     if (i.folderId !== folderId || i.isActive === false) return i;
     const key = String(i.itemId || "").trim().toLowerCase();
     const list = key ? movementLogs.get(key) : undefined;
+    console.log("[APPLY-MOV] item", { id: i.id, name: i.name, key, folderMatch: i.folderId === folderId, active: i.isActive, listSize: list?.length ?? 0 });
     if (!list || !list.length) return i;
 
     const total = Math.floor(
@@ -866,8 +861,8 @@ export function applyResellerMovementsToFolder(
     );
     let next = withResellerCreditsBought(i, total);
     if (getResellerCreditsBought(i) !== total) changed = true;
+    console.log("[APPLY-MOV] credits", { name: i.name, total, current: getResellerCreditsBought(i), changed });
 
-    // Recargas já gravadas (PIX liberado pelo app etc.) — dedupe por data+valor
     const seen = new Set(
       getRecordedPayments(i).map(
         (p) =>
@@ -876,9 +871,9 @@ export function applyResellerMovementsToFolder(
           )}`,
       ),
     );
+    let added = 0;
     for (const m of list) {
-      if (/AuxPlus PIX/i.test(m.obs || "")) continue;
-      const amount = Math.round((Number(m.faturado) || 0) * 100) / 100;
+      const amount = resellerDisplayAmount(Number(m.faturado) || 0, Number(m.credits) || 0);
       if (amount <= 0) continue;
       const paidAt = movementDateToYmd(m.at);
       if (!paidAt) continue;
@@ -887,9 +882,13 @@ export function applyResellerMovementsToFolder(
       seen.add(k);
       next = appendItemPayment(next, { paidAt, amount });
       changed = true;
+      added++;
+      console.log("[APPLY-MOV] added", { name: i.name, paidAt, amount });
     }
+    if (added > 0) console.log("[APPLY-MOV] total added for", i.name, added);
     return next;
   });
+  console.log("[APPLY-MOV] end", { changed, itemCount: items.length });
   return changed ? { ...data, items } : data;
 }
 

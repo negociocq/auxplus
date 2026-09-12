@@ -274,7 +274,7 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "Certo! Vou te encaminhar para nossos atendentes.\nEm breve alguém responde por aqui.",
   humanAssumed:
     "👤 *Atendimento humano*\n\n" +
-    "Um atendente assumiu esta conversa.\n" +
+    "Um atendente atendeu esta conversa.\n" +
     "Pode falar por aqui — o automático fica pausado até o atendimento terminar.",
   humanBusy:
     "Seu atendimento está com nossos atendentes no momento.\nAssim que finalizar, o automático volta.",
@@ -1111,7 +1111,7 @@ async function notifyOwnerHumanHandoff(
     `🔔 *Pessoa no atendimento*\n\n` +
     `${roleLabel} pediu falar com os atendentes.\n` +
     `Número: *${formatWaPhoneDisplay(contactPhone)}*\n\n` +
-    `_Responda no chat dessa pessoa. Digite "assumir" para o bot ficar mudo; quando terminar, "atendimento encerrado"._`;
+    `_Responda no chat dessa pessoa. Digite "atender" para o bot ficar mudo; quando terminar, "encerrar"._`;
   await evoSend(apiBaseUrl, apiKey, instance, owner, text);
 }
 
@@ -2425,7 +2425,7 @@ Deno.serve(async (req) => {
     );
     const keywords = (bot.keywords || {}) as Record<string, string[]>;
     const endHuman = String(
-      bot.endHumanPhrase || "atendimento encerrado",
+      bot.endHumanPhrase || "encerrar",
     ).toLowerCase();
     const testFlow = resolveTestFlowFromBot(bot as Record<string, unknown>);
     const testPhrase = String(
@@ -2655,12 +2655,12 @@ Deno.serve(async (req) => {
     };
 
     // Comandos do dono: SÓ com fromMe + texto EXATO (senão a msg do bot
-    // “Atendimento encerrado…” re-dispara o comando e vira loop).
+    // “encerrar” re-dispara o comando e vira loop).
     const cmdNorm = normKey(text);
     const endHumanNorm = normKey(endHuman);
     const isOwnerReleaseTest =
       fromMe && cmdNorm === normKey("liberar teste");
-    const isOwnerAssume = fromMe && cmdNorm === "assumir";
+    const isOwnerAssume = fromMe && cmdNorm === "atender";
     const isOwnerEndHuman =
       fromMe && Boolean(endHumanNorm) && cmdNorm === endHumanNorm;
 

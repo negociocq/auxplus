@@ -469,7 +469,7 @@ export async function releasePaidMpOrder(
       if (item) {
         const updated = applyResellerRechargeToItem(item, {
           credits,
-          amountBrl,
+          amountBrl: correctedAmount,
           paidAt,
         });
         setData((prev) => ({
@@ -495,7 +495,7 @@ export async function releasePaidMpOrder(
       const sent = await sendWa(
         user,
         phone,
-        buildResellerCreditsReceiptMessage(username, credits, amountBrl),
+        buildResellerCreditsReceiptMessage(username, credits, correctedAmount),
       );
       toast.success(
         sent

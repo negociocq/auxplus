@@ -1,0 +1,78 @@
+/**
+ * Script: cole no console do navegador (F12 → Console)
+ * 
+ * CORRIGE DEFINITIVAMENTE os pagamentos de Agosto para eronvitor.
+ * 
+ * Funciona assim:
+ * 1. Lê localStorage atual
+ * 2. Adiciona 5 pagamentos de Agosto (R$85 cada) nas notas do eronvitor
+ * 3. Salva no localStorage
+ * 4. Recarrega a página
+ * 
+ * Depois disso, o gráfico mostra R$425 em Agosto.
+ * 
+ * Se quiser TAMBÉM salvar no Supabase, rode o script
+ * scripts/fix-aug-supabase.mjs no terminal (precisa restartar o Vite depois).
+ */
+(() => {
+  const raw = localStorage.getItem("auxplus-data-v2");
+  if (!raw) {
+    console.error("❌ localStorage auxplus-data-v2 não encontrado");
+    return;
+  }
+  const data = JSON.parse(raw);
+
+  const eronvitor = data.items.find(
+    (i) => (i.itemId && i.itemId === "eronvitor") || (i.name && i.name === "eronvitor"),
+  );
+  if (!eronvitor) {
+    console.error("❌ eronvitor não encontrado");
+    console.log("Itens:", data.items.map((i) => i.name || i.itemId || i.id).join(", "));
+    return;
+  }
+
+  const notes = String(eronvitor.notes || "");
+  const axpayMatch = notes.match(/<!--AXPAY:([\s\S]*?)-->/);
+  let payments = [];
+  if (axpayMatch) {
+    try {
+      payments = JSON.parse(axpayMatch[1]);
+    } catch (e) {
+      console.warn("⚠️ Erro ao ler AXPAY:", e.message);
+    }
+  }
+
+  const augPayments = [
+    { paidAt: "2026-08-03", amount: 85 },
+    { paidAt: "2026-08-10", amount: 85 },
+    { paidAt: "2026-08-14", amount: 85 },
+    { paidAt: "2026-08-21", amount: 85 },
+    { paidAt: "2026-08-29", amount: 85 },
+  ];
+
+  let added = 0;
+  for (const p of augPayments) {
+    if (!payments.some((ep) => ep.paidAt === p.paidAt && ep.amount === p.amount)) {
+      payments.push(p);
+      added++;
+    }
+  }
+
+  if (added === 0) {
+    console.log("ℹ️ Pagamentos de Agosto já existem");
+    return;
+  }
+
+  const cleanNotes = notes.replace(/<!--AXPAY:[\s\S]*?-->/, "").trim();
+  eronvitor.payments = payments;
+  eronvitor.notes = cleanNotes
+    ? `${cleanNotes}\n<!--AXPAY:${JSON.stringify(payments)}-->`
+    : `<!--AXPAY:${JSON.stringify(payments)}-->`;
+
+  localStorage.setItem("auxplus-data-v2", JSON.stringify(data));
+
+  console.log(`✅ ${added} pagamentos de Agosto adicionados para ${eronvitor.name || eronvitor.itemId}`);
+  console.log(`   Total pagamentos: ${payments.length}`);
+  console.log("   Recarregando...");
+  location.reload();
+})();

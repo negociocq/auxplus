@@ -1,0 +1,149 @@
+// Cole no console do navegador (F12 → Console) no http://localhost:32116
+// Este script exporta todos os itens da pasta IPTV (folder 3) do localStorage
+// e calcula o saldo anual 2026. Salve o resultado e compare com o Supabase.
+
+(function() {
+  const raw = localStorage.getItem("auxplus-data-v2");
+  if (!raw) { console.log("LOCALSTORAGE VAZIO"); return; }
+  
+  const data = JSON.parse(raw);
+  const items = data.items || [];
+  const folders = data.folders || [];
+  
+  // Find folder 3 (IPTV)
+  const iptvFolder = folders.find(f => f.id === 3 || f.id === "3");
+  console.log("=== PASTA IPTV (folder 3) ===");
+  console.log("Nome:", iptvFolder?.name, "| Tipo:", iptvFolder?.type);
+  console.log("Total itens:", items.filter(i => i.folderId === 3).length);
+  
+  // All items in folder 3
+  const folder3Items = items.filter(i => i.folderId === 3);
+  
+  // Calculate annual balance 2026 using same logic as app
+  const year = 2026;
+  let monthlyTotals = {};
+  let grandTotal = 0;
+  let itemsWithPayments = 0;
+  
+  const results = [];
+  
+  for (const item of folder3Items) {
+    // Get payments from item.payments or <!--AXPAY:--> marker
+    let payments = [];
+    if (item.payments?.length) {
+      payments = item.payments;
+    } else {
+      const axpayMatch = /<!--AXPAY:([\s\S]*?)-->/.exec(String(item.notes || ""));
+      if (axpayMatch) {
+        try { payments = JSON.parse(axpayMatch[1]); } catch(e) {}
+      }
+    }
+    
+    if (payments.length > 0) itemsWithPayments++;
+    
+    // Filter 2026 payments
+    const payments2026 = payments.filter(p => (p.paidAt || "").startsWith("2026-"));
+    
+    // Due date logic (same as sumPaymentsByMonth)
+    const dueDate = item.dueDate || item.due_date;
+    let countedTotal = 0;
+    
+    if (dueDate) {
+      // Cliente: count only until due month
+      const dueMonth = String(dueDate).slice(0, 7);
+      for (const p of payments2026) {
+        const paidMonth = (p.paidAt || "").slice(0, 7);
+        if (paidMonth <= dueMonth) countedTotal += (p.amount || 0);
+      }
+    } else {
+      // Sem vencimento: count all
+      countedTotal = payments2026.reduce((s, p) => s + (p.amount || 0), 0);
+    }
+    
+    if (countedTotal > 0) {
+      results.push({
+        id: item.id,
+        name: item.name,
+        itemId: item.itemId,
+        payments: payments.length,
+        payments2026: payments2026.length,
+        total2026: countedTotal,
+        dueDate: dueDate || "(sem vencimento)",
+      });
+      grandTotal += countedTotal;
+    }
+  }
+  
+  results.sort((a, b) => b.total2026 - a.total2026);
+  
+  console.log("=== ITENS COM SALDO > 0 ===");
+  for (const r of results) {
+    console.log(`${r.name || r.itemId} (ID:${r.id}): ${r.payments} pagtos total, ${r.payments2026} em 2026, saldo=R$${r.total2026.toFixed(2)}, venc=${r.dueDate}`);
+  }
+  
+  console.log("\n=== RESUMO ===");
+  console.log("Itens com pagamentos:", itemsWithPayments);
+  console.log("Itens com saldo > 0 em 2026:", results.length);
+  console.log("SALDO ANUAL 2026 FOLDER 3: R$ " + grandTotal.toFixed(2));
+  
+  // Monthly breakdown
+  console.log("\n=== BREAKDOWN MENSAL 2026 ===");
+  const months = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+  const monthNames = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  for (let i = 0; i < 12; i++) {
+    let monthTotal = 0;
+    for (const item of folder3Items) {
+      let payments = [];
+      if (item.payments?.length) {
+        payments = item.payments;
+      } else {
+        const axpayMatch = /<!--AXPAY:([\s\S]*?)-->/.exec(String(item.notes || ""));
+        if (axpayMatch) {
+          try { payments = JSON.parse(axpayMatch[1]); } catch(e) {}
+        }
+      }
+      const dueDate = item.dueDate || item.due_date;
+      for (const p of payments) {
+        if ((p.paidAt || "").startsWith("2026-" + months[i])) {
+          if (dueDate) {
+            const dueMonth = String(dueDate).slice(0, 7);
+            if ("2026-" + months[i] <= dueMonth) monthTotal += (p.amount || 0);
+          } else {
+            monthTotal += (p.amount || 0);
+          }
+        }
+      }
+    }
+    console.log(`${monthNames[i]}: R$ ${monthTotal.toFixed(2)}`);
+  }
+  
+  // Also save as downloadable
+  const exportData = {
+    folder: iptvFolder?.name,
+    totalItems: folder3Items.length,
+    itemsWithPayments: itemsWithPayments,
+    annualBalance2026: grandTotal,
+    monthlyBreakdown: months.map((m, i) => {
+      let monthTotal = 0;
+      for (const item of folder3Items) {
+        let payments = [];
+        if (item.payments?.length) payments = item.payments;
+        else {
+          const axpayMatch = /<!--AXPAY:([\s\S]*?)-->/.exec(String(item.notes || ""));
+          if (axpayMatch) { try { payments = JSON.parse(axpayMatch[1]); } catch(e) {} }
+        }
+        const dueDate = item.dueDate || item.due_date;
+        for (const p of payments) {
+          if ((p.paidAt || "").startsWith("2026-" + m)) {
+            if (!dueDate || "2026-" + m <= String(dueDate).slice(0, 7)) monthTotal += (p.amount || 0);
+          }
+        }
+      }
+      return { month: monthNames[i], total: monthTotal };
+    }),
+    itemsWithBalance: results,
+  };
+  
+  console.log("\n=== EXPORT JSON (copie) ===");
+  console.log(JSON.stringify(exportData, null, 2));
+})();

@@ -1670,16 +1670,111 @@ export async function listIptvResellerLogs(
   });
 }
 
+/**
+ * Converte faturado bruto do UniPlay para valor exibido em R$.
+ * Alguns lançamentos vêm 10x maiores que o correto (ex.: R$850 em vez
+ * de R$85). Detecta pela taxa por crédito: se perCredit > 50, divide por 10.
+ */
+export function resellerDisplayAmount(faturado: number, credits: number): number {
+  if (faturado <= 0 || credits <= 0) return Math.round(faturado * 100) / 100;
+  const perCredit = faturado / credits;
+  if (perCredit > 50) {
+    return Math.round((faturado / 10) * 100) / 100;
+  }
+  return Math.round(faturado * 100) / 100;
+}
+
+/** Preço unitário exibido a partir do faturado corrigido. */
+export function resellerDisplayUnitPrice(faturado: number, credits: number): number {
+  const amount = resellerDisplayAmount(faturado, credits);
+  return credits > 0 ? Math.round((amount / credits) * 100) / 100 : 0;
+}
+
+/**
+ * Valores exibidos de uma movimentação individual, usando a média de
+ * preço unitário dos movimentos positivos para estimar custos negativos.
+ * Ex.: -10 cr × R$8,50 (média) = -R$85.
+ */
+export function getMovementDisplayValues(
+  move: IptvResellerMovement,
+  allMoves: IptvResellerMovement[],
+): { faturado: number; unitPrice: number } {
+  let positiveFaturado = 0;
+  let positiveCredits = 0;
+  for (const m of allMoves) {
+    const c = Number(m.credits) || 0;
+    if (c > 0) {
+      positiveFaturado += resellerDisplayAmount(Number(m.faturado) || 0, c);
+      positiveCredits += c;
+    }
+  }
+  const avgUnitPrice = positiveCredits > 0 ? positiveFaturado / positiveCredits : 0;
+
+  const c = Number(move.credits) || 0;
+  const rawFaturado = Number(move.faturado) || 0;
+
+  let faturado: number;
+  if (c > 0) {
+    faturado = resellerDisplayAmount(rawFaturado, c);
+  } else if (c < 0) {
+    if (rawFaturado === 0 && avgUnitPrice > 0) {
+      faturado = Math.round(c * avgUnitPrice * 100) / 100;
+    } else {
+      faturado = rawFaturado;
+    }
+  } else {
+    faturado = 0;
+  }
+
+  const unitPrice = c !== 0 && faturado !== 0
+    ? Math.abs(Math.round((faturado / c) * 100) / 100)
+    : 0;
+
+  return { faturado, unitPrice };
+}
+
 /** Resumo dos créditos/valores de uma lista de movimentações. */
 export function summarizeResellerMovements(
   moves: IptvResellerMovement[],
 ): { credits: number; faturado: number; unitPrice: number } {
   const credits = moves.reduce((s, m) => s + (Number(m.credits) || 0), 0);
-  const faturado = moves.reduce((s, m) => s + (Number(m.faturado) || 0), 0);
+
+  // Média de preço unitário dos movimentos positivos (para estimar custo de negativos)
+  let positiveFaturado = 0;
+  let positiveCredits = 0;
+  for (const m of moves) {
+    const c = Number(m.credits) || 0;
+    if (c > 0) {
+      positiveFaturado += resellerDisplayAmount(Number(m.faturado) || 0, c);
+      positiveCredits += c;
+    }
+  }
+  const avgUnitPrice = positiveCredits > 0 ? positiveFaturado / positiveCredits : 0;
+
+  // Soma: positivos com faturado real, negativos com custo estimado
+  const faturado = moves.reduce((s, m) => {
+    const c = Number(m.credits) || 0;
+    if (c > 0) {
+      return s + resellerDisplayAmount(Number(m.faturado) || 0, c);
+    }
+    if (c < 0) {
+      // Negativo sem custo real: estimar por preço médio (ex.: -10 cr × R$8,50 = -R$85)
+      const rawFaturado = Number(m.faturado) || 0;
+      if (rawFaturado === 0 && avgUnitPrice > 0) {
+        return s + c * avgUnitPrice;
+      }
+      return s + rawFaturado;
+    }
+    return s;
+  }, 0);
+
   return {
     credits,
     faturado: Math.round(faturado * 100) / 100,
-    unitPrice: credits > 0 ? Math.round((faturado / credits) * 100) / 100 : 0,
+    unitPrice:
+      credits !== 0 && faturado !== 0
+        ? Math.abs(Math.round((faturado / credits) * 100) / 100)
+        : Math.round(avgUnitPrice * 100) / 100,
   };
 }
 

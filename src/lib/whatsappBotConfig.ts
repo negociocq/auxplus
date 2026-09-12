@@ -53,7 +53,7 @@ export interface WhatsappBotConfig {
     renewPixIntro: string;
     /** Cliente pediu problema (deprecated, mantém compatibilidade) */
     problemHuman: string;
-    /** Dono digitou “assumir” */
+    /** Dono digitou “atender” */
     humanAssumed: string;
     /** Aviso enquanto está em atendimento humano */
     humanBusy: string;
@@ -132,7 +132,7 @@ function defaultWaTestFlow(): WaTestFlowConfig {
 export function defaultWhatsappBotConfig(): WhatsappBotConfig {
   return {
     enabled: false,
-    endHumanPhrase: "atendimento encerrado",
+    endHumanPhrase: "encerrar",
     testTriggerPhrase: "",
     testPcLoginUrl: "",
     testPhoneApkUrl: "",
@@ -174,7 +174,7 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
         "Certo! Vou te encaminhar para nossos atendentes.\nEm breve alguém responde por aqui.",
       humanAssumed:
         "👤 *Atendimento humano*\n\n" +
-        "Um atendente assumiu esta conversa.\n" +
+        "Um atendente atendeu esta conversa.\n" +
         "Pode falar por aqui — o automático fica pausado até o atendimento terminar.",
       humanBusy:
         "Seu atendimento está com nossos atendentes no momento.\nAssim que finalizar, o automático volta.",

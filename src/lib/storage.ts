@@ -28,7 +28,6 @@ import {
   stripResellerMarker,
 } from "@/lib/resellerCredits";
 import {
-  embedPlanState,
   extractPlanMonths,
   resolvePlanSegmentsOnSave,
   stripPlanMarker,
@@ -95,8 +94,6 @@ function composeNotes(
   if (debt?.installments?.length) next = embedDebtInNotes(next, debt);
   next = embedPaymentsInNotes(next, payments);
   if (bought != null) next = embedResellerCreditsBought(next, bought);
-  if (planSegments?.length) next = embedPlanState(next, plan, planSegments);
-  else if (plan > 1) next = embedPlanState(next, plan, []);
   if (screenCount != null && screenCount >= 1) {
     next = embedScreensInNotes(next, screenCount);
   }
@@ -144,7 +141,8 @@ export function loadData(): AppData {
       folderMessages: parsed.folderMessages ?? [],
       whatsappMessages: parsed.whatsappMessages ?? [],
     });
-  } catch {
+  } catch (e) {
+    console.log('[loadData] error:', e);
     const seeded = seedData();
     saveData(seeded);
     return seeded;

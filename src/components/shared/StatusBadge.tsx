@@ -34,7 +34,7 @@ export function StatusBadge({
   full?: boolean;
   className?: string;
 }) {
-  const cfg = map[status];
+  const cfg = map[status] ?? { label: status, className: "border border-border bg-background/90 text-muted-foreground" };
   return (
     <Badge className={cn(cfg.className, className)}>
       {full ? status : cfg.label}

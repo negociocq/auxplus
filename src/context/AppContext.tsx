@@ -11,7 +11,9 @@ import {
 import type { AppData, User } from "@/types";
 import {
   getSessionUserId,
+  loadData,
   refreshItemStatuses,
+  saveData,
   setSessionUserId,
 } from "@/lib/storage";
 import {
@@ -46,7 +48,15 @@ const emptyData: AppData = {
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [data, setDataState] = useState<AppData>(emptyData);
+  const loadedFromStorage = useRef(false);
+  const [data, setDataState] = useState<AppData>(() => {
+    try {
+      loadedFromStorage.current = true;
+      return loadData();
+    } catch (e) {
+      return emptyData;
+    }
+  });
   const [sessionId, setSessionId] = useState<string | null>(() =>
     getSessionUserId(),
   );
@@ -129,10 +139,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (updater: AppData | ((prev: AppData) => AppData)) => {
       setDataState((prev) => {
         const next =
-          typeof updater === "function"
+          typeof updater === 'function'
             ? (updater as (p: AppData) => AppData)(prev)
             : updater;
         const refreshed = refreshItemStatuses(next);
+        saveData(refreshed);
         dirty.current = true;
         pendingPersist.current = refreshed;
         void flushPersist();

@@ -101,7 +101,7 @@ function isMissingPhone(phone?: string | null): boolean {
   return d.length < 10;
 }
 
-type ListFilter = "all" | ItemStatus | "no-phone";
+type ListFilter = "all" | ItemStatus | "no-phone" | "no-price";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -158,7 +158,9 @@ import {
   formatIptvCredits,
   getLastIssuedIptvToken,
   listIptvResellers,
+  listIptvResellerLogs,
   listIptvUsers,
+  resolveIptvResellerPanelId,
   type IptvResellerMovement,
 } from "@/lib/iptvPanelApi";
 import {
@@ -473,6 +475,27 @@ export default function FolderItems() {
           skipped = result.skipped;
           return result.data;
         });
+        // Aplicar movimentações (recargas) automaticamente em segundo plano
+        void (async () => {
+          try {
+            const movementLogs = new Map<string, IptvResellerMovement[]>();
+            for (const row of rows) {
+              const username = String(row.username || "").trim().toLowerCase();
+              if (!username || excluded.has(username)) continue;
+              const resellerId = resolveIptvResellerPanelId(row);
+              if (resellerId == null) continue;
+              try {
+                const moves = await listIptvResellerLogs(creds, resellerId);
+                if (moves.length) movementLogs.set(username, moves);
+              } catch { /* ignorar erro individual */ }
+            }
+            if (movementLogs.size > 0) {
+              setData((prev) =>
+                applyResellerMovementsToFolder(prev, folder.id, movementLogs),
+              );
+            }
+          } catch { /* ignorar falha geral */ }
+        })();
         toast.success(
           `Revendedores: ${updated} atualizado(s) · ${created} novo(s)` +
             (skipped ? ` · ${skipped} sem mudança` : ""),
@@ -552,10 +575,12 @@ export default function FolderItems() {
       "Já Vencido": 0,
       "Sem Vencimento": 0,
       noPhone: 0,
+      noPrice: 0,
     };
     for (const i of folderItems) {
       c[i.status] += 1;
       if (isMissingPhone(i.phone)) c.noPhone += 1;
+      if ((i.price || 0) === 0) c.noPrice += 1;
     }
     return c;
   }, [folderItems]);
@@ -565,6 +590,8 @@ export default function FolderItems() {
       .filter((i) => {
         if (listFilter === "no-phone") {
           if (!isMissingPhone(i.phone)) return false;
+        } else if (listFilter === "no-price") {
+          if ((i.price || 0) !== 0) return false;
         } else if (listFilter !== "all" && i.status !== listFilter) {
           return false;
         }
@@ -742,9 +769,9 @@ export default function FolderItems() {
       ...(isResellerFolder
         ? {
             resellerCreditsBought: creditsBought,
-            // remove lixo antigo que somava saldo como R$
+            // mantém todos os pagamentos reais (recargas), filtra apenas valores zero/negativos
             payments: (editing ? getRecordedPayments(editing) : []).filter(
-              (p) => Number(p.amount) >= 10,
+              (p) => Number(p.amount) > 0,
             ),
           }
         : {}),
@@ -837,6 +864,7 @@ export default function FolderItems() {
       count: counts["Sem Vencimento"],
     },
     { key: "no-phone", label: "Sem telefone", count: counts.noPhone },
+    { key: "no-price", label: "Sem preço", count: counts.noPrice },
   ];
 
   return (
@@ -933,6 +961,10 @@ export default function FolderItems() {
               <Badge variant="outline" className="gap-1 font-normal">
                 <PhoneOff className="h-3 w-3" />
                 Sem tel.
+              </Badge>
+            ) : chip.key === "no-price" ? (
+              <Badge variant="outline" className="gap-1 font-normal">
+                Sem preço
               </Badge>
             ) : (
               <StatusBadge status={chip.key} />

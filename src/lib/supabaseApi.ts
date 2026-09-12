@@ -99,8 +99,17 @@ function mapItem(row: Record<string, unknown>): Item {
   const payments = extractPaymentsFromNotes(notes);
   const debt = extractDebtFromNotes(notes);
   const resellerCreditsBought = extractResellerCreditsBought(notes);
-  const planMonths = extractPlanMonths(notes);
+  const planMonthsFromNotes = extractPlanMonths(notes);
   const screens = extractScreens(notes);
+  const historyFromDb = Array.isArray(row.plan_history)
+    ? row.plan_history as Array<{ from: string; price: number; planMonths: number }>
+    : null;
+  const planMonths =
+    planMonthsFromNotes
+    ?? (historyFromDb?.length
+      ? historyFromDb[historyFromDb.length - 1].planMonths
+      : null)
+    ?? 1;
   const base = {
     id: String(row.id),
     folderId: String(row.folder_id),
@@ -116,10 +125,11 @@ function mapItem(row: Record<string, unknown>): Item {
     createdAt: row.created_at ? String(row.created_at) : null,
     isActive: row.is_active !== false,
     payments: payments.length ? payments : undefined,
-    planMonths: planMonths ?? 1,
+    planMonths,
     screens: screens ?? null,
     resellerCreditsBought: resellerCreditsBought ?? null,
     debt: debt ?? undefined,
+    planHistory: historyFromDb ?? undefined,
   };
   const planHistory = getPlanSegments(base);
   return { ...base, planHistory };
