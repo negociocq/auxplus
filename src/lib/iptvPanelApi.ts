@@ -1674,14 +1674,23 @@ export async function listIptvResellerLogs(
  * Converte faturado bruto do UniPlay para valor exibido em R$.
  * Alguns lançamentos vêm 10x maiores que o correto (ex.: R$850 em vez
  * de R$85). Detecta pela taxa por crédito: se perCredit > 50, divide por 10.
+ * Créditos negativos sem faturado (transferências) usam R$8,50/créd.
+ * Ex.: -10 cr → -R$85.
  */
 export function resellerDisplayAmount(faturado: number, credits: number): number {
-  if (faturado <= 0 || credits <= 0) return Math.round(faturado * 100) / 100;
-  const perCredit = faturado / credits;
-  if (perCredit > 50) {
-    return Math.round((faturado / 10) * 100) / 100;
+  const c = Number(credits) || 0;
+  const f = Number(faturado) || 0;
+  if (c > 0 && f > 0) {
+    const perCredit = f / c;
+    if (perCredit > 50) {
+      return Math.round((f / 10) * 100) / 100;
+    }
+    return Math.round(f * 100) / 100;
   }
-  return Math.round(faturado * 100) / 100;
+  if (c < 0 && f === 0) {
+    return Math.round(c * 8.5 * 100) / 100;
+  }
+  return Math.round(f * 100) / 100;
 }
 
 /** Preço unitário exibido a partir do faturado corrigido. */

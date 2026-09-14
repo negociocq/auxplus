@@ -101,7 +101,21 @@ function isMissingPhone(phone?: string | null): boolean {
   return d.length < 10;
 }
 
-type ListFilter = "all" | ItemStatus | "no-phone" | "no-price";
+/** Compara telefones ignorando formatação (dígitos, espaços, +, -).
+ *  Usa match parcial: query pode ser um subconjunto dos dígitos do telefone.
+ *  Ignora prefixo "55" opcional (Brasil). */
+function phoneMatch(query: string, phone: string): boolean {
+  const q = query.replace(/\D/g, "");
+  let p = phone.replace(/\D/g, "");
+  if (!q || !p) return false;
+  if (p.startsWith("55") && p.length > q.length) {
+    const without55 = p.slice(2);
+    if (without55.includes(q) || q.includes(without55)) return true;
+  }
+  return p.includes(q) || q.includes(p);
+}
+
+type ListFilter = "all" | ItemStatus | "no-phone" | "no-price" | "dup-phone";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -576,22 +590,45 @@ export default function FolderItems() {
       "Sem Vencimento": 0,
       noPhone: 0,
       noPrice: 0,
+      dupPhone: 0,
     };
+    const phoneCount = new Map<string, number>();
     for (const i of folderItems) {
       c[i.status] += 1;
       if (isMissingPhone(i.phone)) c.noPhone += 1;
       if ((i.price || 0) === 0) c.noPrice += 1;
+      if (!isMissingPhone(i.phone)) {
+        const raw = String(i.phone || "").replace(/\D/g, "");
+        phoneCount.set(raw, (phoneCount.get(raw) || 0) + 1);
+      }
+    }
+    for (const i of folderItems) {
+      if (!isMissingPhone(i.phone)) {
+        const raw = String(i.phone || "").replace(/\D/g, "");
+        if ((phoneCount.get(raw) || 0) > 1) c.dupPhone += 1;
+      }
     }
     return c;
   }, [folderItems]);
 
   const items = useMemo(() => {
+    const phoneCount = new Map<string, number>();
+    for (const i of folderItems) {
+      if (!isMissingPhone(i.phone)) {
+        const raw = String(i.phone || "").replace(/\D/g, "");
+        phoneCount.set(raw, (phoneCount.get(raw) || 0) + 1);
+      }
+    }
     return folderItems
       .filter((i) => {
         if (listFilter === "no-phone") {
           if (!isMissingPhone(i.phone)) return false;
         } else if (listFilter === "no-price") {
           if ((i.price || 0) !== 0) return false;
+        } else if (listFilter === "dup-phone") {
+          if (isMissingPhone(i.phone)) return false;
+          const raw = String(i.phone || "").replace(/\D/g, "");
+          if ((phoneCount.get(raw) || 0) <= 1) return false;
         } else if (listFilter !== "all" && i.status !== listFilter) {
           return false;
         }
@@ -600,7 +637,7 @@ export default function FolderItems() {
         return (
           normSearch(i.name).includes(q) ||
           normSearch(i.itemId).includes(q) ||
-          normSearch(i.phone).includes(q) ||
+          phoneMatch(search, i.phone || "") ||
           normSearch(notesForDisplay(i.notes)).includes(q)
         );
       })
@@ -865,6 +902,7 @@ export default function FolderItems() {
     },
     { key: "no-phone", label: "Sem telefone", count: counts.noPhone },
     { key: "no-price", label: "Sem preço", count: counts.noPrice },
+    { key: "dup-phone", label: "Telefone duplicado", count: counts.dupPhone },
   ];
 
   return (
@@ -965,6 +1003,10 @@ export default function FolderItems() {
             ) : chip.key === "no-price" ? (
               <Badge variant="outline" className="gap-1 font-normal">
                 Sem preço
+              </Badge>
+            ) : chip.key === "dup-phone" ? (
+              <Badge variant="outline" className="gap-1 font-normal">
+                Duplicado
               </Badge>
             ) : (
               <StatusBadge status={chip.key} />

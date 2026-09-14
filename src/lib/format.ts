@@ -2,11 +2,11 @@ import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export function formatMoney(value: number) {
-  const [intPart, dec] = value.toFixed(2).split(".");
-  // Espaço não separável: evita "R$ 3" / "894,99" em linhas diferentes
+  const negative = value < 0;
+  const [intPart, dec] = Math.abs(value).toFixed(2).split(".");
   const nbsp = "\u00A0";
   const withSpaces = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, nbsp);
-  return `R$${nbsp}${withSpaces},${dec}`;
+  return `${negative ? "-" : ""}R$${nbsp}${withSpaces},${dec}`;
 }
 
 /** Exibe `23/07/2027` ou `23/07/2027 23:00:56` quando houver horário. */

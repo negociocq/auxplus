@@ -73,6 +73,10 @@ import {
   ensureIptvToken,
   fetchIptvPanelCredits,
   formatIptvCredits,
+  listIptvResellers,
+  listIptvResellerLogs,
+  resolveIptvResellerPanelId,
+  resellerDisplayAmount,
 } from "@/lib/iptvPanelApi";
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
 import { onUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
@@ -124,6 +128,10 @@ export default function Dashboard() {
   const [loadingCredits, setLoadingCredits] = useState(false);
   const [resellersFolderId, setResellersFolderId] = useState("");
   const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(8.5);
+  const [autoCfg, setAutoCfg] = useState<ReturnType<typeof loadAutomationsConfig> | null>(null);
+  const [resellerLogsMonthly, setResellerLogsMonthly] = useState<
+    { name: string; total: number; itens: number }[]
+  >([]);
 
   useEffect(() => {
     if (!user) {
@@ -141,6 +149,7 @@ export default function Dashboard() {
         if (!cancelled) {
           setResellersFolderId(cfg.syncResellersFolderId || "");
           setResellerCreditPriceBrl(cfg.resellerCreditPriceBrl || 8.5);
+          setAutoCfg(cfg);
         }
         if (!isUniplayConnected(cfg)) {
           if (!cancelled) {
@@ -231,6 +240,79 @@ export default function Dashboard() {
         };
       });
   }, [data.items, data.folderSettings, folders]);
+
+  const refreshResellerChartData = async () => {
+    if (!user || !autoCfg || !resellersFolderId) return;
+    try {
+      const plat = await loadIptvPlatformConfig();
+      const creds = {
+        apiBaseUrl: plat.apiBaseUrl || autoCfg.iptvApiBaseUrl,
+        bearerToken: autoCfg.iptvBearerToken || "",
+        username: autoCfg.iptvUsername || undefined,
+        password: autoCfg.iptvPassword || undefined,
+        defaultPackage: plat.packageId || "1",
+        regPassword: plat.regPassword || undefined,
+        apiProxyUrl: plat.apiProxyUrl || undefined,
+      };
+      const resellers = await listIptvResellers(creds);
+      const panelIdByUsername = new Map<string, number | string>();
+      for (const r of resellers) {
+        const id = resolveIptvResellerPanelId(r);
+        if (id != null && r.username) {
+          panelIdByUsername.set(String(r.username).toLowerCase(), id);
+        }
+      }
+      const resellerItems = myItems.filter(
+        (i) => i.folderId === resellersFolderId,
+      );
+      const MONTHS = [
+        "Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez",
+      ];
+      const monthlyTotals = MONTHS.map((name) => ({ name, total: 0, itens: 0 }));
+      await Promise.all(
+        resellerItems.map(async (item) => {
+          const username = String(item.itemId || "").toLowerCase();
+          const panelId = panelIdByUsername.get(username);
+          if (panelId == null) return;
+          try {
+            const moves = await listIptvResellerLogs(creds, panelId);
+            for (const m of moves) {
+              const atStr = String(m.at || "");
+              if (!atStr.startsWith(String(chartYear))) continue;
+              const monthIdx = Number(atStr.slice(5, 7)) - 1;
+              if (monthIdx < 0 || monthIdx > 11) continue;
+              const amount = resellerDisplayAmount(
+                Number(m.faturado) || 0,
+                Number(m.credits) || 0,
+              );
+              monthlyTotals[monthIdx].total += amount;
+              monthlyTotals[monthIdx].itens += 1;
+            }
+          } catch {
+            /* movimentações inacessíveis */
+          }
+        }),
+      );
+      setResellerLogsMonthly(monthlyTotals);
+    } catch {
+      /* falha ao buscar dados do painel */
+    }
+  };
+
+  useEffect(() => {
+    if (!user || !autoCfg || !resellersFolderId) {
+      setResellerLogsMonthly([]);
+      return;
+    }
+    const isResellerView =
+      (chartFolderId === "all" && resellersFolderId) ||
+      chartFolderId === resellersFolderId;
+    if (!isResellerView) {
+      setResellerLogsMonthly([]);
+      return;
+    }
+    void refreshResellerChartData();
+  }, [user, autoCfg, resellersFolderId, chartFolderId, chartYear, myItems]);
 
   /** Lucro: só Cliente/Produto e ainda não vencidos */
   const revenueItems = useMemo(
@@ -394,7 +476,9 @@ export default function Dashboard() {
     const isResellerFolder =
       Boolean(resellersFolderId) && chartFolderId === resellersFolderId;
     if (isResellerFolder) {
-      return sumRecordedPaymentsByMonth(chartItems, chartYear);
+      return resellerLogsMonthly.length > 0
+        ? resellerLogsMonthly
+        : sumRecordedPaymentsByMonth(chartItems, chartYear);
     }
     if (chartFolderId === "all" && resellersFolderId) {
       const clients = chartItems.filter(
@@ -404,7 +488,10 @@ export default function Dashboard() {
         (i) => i.folderId === resellersFolderId,
       );
       const a = sumPaymentsByMonth(clients, chartYear);
-      const b = sumRecordedPaymentsByMonth(resellers, chartYear);
+      const b =
+        resellerLogsMonthly.length > 0
+          ? resellerLogsMonthly
+          : sumRecordedPaymentsByMonth(resellers, chartYear);
       return a.map((row, idx) => ({
         name: row.name,
         total: row.total + (b[idx]?.total || 0),
@@ -412,7 +499,13 @@ export default function Dashboard() {
       }));
     }
     return sumPaymentsByMonth(chartItems, chartYear);
-  }, [chartYear, chartItems, chartFolderId, resellersFolderId]);
+  }, [
+    chartYear,
+    chartItems,
+    chartFolderId,
+    resellersFolderId,
+    resellerLogsMonthly,
+  ]);
 
   const annualBalance = useMemo(() => {
     const isResellerFolder =

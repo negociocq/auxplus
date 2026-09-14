@@ -47,6 +47,7 @@ import {
   listIptvResellers,
   listIptvResellerLogs,
   resolveIptvResellerPanelId,
+  resellerDisplayAmount,
   type IptvPanelCreds,
   type IptvResellerMovement,
 } from "@/lib/iptvPanelApi";
@@ -784,7 +785,7 @@ export default function LogsPage() {
                         {Number(r.move.credits) || 0} créd.
                       </Badge>
                       <Badge variant="outline" className="tabular-nums">
-                        {formatMoney(Number(r.move.faturado) || 0)}
+                        {formatMoney(resellerDisplayAmount(Number(r.move.faturado) || 0, Number(r.move.credits) || 0))}
                       </Badge>
                     </div>
                   </li>
