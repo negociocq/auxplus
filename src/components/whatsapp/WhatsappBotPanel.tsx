@@ -9,6 +9,8 @@ import {
   FlaskConical,
   Headset,
   RotateCcw,
+  Phone,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
@@ -175,6 +177,32 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
     }
   };
 
+  const removePaused = async (phone: string) => {
+    if (!user) return;
+    try {
+      const next = { ...state };
+      delete next.humanPaused[phone];
+      setState(next);
+      await saveWaBotStateRemote(user.id, next);
+      toast.success(`Bot reativado para ${phone}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao reativar");
+    }
+  };
+
+  const removeAllPaused = async () => {
+    if (!user) return;
+    try {
+      const next = { ...state };
+      next.humanPaused = {};
+      setState(next);
+      await saveWaBotStateRemote(user.id, next);
+      toast.success(`Todos os bots reativados (${Object.keys(state.humanPaused).length} telefone(s))`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao reativar");
+    }
+  };
+
   if (!user) return null;
   if (loading) {
     return (
@@ -309,6 +337,51 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
               )}
               Redefinir Configuração do Bot
             </Button>
+          </section>
+
+          <section className="ax-surface space-y-3 p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Pausados (Humano)</h3>
+              {Object.keys(state.humanPaused).length > 0 && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => void removeAllPaused()}
+                >
+                  Retornar Todos
+                </Button>
+              )}
+            </div>
+            {Object.keys(state.humanPaused).length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nenhum telefone em atendimento humano.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {Object.entries(state.humanPaused).map(([phone]) => (
+                  <li
+                    key={phone}
+                    className="flex items-center justify-between rounded-lg border border-warning/30 bg-warning/5 px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Phone className="h-3.5 w-3.5 text-warning shrink-0" />
+                      <span className="text-sm truncate">{phone}</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => void removePaused(phone)}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Retornar Bot
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         </TabsContent>
 
