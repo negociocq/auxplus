@@ -659,6 +659,15 @@ export async function ensureIptvToken(
 
 export type PanelFetchResult = { data: unknown; token: string };
 
+/** Retry configuration for transient upstream errors. */
+const RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
+const MAX_RETRIES = 2;
+const RETRY_BASE_MS = 1500;
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
 async function panelFetch(
   creds: IptvPanelCreds,
   path: string,
@@ -710,6 +719,28 @@ async function panelFetch(
     res = await doFetch(token);
   }
 
+  // Debug: log request body for POST /users-iptv to diagnose 500 errors
+  if (init?.method === "POST" && p === "/users-iptv" && init.body) {
+    try {
+      const bodyStr =
+        typeof init.body === "string"
+          ? init.body
+          : JSON.stringify(init.body);
+      console.log("[IPTV API] POST /users-iptv body:", bodyStr.slice(0, 500));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Retry transient 5xx errors with exponential backoff
+  let retries = 0;
+  while (RETRYABLE_STATUS.has(res.status) && retries < MAX_RETRIES) {
+    const delay = RETRY_BASE_MS * Math.pow(2, retries);
+    await sleep(delay);
+    retries++;
+    res = await doFetch(token);
+  }
+
   const text = await res.text();
   let data: unknown = null;
   try {
@@ -720,14 +751,18 @@ async function panelFetch(
 
   if (!res.ok) {
     // Erros 5xx (502/503/504) = servidor temporariamente indisponível
-    // Não loga no console para evitar poluição, apenas retorna erro silencioso
     if (res.status >= 500) {
-      // Painel down: retorna erro SILENCIOSO sem log para evitar poluição de console
+      // Log detalhado do erro upstream para diagnóstico
+      const upstreamBody = text?.trim().slice(0, 1000) || "(vazio)";
+      console.error(
+        `[IPTV API] Upstream ${res.status} em ${p}\nBody: ${upstreamBody}`,
+      );
       const err = new Error(
         `Painel temporariamente indisponível (${res.status})`
       );
       (err as any).isPanelDown = true;
       (err as any).status = res.status;
+      (err as any).upstreamBody = upstreamBody;
       throw err;
     }
 
@@ -1959,31 +1994,91 @@ export async function createIptvTest(
   // Enviamos a senha na criação — a API muitas vezes não devolve depois.
   const chosenPassword =
     opts.password?.trim() || generateIptvTestPassword();
-  const body: Record<string, unknown> = {
-    isOficial: false,
-    package: String(opts.packageId || creds.defaultPackage || "1"),
-    credits: opts.credits ?? 1,
-    isCustomPackage: false,
-    nota: opts.nota?.trim() || "",
-    test_hours: String(Math.max(1, Math.min(6, Number(opts.testHours) || 6))),
-    // Várias builds do GES aceitam password / pass / senha
-    password: chosenPassword,
-    pass: chosenPassword,
-    senha: chosenPassword,
-    bouquets: [] as string[],
-  };
-  // Painel exige whatsapp como inteiro — omitir se vazio (string "" quebra).
   const waDigits = String(opts.whatsapp || "").replace(/\D/g, "");
-  if (waDigits) body.whatsapp = Number(waDigits);
   const desiredUser = opts.username?.trim();
-  if (desiredUser) body.username = desiredUser;
-  if (creds.regPassword?.trim()) {
-    body.reg_password = creds.regPassword.trim();
+  const regPassword = creds.regPassword?.trim();
+  // O painel exige `nota` como string não vazia ("The nota field is required").
+  // Quando o usuário não informa, usamos um valor padrão.
+  const notaValue = opts.nota?.trim() || "Teste avulso";
+
+  // Constrói bodies progressivamente mais simples.
+  // Algumas builds do GES rejeitam campos extras com 500 (ex.: bouquets vazio,
+  // isCustomPackage, isOficial). Tentamos o mais completo primeiro e fazemos
+  // fallback para o mínimo que o painel aceita.
+  const bodies: Array<Record<string, unknown>> = [
+    // 1) Completo (com todos os campos conhecidos)
+    {
+      isOficial: false,
+      package: String(opts.packageId || creds.defaultPackage || "1"),
+      credits: opts.credits ?? 1,
+      isCustomPackage: false,
+      nota: notaValue,
+      test_hours: String(Math.max(1, Math.min(6, Number(opts.testHours) || 6))),
+      password: chosenPassword,
+      pass: chosenPassword,
+      senha: chosenPassword,
+      bouquets: [] as string[],
+      ...(waDigits ? { whatsapp: Number(waDigits) } : {}),
+      ...(desiredUser ? { username: desiredUser } : {}),
+      ...(regPassword ? { reg_password: regPassword } : {}),
+    },
+    // 2) Sem bouquets (algumas builds rejeitam array vazio)
+    {
+      isOficial: false,
+      package: String(opts.packageId || creds.defaultPackage || "1"),
+      credits: opts.credits ?? 1,
+      isCustomPackage: false,
+      nota: notaValue,
+      test_hours: String(Math.max(1, Math.min(6, Number(opts.testHours) || 6))),
+      password: chosenPassword,
+      pass: chosenPassword,
+      senha: chosenPassword,
+      ...(waDigits ? { whatsapp: Number(waDigits) } : {}),
+      ...(desiredUser ? { username: desiredUser } : {}),
+      ...(regPassword ? { reg_password: regPassword } : {}),
+    },
+    // 3) Mínimo: só campos essenciais (sem nota, sem isCustomPackage, sem bouquets)
+    {
+      package: String(opts.packageId || creds.defaultPackage || "1"),
+      credits: opts.credits ?? 1,
+      test_hours: String(Math.max(1, Math.min(6, Number(opts.testHours) || 6))),
+      password: chosenPassword,
+      ...(waDigits ? { whatsapp: Number(waDigits) } : {}),
+      ...(desiredUser ? { username: desiredUser } : {}),
+      ...(regPassword ? { reg_password: regPassword } : {}),
+    },
+  ];
+
+  let lastError: unknown = null;
+  let raw: unknown;
+
+  for (let i = 0; i < bodies.length; i++) {
+    const body = bodies[i];
+    try {
+      console.log(
+        `[IPTV API] createIptvTest body (${i + 1}/${bodies.length}):`,
+        JSON.stringify(body),
+      );
+      raw = await panelFetch(creds, "/users-iptv", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      break; // sucesso
+    } catch (e) {
+      lastError = e;
+      const msg = e instanceof Error ? e.message : "";
+      // Só tenta o próximo formato se for erro de validação ou painel (4xx/5xx)
+      const isRetryable = /indispon[ií]vel|temporariamente|500|502|503|504|HTTP|valida|required|must be/i.test(msg);
+      if (!isRetryable || i === bodies.length - 1) {
+        throw e;
+      }
+      console.warn(
+        `[IPTV API] createIptvTest tentativa ${i + 1} falhou: ${msg}. Tentando próximo formato...`,
+      );
+    }
   }
-  const raw = await panelFetch(creds, "/users-iptv", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+
+  if (raw === undefined) throw lastError instanceof Error ? lastError : new Error("Falha ao criar teste");
 
   // Resposta às vezes é só a mensagem de boas-vindas (string)
   if (typeof raw === "string") {

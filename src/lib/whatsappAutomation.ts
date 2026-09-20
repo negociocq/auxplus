@@ -838,20 +838,53 @@ async function evolutionFetch(
 
 export async function ensureEvolutionInstance(runtime: EvolutionRuntimeConfig) {
   const name = runtime.instanceName.trim() || "auxplus";
+  
+  // First, check if the instance already exists
   try {
     await evolutionFetch(runtime, `/instance/connectionState/${name}`);
     return;
-  } catch {
-    /* cria se não existir */
+  } catch (e) {
+    // Instance doesn't exist or can't be reached - try to create it
   }
-  await evolutionFetch(runtime, "/instance/create", {
-    method: "POST",
-    body: JSON.stringify({
+
+  // Try multiple creation endpoints and body formats for compatibility
+  const createBodies = [
+    {
       instanceName: name,
       qrcode: true,
       integration: "WHATSAPP-BAILEYS",
-    }),
-  });
+    },
+    {
+      instanceName: name,
+      qrcode: true,
+    },
+    {
+      instance: name,
+      qrcode: true,
+    },
+  ];
+
+  const createPaths = [
+    "/instance/create",
+    "/instance",
+    "/instances/create",
+  ];
+
+  let lastErr: unknown;
+  for (const path of createPaths) {
+    for (const body of createBodies) {
+      try {
+        await evolutionFetch(runtime, path, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        return;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Não foi possível criar a instância");
 }
 
 export async function fetchEvolutionQr(
@@ -1028,42 +1061,60 @@ export async function setEvolutionWebhook(
   if (!url) throw new Error("URL do webhook vazia");
 
   const events = ["MESSAGES_UPSERT"];
-  const bodies: unknown[] = [
-    {
+
+  // Formato aninhado (webhook: {...}) — mais compatível com versões recentes
+  const nestedBody = {
+    webhook: {
       enabled: true,
       url,
       webhookByEvents: false,
       webhookBase64: false,
       events,
     },
-    {
-      webhook: {
-        enabled: true,
-        url,
-        webhookByEvents: false,
-        webhookBase64: false,
-        events,
-      },
-    },
-    {
+  };
+
+  // Formato plano (versões mais antigas)
+  const flatBody = {
+    enabled: true,
+    url,
+    webhookByEvents: false,
+    webhookBase64: false,
+    events,
+  };
+
+  // Formato plano com snake_case (algumas versões)
+  const snakeBody = {
+    enabled: true,
+    url,
+    webhook_by_events: false,
+    webhook_base64: false,
+    events,
+  };
+
+  // Formato com headers customizados (algumas versões)
+  const headersBody = {
+    webhook: {
       enabled: true,
       url,
-      webhook_by_events: false,
-      webhook_base64: false,
+      webhookByEvents: false,
+      webhookBase64: false,
       events,
+      headers: {},
     },
-  ];
+  };
+
+  const bodies: unknown[] = [nestedBody, flatBody, snakeBody, headersBody];
 
   const paths = [
     `/webhook/set/${encodeURIComponent(name)}`,
     `/webhook/${encodeURIComponent(name)}`,
   ];
+
   let lastErr: unknown;
   for (const path of paths) {
     for (const body of bodies) {
       for (const method of ["POST", "PUT"] as const) {
         try {
-          // silent=true: não loga erros 400/404 repetidos no console
           await evolutionFetch(runtime, path, {
             method,
             body: JSON.stringify(body),

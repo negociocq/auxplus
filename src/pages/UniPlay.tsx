@@ -746,7 +746,25 @@ export default function UniPlay() {
         note: e instanceof Error ? e.message : "erro",
       });
       persistJobs(nextJob);
-      toast.error(e instanceof Error ? e.message : "Falha ao gerar teste");
+      const msg = e instanceof Error ? e.message : "Falha ao gerar teste";
+      // Painel temporariamente indisponível (500/502/503) — oferece retry
+      const isPanelDown = /indispon[i\u00ed]vel|temporariamente|500|502|503|504/i.test(msg);
+      toast.error(
+        <div className="flex flex-col gap-2">
+          <span>{msg}</span>
+          {isPanelDown && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="self-start"
+              onClick={() => void runApiTest(hoursSafe, nota, username)}
+            >
+              Tentar novamente
+            </Button>
+          )}
+        </div>,
+        { duration: isPanelDown ? 8000 : 5000 },
+      );
     } finally {
       setBusyId(null);
     }
