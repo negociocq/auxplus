@@ -28,6 +28,7 @@ import {
   stripResellerMarker,
 } from "@/lib/resellerCredits";
 import {
+  embedPlanState,
   extractPlanMonths,
   resolvePlanSegmentsOnSave,
   stripPlanMarker,
@@ -91,6 +92,7 @@ function composeNotes(
       ? clampScreens(screens, 0)
       : screensFromNotes;
   let next = stripAllMarkers(notes);
+  next = embedPlanState(next, plan, planSegments ?? []);
   if (debt?.installments?.length) next = embedDebtInNotes(next, debt);
   next = embedPaymentsInNotes(next, payments);
   if (bought != null) next = embedResellerCreditsBought(next, bought);
