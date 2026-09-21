@@ -282,6 +282,7 @@ function buildTodayQueue(
   folders: Array<Record<string, unknown>>,
   alreadySent: WaLogRow[],
   todayKey: string,
+  renewedTodayPhones?: Set<string>,
 ): QueueItem[] {
   const revenueIds = new Set(
     folders
@@ -306,6 +307,10 @@ function buildTodayQueue(
 
   const queue: QueueItem[] = [];
   const queuedKeys = new Set<string>();
+
+  // Telefones que tiveram pagamento liberado hoje → não manda lembrete "vence hoje"
+  // (cobre pagamento no mesmo dia do vencimento, antes do cron rodar)
+  const phoneDigitsToday = (raw: unknown) => phoneDigits(String(raw || ""));
 
   // Ordena items por itemId para garantir consistência quando há múltiplos
   // com o mesmo telefone/vencimento
@@ -333,34 +338,43 @@ function buildTodayQueue(
       phone: String(item.phone || ""),
     };
 
+    // Mesmo cliente pode ter itens duplicados (outra pasta, novo cadastro).
+    // Se algum item com o mesmo item_id OU mesmo telefone tem vencimento
+    // DEPOIS de hoje, o item atual é considerado obsoleto → ignora.
+    const hasNewerItem = items.some((other) => {
+      if (other.is_active === false) return false;
+      const otherDue = ymdOnly(other.due_date);
+      if (!otherDue) return false;
+      if (otherDue <= todayKey) return false;
+      // Match by item_id (username do painel) or by phone digit
+      const sameItemId = String(other.item_id ?? "") === itemId;
+      const samePhone = phoneDigits(String(other.phone || "")) === phoneDigits(phone);
+      return sameItemId || samePhone;
+    });
+
     if (settings.sendOnDay && dueKey === todayKey) {
       const key = `${phone}:onday`;
       // Não enviar se já foi notificado como "onday" em qualquer dia anterior
       if (!sentKeys.has(key) && !queuedKeys.has(key) && !alreadyNotifiedOnday.has(phone)) {
-        // Verifica se há um item mais recente do mesmo cliente com vencimento futuro
-        const hasNewerItem = items.some((other) => {
-          if (String(other.id ?? other.item_id) !== itemId) return false;
-          if (other.is_active === false) return false;
-          const otherDue = ymdOnly(other.due_date);
-          if (!otherDue) return false;
-          // Se há item com vencimento DEPOIS de hoje, ignora o antigo
-          return otherDue > todayKey;
-        });
-
-        if (!hasNewerItem) {
-          queuedKeys.add(key);
-          queue.push({
-            id: `${itemId}:onday`,
-            itemId,
-            folderId: String(item.folder_id),
-            name,
-            phone,
-            dueDate: dueKey,
-            kind: "onday",
-            message: fillWhatsappTemplate(settings.messageOnDay, row, "onday"),
-            scheduledAt,
-          });
+        // Pula se este cliente já renovou hoje (evita lembrete após pagamento)
+        if (renewedTodayPhones && renewedTodayPhones.has(String(phoneDigitsToday(phone)))) {
+          continue;
         }
+        // Pula se há item do mesmo cliente com vencimento futuro (renovação já aplicada)
+        if (hasNewerItem) continue;
+
+        queuedKeys.add(key);
+        queue.push({
+          id: `${itemId}:onday`,
+          itemId,
+          folderId: String(item.folder_id),
+          name,
+          phone,
+          dueDate: dueKey,
+          kind: "onday",
+          message: fillWhatsappTemplate(settings.messageOnDay, row, "onday"),
+          scheduledAt,
+        });
       }
     }
 
@@ -369,27 +383,21 @@ function buildTodayQueue(
       if (daysLeft === settings.daysBefore) {
         const key = `${phone}:before`;
         if (!sentKeys.has(key) && !queuedKeys.has(key)) {
-          const hasNewerItem = items.some((other) => {
-            if (String(other.id ?? other.item_id) !== itemId) return false;
-            if (other.is_active === false) return false;
-            const otherDue = ymdOnly(other.due_date);
-            if (!otherDue) return false;
-            return otherDue > todayKey;
+          // Pula se há item do mesmo cliente com vencimento futuro (renovação já aplicada)
+          if (hasNewerItem) continue;
+
+          queuedKeys.add(key);
+          queue.push({
+            id: `${itemId}:before`,
+            itemId,
+            folderId: String(item.folder_id),
+            name,
+            phone,
+            dueDate: dueKey,
+            kind: "before",
+            message: fillWhatsappTemplate(settings.messageBefore, row, "before"),
+            scheduledAt,
           });
-          if (!hasNewerItem) {
-            queuedKeys.add(key);
-            queue.push({
-              id: `${itemId}:before`,
-              itemId,
-              folderId: String(item.folder_id),
-              name,
-              phone,
-              dueDate: dueKey,
-              kind: "before",
-              message: fillWhatsappTemplate(settings.messageBefore, row, "before"),
-              scheduledAt,
-            });
-          }
         }
       }
     }
@@ -672,7 +680,25 @@ Deno.serve(async (req) => {
       let logs = trimSendLogs(Array.isArray(bag?.logs) ? bag.logs : []);
       const todayKey = spParts().ymd;
 
-      const queue = buildTodayQueue(settings, myItems, myFolders, logs, todayKey);
+      // Telefones que tiveram pagamento liberado hoje — evita "vence hoje"
+      // quando o cliente já pagou e renovou no mesmo dia (antes do cron rodar)
+      const mpBag = await getSetting<{ orders?: Array<Record<string, unknown>> }>(
+        client,
+        `mp_orders_user_${userId}`,
+      );
+      const renewedTodayPhones = new Set<string>();
+      if (mpBag?.orders) {
+        for (const o of mpBag.orders) {
+          const status = String(o.status || "");
+          if (status !== "released" && status !== "approved") continue;
+          if (!o.phone) continue;
+          const releasedAt = String(o.releasedAt || o.paidAt || "");
+          if (ymdOnly(releasedAt) !== todayKey) continue;
+          renewedTodayPhones.add(phoneDigits(String(o.phone)));
+        }
+      }
+
+      const queue = buildTodayQueue(settings, myItems, myFolders, logs, todayKey, renewedTodayPhones);
       if (!queue.length) continue;
 
       const instance = instanceNameForUser(prefix, userId, u.username);

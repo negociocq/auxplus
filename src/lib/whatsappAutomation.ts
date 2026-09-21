@@ -628,9 +628,25 @@ export function buildTodayQueue(
     if (!dueKey) continue;
     const due = parseLocalYmd(dueKey);
 
+    // Mesmo cliente pode ter itens duplicados (outra pasta, novo cadastro).
+    // Se algum item com o mesmo item_id OU mesmo telefone tem vencimento
+    // DEPOIS de hoje, o item atual é considerado obsoleto → ignora.
+    const currentPhoneDigits = phoneDigits(item.phone || "");
+    const hasNewerItem = items.some((other) => {
+      if (!other.isActive) return false;
+      const otherDue = ymdOnly(other.dueDate);
+      if (!otherDue) return false;
+      if (otherDue <= todayKey) return false;
+      const sameItemId = String(other.itemId || "") === String(item.itemId || "");
+      const samePhone = phoneDigits(other.phone || "") === currentPhoneDigits;
+      return sameItemId || samePhone;
+    });
+
     if (settings.sendOnDay && dueKey === todayKey) {
       const key = `${phone}:onday`;
       if (!sentKeys.has(key) && !queuedKeys.has(key)) {
+        // Pula se há item do mesmo cliente com vencimento futuro (renovação já aplicada)
+        if (hasNewerItem) continue;
         queuedKeys.add(key);
         queue.push({
           id: `${item.id}:onday`,
@@ -655,31 +671,24 @@ export function buildTodayQueue(
       if (daysLeft === settings.daysBefore) {
         const key = `${phone}:before`;
         if (!sentKeys.has(key) && !queuedKeys.has(key)) {
-          const hasNewerItem = items.some((other) => {
-            if (other.id !== item.id) return false;
-            if (!other.isActive) return false;
-            const otherDue = ymdOnly(other.dueDate);
-            if (!otherDue) return false;
-            return otherDue > todayKey;
+          // Pula se há item do mesmo cliente com vencimento futuro (renovação já aplicada)
+          if (hasNewerItem) continue;
+          queuedKeys.add(key);
+          queue.push({
+            id: `${item.id}:before`,
+            itemId: item.itemId,
+            folderId: item.folderId,
+            name: item.name,
+            phone,
+            dueDate: dueKey,
+            kind: "before",
+            message: fillWhatsappTemplate(
+              settings.messageBefore,
+              item,
+              "before",
+            ),
+            scheduledAt: scheduledAt.toISOString(),
           });
-          if (!hasNewerItem) {
-            queuedKeys.add(key);
-            queue.push({
-              id: `${item.id}:before`,
-              itemId: item.itemId,
-              folderId: item.folderId,
-              name: item.name,
-              phone,
-              dueDate: dueKey,
-              kind: "before",
-              message: fillWhatsappTemplate(
-                settings.messageBefore,
-                item,
-                "before",
-              ),
-              scheduledAt: scheduledAt.toISOString(),
-            });
-          }
         }
       }
     }
