@@ -376,6 +376,7 @@ export function createItem(
 export function updateItem(data: AppData, item: Item): AppData {
   const { near, far } = folderThresholds(data, item.folderId);
   const previous = data.items.find((i) => i.id === item.id);
+  item = { ...item, notes: preserveItemIptvAccess(item.notes, previous?.notes) };
   const oldDue = previous?.dueDate?.slice(0, 10) ?? null;
   const newDue = item.dueDate?.slice(0, 10) ?? null;
   const renewed = Boolean(oldDue && newDue && newDue > oldDue);
@@ -547,3 +548,4 @@ export function respondTicket(
     ),
   };
 }
+import { preserveItemIptvAccess } from "@/lib/iptvRecreation";

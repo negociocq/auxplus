@@ -104,7 +104,7 @@ function OptionRows({
                     className="h-8"
                     value={opt.label}
                     onChange={(e) => setOpt(idx, { label: e.target.value })}
-                    placeholder="TV, FunPlay…"
+                    placeholder="TV, Pixel Player…"
                   />
                 </div>
                 <Button
@@ -297,6 +297,13 @@ export function TestFlowEditor({ value, onChange }: Props) {
   return (
     <div className="space-y-4">
       <section className="ax-surface space-y-3 p-4">
+        <div><h3 className="text-sm font-semibold">Apps por aparelho</h3><p className="text-xs text-muted-foreground">Opções disponíveis no atendimento automático de testes.</p></div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {["Samsung", "LG", "Roku", "Android"].map((device) => <div key={device} className="rounded-md border p-3"><p className="text-sm font-medium">{device}</p><p className="mt-1 text-xs text-muted-foreground">{device === "Android" ? "Pixel Player · Device ID ou MAC" : "Prime IPTV · Pixel Player · UTM Play"}</p></div>)}
+        </div>
+        <p className="text-xs text-muted-foreground">UTM Play pede MAC e Device Key de 6 números. As opções e mensagens podem ser ajustadas abaixo.</p>
+      </section>
+      <section className="ax-surface space-y-3 p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold">Fluxo de teste (sua conta)</h3>
@@ -390,7 +397,7 @@ export function TestFlowEditor({ value, onChange }: Props) {
 
       <MenuBlock
         title="2) Tipo de TV"
-        hint="Pode ir direto ao app (FunPlay/Prime/XCloud) ou abrir um submenu."
+        hint="Pode ir direto ao app (Pixel Player/Prime/UTM Play) ou abrir um submenu."
         menu={flow.tvMenu}
         appMenuIds={appMenuIds}
         onChange={(tvMenu) => set({ tvMenu })}
@@ -536,14 +543,14 @@ export function TestFlowEditor({ value, onChange }: Props) {
         {(
           [
             ["askName", "Pedir nome (antes do teste → nota no painel)"],
-            ["funReady", "FunPlay — pedir MAC"],
+            ["pixelReady", "Pixel Player — pedir Device ID ou MAC"],
             ["primeReady", "Prime — pedir MAC"],
-            ["xcloudReady", "XCloud — provedor/usuário/senha"],
+            ["utmReady", "UTM Play — pedir MAC e Device Key"],
             ["macOk", "MAC ativado — TV Box / Android / Samsung / LG"],
             ["macOkRoku", "MAC ativado — Roku (sair do app)"],
             ["macCheckIn", "Check-in se não responder após o MAC"],
             ["macInvalid", "MAC inválido"],
-            ["macPrompt", "Após instalar — pedir o MAC (FunPlay/Prime)"],
+            ["macPrompt", "Após instalar — pedir o MAC (Pixel Player/Prime)"],
             ["checkInOk", "Check-in “conseguiu assistir?” — resposta sim"],
             ["checkInNo", "Check-in “conseguiu assistir?” — resposta não"],
             ["pcReady", "Computador — link + login"],

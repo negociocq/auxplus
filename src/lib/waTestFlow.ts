@@ -1,3 +1,4 @@
+import { upgradePartnerTestFlow } from "../../supabase/functions/_shared/partnerTestFlow";
 /** Fluxo de teste WhatsApp — 100% editável por conta. */
 
 export type WaTestOptionAction =
@@ -7,9 +8,9 @@ export type WaTestOptionAction =
   | "phone_android"
   | "phone_ios"
   | "ask_app"
-  | "app_fun"
+  | "app_pixel"
   | "app_prime"
-  | "app_xcloud"
+  | "app_utm"
   | "activate_month"
   | "human"
   | "back";
@@ -21,9 +22,9 @@ export const WA_TEST_ACTION_LABELS: Record<WaTestOptionAction, string> = {
   phone_android: "Celular Android (APK + UniPlay)",
   phone_ios: "Celular iPhone (Smarters / Xtream)",
   ask_app: "Perguntar app (submenu)",
-  app_fun: "App FunPlay (pedir MAC)",
+  app_pixel: "Pixel Player (Device ID ou MAC)",
   app_prime: "App Prime IPTV (pedir MAC)",
-  app_xcloud: "App XCloud (usuário/senha)",
+  app_utm: "UTM Play (MAC e Device Key)",
   activate_month: "Ativar plano + PIX (auto)",
   human: "Passar para atendente",
   back: "Voltar ao menu anterior",
@@ -65,6 +66,7 @@ export interface WaTestAppMenu {
 }
 
 export interface WaTestFlowConfig {
+  appCatalogVersion?: number;
   triggerPhrase: string;
   monthPriceBrl: number;
   pcLoginUrl: string;
@@ -80,9 +82,9 @@ export interface WaTestFlowConfig {
   texts: {
     /** Pergunta o nome antes de criar o teste (nota no painel). */
     askName: string;
-    funReady: string;
+    pixelReady: string;
     primeReady: string;
-    xcloudReady: string;
+    utmReady: string;
     macOk: string;
     /** Instruções pós-MAC só para Roku (sair do app de verdade). */
     macOkRoku: string;
@@ -93,11 +95,11 @@ export interface WaTestFlowConfig {
     alreadyUsed: string;
     /** Após escolher app/dispositivo — “conseguiu instalar? (sim/não)”. */
     confirmInstall: string;
-    /** Resposta sim à confirmação de instalação (XCloud/PC/celular). */
+    /** Resposta sim à confirmação de instalação (UTM Play/PC/celular). */
     confirmInstallOk: string;
     /** Resposta não à confirmação de instalação (ajuda). */
     confirmInstallNo: string;
-    /** Após “sim” no FunPlay/Prime — pedir o MAC. */
+    /** Após “sim” no Pixel Player/Prime — pedir o MAC. */
     macPrompt: string;
     /** Check-in “conseguiu assistir?” — resposta sim. */
     checkInOk: string;
@@ -152,9 +154,9 @@ export function emptyWaTestFlow(): WaTestFlowConfig {
     offerMenu: emptyMenu(),
     texts: {
       askName: "",
-      funReady: "",
+      pixelReady: "",
       primeReady: "",
-      xcloudReady: "",
+      utmReady: "",
       macOk: "",
       macOkRoku: "",
       macCheckIn: "",
@@ -245,7 +247,7 @@ export function isLegacyTestOfferMenu(menu: WaTestMenu | null | undefined) {
 }
 
 /** Modelo pronto (opcional) — só entra se a pessoa clicar em “Usar modelo”. */
-export function exampleWaTestFlow(): WaTestFlowConfig {
+function legacyExampleWaTestFlow(): WaTestFlowConfig {
   return {
     triggerPhrase: "Olá quero testar o T&E no meu aparelho.",
     monthPriceBrl: 29.9,
@@ -284,13 +286,13 @@ export function exampleWaTestFlow(): WaTestFlowConfig {
           key: "1",
           label: "TV Box",
           keywords: "box,tv box",
-          action: "app_fun",
+          action: "app_pixel",
         },
         {
           key: "2",
           label: "Android TV / Google TV",
           keywords: "android,google",
-          action: "app_fun",
+          action: "app_pixel",
         },
         {
           key: "3",
@@ -330,15 +332,15 @@ export function exampleWaTestFlow(): WaTestFlowConfig {
           options: [
             {
               key: "1",
-              label: "FunPlay (ativa com MAC)",
+              label: "Pixel Player (ativa com MAC)",
               keywords: "fun,funplay,fun play",
-              action: "app_fun",
+              action: "app_pixel",
             },
             {
               key: "2",
-              label: "XCloud TV (usuário e senha)",
+              label: "UTM Play (usuário e senha)",
               keywords: "xcloud,x cloud",
-              action: "app_xcloud",
+              action: "app_utm",
             },
             {
               key: "0",
@@ -363,9 +365,9 @@ export function exampleWaTestFlow(): WaTestFlowConfig {
             },
             {
               key: "2",
-              label: "XCloud TV (usuário e senha)",
+              label: "UTM Play (usuário e senha)",
               keywords: "xcloud,x cloud",
-              action: "app_xcloud",
+              action: "app_utm",
             },
             {
               key: "0",
@@ -382,11 +384,11 @@ export function exampleWaTestFlow(): WaTestFlowConfig {
       askName:
         "Antes de liberar o teste, qual é o *seu nome*?\n\n" +
         "_Digite só o nome._",
-      funReady:
-        "✅ Teste de *{hours}h* liberado — app *FunPlay*\n\n" +
+      pixelReady:
+        "✅ Teste de *{hours}h* liberado — app *Pixel Player*\n\n" +
         "Usuário: *{user}*\nSenha: *{password}*\n\n" +
         "Agora:\n" +
-        "1) Baixe o *FunPlay* na loja do aparelho\n" +
+        "1) Baixe o *Pixel Player* na loja do aparelho\n" +
         "2) Abra o app — no *canto inferior direito* aparece o *MAC*\n" +
         "3) Envie o MAC aqui — aceito nos dois formatos:\n" +
         "   • com dois-pontos: *aa:bb:cc:dd:ee:ff*\n" +
@@ -400,9 +402,9 @@ export function exampleWaTestFlow(): WaTestFlowConfig {
         "3) Envie o MAC aqui — aceito nos dois formatos:\n" +
         "   • com dois-pontos: *aa:bb:cc:dd:ee:ff*\n" +
         "   • tudo junto: *aabbccddeeff*",
-      xcloudReady:
-        "✅ Teste de *{hours}h* liberado — app *XCloud TV*\n\n" +
-        "No XCloud, digite *exatamente*:\n\n" +
+      utmReady:
+        "✅ Teste de *{hours}h* liberado — app *UTM Play*\n\n" +
+        "No UTM Play, digite *exatamente*:\n\n" +
         "Provedor: *uniplay*\n" +
         "Usuário: *{user}*\n" +
         "Senha: *{password}*",
@@ -638,6 +640,7 @@ function parseWaTestFlowObject(raw: Record<string, unknown>): WaTestFlowConfig {
   const phoneMenuParsed = asMenu(raw.phoneMenu);
   const example = examplePhoneMenu();
   return {
+    appCatalogVersion: Number(raw.appCatalogVersion) || undefined,
     triggerPhrase: String(raw.triggerPhrase ?? "").trim(),
     monthPriceBrl:
       Number.isFinite(price) && price >= 0 ? Math.round(price * 100) / 100 : 0,
@@ -654,9 +657,9 @@ function parseWaTestFlowObject(raw: Record<string, unknown>): WaTestFlowConfig {
     offerMenu: asMenu(raw.offerMenu),
     texts: {
       askName: String(textsRaw.askName ?? ""),
-      funReady: String(textsRaw.funReady ?? ""),
+      pixelReady: String(textsRaw.pixelReady ?? ""),
       primeReady: String(textsRaw.primeReady ?? ""),
-      xcloudReady: String(textsRaw.xcloudReady ?? ""),
+      utmReady: String(textsRaw.utmReady ?? ""),
       macOk: String(textsRaw.macOk ?? ""),
       macOkRoku: String(textsRaw.macOkRoku ?? ""),
       macCheckIn: String(textsRaw.macCheckIn ?? ""),
@@ -685,12 +688,12 @@ function testFlowHasContent(flow: WaTestFlowConfig) {
   if (flow.appMenus.length || flow.offerMenu.options.length) return true;
   const t = flow.texts;
   return Boolean(
-    t.funReady ||
+    t.pixelReady ||
       t.primeReady ||
       t.pcReady ||
       t.phoneReady ||
       t.phoneIosReady ||
-      t.xcloudReady ||
+      t.utmReady ||
       flow.pcLoginUrl ||
       flow.phoneApkUrl ||
       flow.phoneIosUrl ||
@@ -699,7 +702,7 @@ function testFlowHasContent(flow: WaTestFlowConfig) {
 }
 
 /** Normaliza / migra testFlow a partir do JSON salvo (ou textos antigos). */
-export function normalizeWaTestFlow(
+function normalizeLegacyWaTestFlow(
   raw: unknown,
   legacyMessages?: Partial<Record<string, string>>,
   legacyMeta?: {
@@ -712,7 +715,7 @@ export function normalizeWaTestFlow(
 ): WaTestFlowConfig {
   const empty = emptyWaTestFlow();
   if (raw && typeof raw === "object") {
-    const parsed = parseWaTestFlowObject(raw as Record<string, unknown>);
+    const parsed = parseWaTestFlowObject(upgradePartnerTestFlow(raw as Record<string, unknown>));
     if (testFlowHasContent(parsed)) {
       const withPhoneDefaults = ensurePhoneFlowDefaults(parsed);
       if (isLegacyTestOfferMenu(withPhoneDefaults.offerMenu)) {
@@ -792,9 +795,9 @@ export function normalizeWaTestFlow(
     },
     texts: {
       askName: example.texts.askName,
-      funReady: String(m.testAppFunReady || example.texts.funReady),
+      pixelReady: String(m.testAppPixelReady || example.texts.pixelReady),
       primeReady: String(m.testAppPrimeReady || example.texts.primeReady),
-      xcloudReady: String(m.testAppXcloudReady || example.texts.xcloudReady),
+      utmReady: String(m.testAppUtmReady || example.texts.utmReady),
       macOk: String(m.testMacOk || example.texts.macOk),
       macOkRoku: String(
         (m as { testMacOkRoku?: string }).testMacOkRoku ||
@@ -892,7 +895,7 @@ export function newBlankAppMenu(): WaTestAppMenu {
           key: "1",
           label: "",
           keywords: "",
-          action: "app_fun",
+          action: "app_pixel",
         },
       ],
     },
@@ -905,3 +908,7 @@ export function newBlankOption(
 ): WaTestMenuOption {
   return { key, label: "", keywords: "", action };
 }
+
+export function exampleWaTestFlow(): WaTestFlowConfig { return upgradePartnerTestFlow(legacyExampleWaTestFlow()); }
+
+export function normalizeWaTestFlow(...args: Parameters<typeof normalizeLegacyWaTestFlow>): WaTestFlowConfig { return upgradePartnerTestFlow(normalizeLegacyWaTestFlow(...args)); }

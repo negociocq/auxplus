@@ -370,8 +370,8 @@ export async function releasePaidMpOrder(
       const testApp =
         order.testApp === "prime"
           ? "prime"
-          : order.testApp === "fun"
-            ? "fun"
+          : order.testApp === "utm"
+            ? "utm"
             : "";
       const phone = String(order.phone || "").replace(/\D/g, "");
       await sendWa(
@@ -383,7 +383,7 @@ export async function releasePaidMpOrder(
       );
       if (
         screens > 1 &&
-        (testApp === "fun" || testApp === "prime") &&
+        (testApp === "utm" || testApp === "prime") &&
         order.testPassword &&
         phone.length >= 10
       ) {

@@ -1,4 +1,5 @@
 import { addMonths, format } from "date-fns";
+import { isIptvPanelTestStatus } from "@/lib/iptvPanelApi";
 import type { AppData, Item } from "@/types";
 import { createItem, updateItem } from "@/lib/storage";
 import {
@@ -935,6 +936,10 @@ export function mergePanelTestsIntoJobs(
     const username = String(u.username || u.user || "")
       .trim()
       .toLowerCase();
+    if (isIptvPanelTestStatus(u)) {
+      excluded.delete(username);
+      return true;
+    }
     if (username && excluded.has(username)) return false;
 
     const row = u as Record<string, unknown>;

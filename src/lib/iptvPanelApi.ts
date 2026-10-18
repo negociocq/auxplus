@@ -6,6 +6,7 @@
 import { SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
 import { formatBrDate } from "@/lib/format";
 import { DEFAULT_PRORROGA_MESSAGE } from "@/lib/whatsappAutomation";
+import { readSyncedDevices, writeSyncedDevice } from "@/lib/partnerAppsSync";
 
 export type IptvPanelCreds = {
   apiBaseUrl: string;
@@ -29,6 +30,40 @@ export type IptvPackage = {
   credits?: number;
   [k: string]: unknown;
 };
+
+export type UniplayTicket = Record<string, unknown> & { id: string | number };
+export type UniplayTicketInput = {
+  title: string; category: string; content: string; tech: string;
+  resolution?: string; idUser?: string | number; username?: string; channels?: string[];
+};
+
+export async function listUniplayTickets(creds: IptvPanelCreds): Promise<UniplayTicket[]> {
+  const data = await panelFetch(creds, `/ticket?_refresh=${Date.now()}`, { cache: "no-store" });
+  return asArray(data).filter((row): row is UniplayTicket => !!row && typeof row === "object" && "id" in row);
+}
+
+export async function createUniplayTicket(creds: IptvPanelCreds, input: UniplayTicketInput): Promise<unknown> {
+  if (!input.title.trim() || !input.content.trim() || !/^[1-7]$/.test(input.category)) throw new Error("Preencha categoria, título e descrição do ticket.");
+  return panelFetch(creds, "/ticket", { method: "POST", body: JSON.stringify({
+    title: input.title.trim(), category: input.category, content: input.content.trim(),
+    mensagem: "", tech: input.tech, resolution: input.resolution || "",
+    idUser: input.idUser || 0, username: input.username || "", channels: input.channels || [], idChannels: [],
+  }) }, { retryTransient: false });
+}
+
+export async function getUniplayTicket(creds: IptvPanelCreds, id: string | number): Promise<UniplayTicket> {
+  const result = await panelFetch(creds, `/ticket/${encodeURIComponent(String(id))}?_refresh=${Date.now()}`, { cache: "no-store" });
+  if (!result || typeof result !== "object") throw new Error("Resposta de ticket inválida no UniPlay.");
+  const row = result as Record<string, unknown>;
+  return (row.data && typeof row.data === "object" ? row.data : row) as UniplayTicket;
+}
+
+export async function replyUniplayTicket(creds: IptvPanelCreds, id: string | number, message: string): Promise<unknown> {
+  if (!message.trim()) throw new Error("Escreva uma mensagem.");
+  return panelFetch(creds, `/ticket/${encodeURIComponent(String(id))}`, {
+    method: "PUT", body: JSON.stringify({ mensagem: message.trim() }),
+  }, { retryTransient: false });
+}
 
 export type IptvRemoteUser = {
   id: string | number;
@@ -504,7 +539,6 @@ function parseApiError(data: unknown, text: string, statusText: string) {
       errors?: unknown;
     };
     const msg = o.message ?? o.error ?? o.msg;
-    if (msg != null && String(msg).trim()) return String(msg).trim();
     // Validação Laravel-like: { whatsapp: ["The whatsapp must be an integer."] }
     const parts: string[] = [];
     for (const [k, v] of Object.entries(o)) {
@@ -522,6 +556,7 @@ function parseApiError(data: unknown, text: string, statusText: string) {
       }
       if (parts.length) return parts.join(" · ");
     }
+    if (msg != null && String(msg).trim()) return String(msg).trim();
   }
   const raw = text?.trim();
   if (raw) {
@@ -672,6 +707,7 @@ async function panelFetch(
   creds: IptvPanelCreds,
   path: string,
   init?: RequestInit,
+  options?: { retryTransient?: boolean },
 ): Promise<unknown> {
   let token = creds.bearerToken.trim().replace(/^Bearer\s+/i, "");
   if (!token && !(creds.username && creds.password)) {
@@ -734,7 +770,7 @@ async function panelFetch(
 
   // Retry transient 5xx errors with exponential backoff
   let retries = 0;
-  while (RETRYABLE_STATUS.has(res.status) && retries < MAX_RETRIES) {
+  while (options?.retryTransient !== false && RETRYABLE_STATUS.has(res.status) && retries < MAX_RETRIES) {
     const delay = RETRY_BASE_MS * Math.pow(2, retries);
     await sleep(delay);
     retries++;
@@ -767,6 +803,9 @@ async function panelFetch(
     }
 
     const msg = parseApiError(data, text, res.statusText);
+    if (res.status === 403 && p.startsWith("/mac-activations")) {
+      throw new Error("O UniPlay recusou o acesso às ativações UTM (403). Essa rota pode exigir permissão da conta. O MAC não foi liberado; solicite ao suporte UniPlay a desvinculação do aparelho do usuário excluído.");
+    }
     if (res.status === 401 || res.status === 403) {
       throw new Error(
         "Token inválido ou expirado. Salve usuário/senha do painel ou cole um Bearer novo.",
@@ -1034,6 +1073,10 @@ export function parseIptvExpToYmd(
   return full ? full.slice(0, 10) : null;
 }
 
+export function isIptvPanelTestStatus(row: Record<string, unknown>): boolean {
+  return ["teste", "test", "trial"].includes(String(row.status ?? "").trim().toLowerCase());
+}
+
 function hasIptvTestFlag(row: Record<string, unknown>): boolean {
   for (const k of [
     "is_test",
@@ -1166,11 +1209,12 @@ function userRowKey(u: IptvRemoteUser): string {
 /** Lista usuários IPTV no painel (com paginação quando a API limitar). */
 export async function listIptvUsers(
   creds: IptvPanelCreds,
-  opts?: { /** Se true, omite testes/trials */ activeOnly?: boolean },
+  opts?: { /** Se true, omite testes/trials */ activeOnly?: boolean; fresh?: boolean },
 ): Promise<IptvRemoteUser[]> {
   const reg = creds.regPassword?.trim() || "";
   const baseParams = new URLSearchParams();
   if (reg) baseParams.set("reg_password", reg);
+  if (opts?.fresh) baseParams.set("_refresh", String(Date.now()));
 
   const fetchPage = async (page?: number, perPage?: number) => {
     const params = new URLSearchParams(baseParams);
@@ -1179,7 +1223,7 @@ export async function listIptvUsers(
       params.set("per_page", String(perPage ?? 100));
     }
     const qs = params.toString();
-    const data = await panelFetch(creds, `/users-iptv${qs ? `?${qs}` : ""}`);
+    const data = await panelFetch(creds, `/users-iptv${qs ? `?${qs}` : ""}`, opts?.fresh ? { cache: "no-store" } : undefined);
     return asArray(data).map((row) =>
       pickUserFields((row || {}) as Record<string, unknown>),
     );
@@ -1938,6 +1982,34 @@ export async function addIptvResellerCredits(
   }
 }
 
+export function iptvUserEnabled(user: IptvRemoteUser): boolean | undefined {
+  const value = user.enabled ?? user.admin_enabled ?? user.status;
+  const status = String(value ?? "").trim().toLowerCase();
+  if (["1", "true", "ativo", "active", "on", "enabled"].includes(status)) return true;
+  if (["0", "false", "bloqueado", "blocked", "disabled", "off", "desativado"].includes(status)) return false;
+  return undefined;
+}
+
+/** Mesma operação On/Off do painel; não altera o vencimento. */
+export async function toggleIptvUser(
+  creds: IptvPanelCreds,
+  username: string,
+): Promise<boolean | undefined> {
+  const user = await findIptvUserByUsername(creds, username, { exactOnly: true });
+  if (!user || user.id == null || user.id_iptv == null || user.id_iptv === "") {
+    throw new Error("Cliente sem identificação IPTV no painel UniPlay.");
+  }
+  await panelFetch(creds, `/users-iptv/${encodeURIComponent(String(user.id))}`, {
+    method: "PUT",
+    body: JSON.stringify({ action: 0, id_iptv: user.id_iptv, reg_password: creds.regPassword?.trim() || "" }),
+  }, { retryTransient: false });
+  // A ação inverte o estado: não repetir automaticamente em falhas de servidor.
+  try {
+    const updated = await findIptvUserByUsername(creds, username, { exactOnly: true });
+    return updated ? iptvUserEnabled(updated) : undefined;
+  } catch { return undefined; }
+}
+
 export async function findIptvUserByUsername(
   creds: IptvPanelCreds,
   username: string,
@@ -2358,6 +2430,39 @@ export async function prorrogaIptvUser(
 }
 
 /**
+ * Edita usuário IPTV no painel (nome, telefone, pacote, etc.).
+ * PUT /users-iptv/{id}, action 3 e flagVencimento 0, como no painel.
+ */
+export async function editIptvUser(
+  creds: IptvPanelCreds,
+  remoteUserId: string | number,
+  opts: { username?: string; whatsapp?: string; nota?: string; package?: string;
+    id_iptv?: string | number; isCustomPackage?: boolean; bouquets?: (string | number)[] },
+): Promise<unknown> {
+  if (remoteUserId == null || String(remoteUserId).trim() === "") throw new Error("Cliente inv?lido");
+  if (!opts.username?.trim()) throw new Error("Informe o usu?rio IPTV");
+  if (opts.id_iptv == null) throw new Error("Cliente sem id_iptv no painel");
+  return panelFetch(creds, `/users-iptv/${encodeURIComponent(String(remoteUserId))}`, {
+    method: "PUT",
+    body: JSON.stringify({ action: 3, flagVencimento: 0, exp_day: 0,
+      username: opts.username.trim(), whatsapp: Number((opts.whatsapp || "").replace(/\D/g, "")),
+      nota: opts.nota ?? "", package: opts.package || "0", id_iptv: opts.id_iptv,
+      isCustomPackage: opts.isCustomPackage ?? false, bouquets: opts.bouquets ?? [],
+      reg_password: creds.regPassword?.trim() || "" }),
+  }, { retryTransient: false });
+}
+
+export async function fetchIptvEditPackages(creds: IptvPanelCreds, ready: boolean): Promise<IptvPackage[]> {
+  const data = await panelFetch(creds, "/get-iptv-packages", { method: "POST",
+    body: JSON.stringify({ reg_password: creds.regPassword?.trim() || "", package: ready }) });
+  return asArray(data).map((value) => {
+    const row = value as Record<string, unknown>;
+    return { id: (row.id ?? row.value ?? row.package) as string | number,
+      name: String(row.name ?? row.label ?? row.nome ?? "") };
+  }).filter((row) => row.id != null);
+}
+
+/**
  * Pega o exp_date real do usuário após uma operação no painel.
  */
 export async function fetchIptvExpDate(
@@ -2480,7 +2585,7 @@ export async function recreateIptvLine(
     const result = await panelFetch(creds, `/recreate-line/${id}`, {
       method: "PUT",
       body: "",
-    });
+    }, { retryTransient: false });
     return result;
   } catch (e) {
     throw new Error(
@@ -2489,12 +2594,47 @@ export async function recreateIptvLine(
   }
 }
 
-/**
- * Limpa testes na UniPlay.
- * 1) Endpoint oficial: /clean-trials { range }
- *    (a API GES rejeita POST nesse path — aceita DELETE/PUT/PATCH)
- * 2) Fallback: apaga um a um com action:2 (só testes confirmados)
- */
+/** Resolve a linha recriada por resposta, ID estável ou login exato; nunca por nome. */
+export async function fetchRecreatedIptvAccess(
+  creds: IptvPanelCreds,
+  original: string,
+  remoteId: string | number | undefined,
+  result: unknown,
+  links: { m3uHost?: string; dnsFallback?: string },
+) {
+  const root = result && typeof result === "object" ? result as Record<string, unknown> : {};
+  const payload = (root.data && typeof root.data === "object" ? root.data : root) as Record<string, unknown>;
+  const nested = (payload.user && typeof payload.user === "object" ? payload.user : payload) as Record<string, unknown>;
+  const reportedLogin = String(nested.username ?? nested.login ?? (typeof nested.user === "string" ? nested.user : "")).trim();
+  const reportedId = nested.id ?? nested.user_id ?? remoteId;
+  const users = await listIptvUsers(creds, { fresh: true });
+  const user = (reportedLogin ? users.find((row) => row.username?.trim().toLowerCase() === reportedLogin.toLowerCase()) : undefined)
+    || users.find((row) => reportedId != null && String(row.id) === String(reportedId))
+    || users.find((row) => row.username?.trim().toLowerCase() === original.trim().toLowerCase());
+  const username = String(reportedLogin || user?.username || "").trim();
+  if (!username) throw new Error("A linha foi recriada, mas o painel não retornou o novo login. Nenhum cadastro local foi duplicado; atualize o painel para conferir os dados.");
+  const matchingUser = user?.username?.trim().toLowerCase() === username.toLowerCase() ? user : undefined;
+  const password = pickPassword(nested) || (matchingUser ? pickPassword(matchingUser) : undefined) || await fetchIptvUserPassword(creds, username);
+  if (!password) throw new Error("A linha foi recriada, mas o painel não retornou a nova senha. Confira o cadastro no UniPlay antes de recriar novamente.");
+  const access = resolveTestAccessLinks({ username, password, ...links });
+  return { username, password, m3u: access.m3u, dnsSmarters: access.dnsSmarters,
+    remoteId: user?.id ?? (reportedId as string | number | undefined) };
+}
+
+/** Escopos de manutenção do painel UniPlay. */
+export type IptvTestCleanupRange = 1 | 2 | 3;
+
+/** Escopos dos botões oficiais: 1 todos, 2 quinze dias, 3 sete dias. */
+export async function cleanIptvTests(
+  creds: IptvPanelCreds,
+  range: IptvTestCleanupRange,
+): Promise<unknown> {
+  if (![1, 2, 3].includes(range)) throw new Error("Opção de limpeza inválida");
+  return panelFetch(creds, "/clean-trials", {
+    method: "POST", body: JSON.stringify({ range }),
+  }, { retryTransient: false });
+}
+
 export async function deleteAllIptvTests(
   creds: IptvPanelCreds,
 ): Promise<{ deleted: number; failed: number; total: number }> {
@@ -2811,26 +2951,41 @@ export async function fetchIptvPanelCredits(
 }
 
 /** Apps parceiros do painel (ativação por MAC / Device ID). */
-export type PartnerAppId = "prime" | "fun" | "pixel" | "lazer";
+export type PartnerAppId = "prime" | "utm" | "pixel";
 
 export const PARTNER_APPS: {
   id: PartnerAppId;
   label: string;
-  /** Campo enviado à API */
+  /** Campo principal enviado à API */
   deviceField: "mac" | "deviceId";
+  /** Campo secundário (ex: UTM Play precisa de Device Key além do MAC) */
+  secondaryField?: {
+    key: string;
+    label: string;
+    hint: string;
+    maxLength: number;
+    inputMode: string;
+  };
   /** Tamanho típico do identificador */
   hint: string;
 }[] = [
   {
     id: "prime",
-    label: "Prime",
+    label: "Prime IPTV",
     deviceField: "mac",
     hint: "MAC com 17 caracteres (aa:bb:cc:dd:ee:ff)",
   },
   {
-    id: "fun",
-    label: "Fun Play",
+    id: "utm",
+    label: "UTM Play",
     deviceField: "mac",
+    secondaryField: {
+      key: "deviceKey",
+      label: "Device Key UTM",
+      hint: "6 dígitos numéricos",
+      maxLength: 6,
+      inputMode: "numeric",
+    },
     hint: "MAC com 17 caracteres (aa:bb:cc:dd:ee:ff)",
   },
   {
@@ -2839,19 +2994,12 @@ export const PARTNER_APPS: {
     deviceField: "deviceId",
     hint: "Device ID do app (mín. 10 caracteres)",
   },
-  {
-    id: "lazer",
-    label: "Lazer Play",
-    deviceField: "mac",
-    hint: "MAC com 17 caracteres (aa:bb:cc:dd:ee:ff)",
-  },
 ];
 
 const ACTIVATE_PATH: Record<PartnerAppId, string> = {
   prime: "/activate-prime",
-  fun: "/activate-fun",
+  utm: "/activate-utm",
   pixel: "/activate-pixel",
-  lazer: "/activate-lazer",
 };
 
 /** Só hex do MAC (máx. 12), ignora `:` e outros separadores. Mantém maiúsculas/minúsculas. */
@@ -2900,13 +3048,11 @@ export type SmartAppEntry = {
   appLabel: string;
   /** Apelido local (SALA, QUARTO…) */
   nickname?: string;
+  deviceKey?: string;
   /** true = veio do /activate-* (não aparece só no Smart App) */
   localOnly?: boolean;
   source?: "smart-app" | "partner";
 };
-
-const PARTNER_APPS_LOCAL_KEY = "auxplus-partner-apps";
-const DEVICE_NICK_KEY = "auxplus-device-nicknames";
 
 type LocalPartnerApp = {
   id: string;
@@ -2916,37 +3062,31 @@ type LocalPartnerApp = {
   app: PartnerAppId;
   appLabel: string;
   nickname?: string;
+  deviceKey?: string;
   createdAt: string;
 };
 
 function loadLocalPartnerApps(): LocalPartnerApp[] {
-  try {
-    const raw = localStorage.getItem(PARTNER_APPS_LOCAL_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as LocalPartnerApp[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return Object.values(readSyncedDevices("app")) as LocalPartnerApp[];
 }
 
 function saveLocalPartnerApps(rows: LocalPartnerApp[]) {
-  localStorage.setItem(PARTNER_APPS_LOCAL_KEY, JSON.stringify(rows.slice(0, 500)));
+  const ids = new Set(rows.map((row) => row.id));
+  for (const old of loadLocalPartnerApps()) {
+    if (!ids.has(old.id)) writeSyncedDevice("app", old.id, null);
+  }
+  for (const row of rows) writeSyncedDevice("app", row.id, row);
 }
 
 function loadDeviceNicknames(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(DEVICE_NICK_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, string>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+  return readSyncedDevices("nickname") as Record<string, string>;
 }
 
 function saveDeviceNicknames(map: Record<string, string>) {
-  localStorage.setItem(DEVICE_NICK_KEY, JSON.stringify(map));
+  for (const key of Object.keys(loadDeviceNicknames())) {
+    if (!(key in map)) writeSyncedDevice("nickname", key, null);
+  }
+  for (const [key, value] of Object.entries(map)) writeSyncedDevice("nickname", key, value);
 }
 
 /** Chave estável p/ apelido: usuário + MAC/device. */
@@ -2998,9 +3138,9 @@ export function setDeviceNickname(
 }
 
 function withNickname(entry: SmartAppEntry): SmartAppEntry {
-  const nick =
-    entry.nickname?.trim() ||
-    getDeviceNickname(entry.username, entry.mac, entry.idDevice);
+  const names = loadDeviceNicknames();
+  const key = deviceNicknameKey(entry.username, entry.mac, entry.idDevice);
+  const nick = key in names ? names[key].trim() : entry.nickname?.trim();
   return nick ? { ...entry, nickname: nick } : { ...entry, nickname: "" };
 }
 
@@ -3012,11 +3152,22 @@ function partnerLocalId(
   return `local:${app}:${username.trim().toLowerCase()}:${device.trim().toLowerCase()}`;
 }
 
+function hiddenDeviceKey(entry: Pick<SmartAppEntry, "app" | "username" | "mac" | "idDevice">) {
+  return `${entry.app}|${entry.username.trim().toLowerCase()}|${(entry.mac || entry.idDevice).trim().toLowerCase()}`;
+}
+
+/** Remove somente da lista AuxPlus, sincronizando a remoção entre dispositivos. */
+export function hideRegisteredApp(entry: SmartAppEntry) {
+  writeSyncedDevice("hidden", hiddenDeviceKey(entry), true);
+  removeLocalPartnerApp(partnerLocalId(entry.app as PartnerAppId, entry.username, entry.mac || entry.idDevice));
+}
+
 /** Guarda ativação parceira localmente (activate-* não entra no Smart App). */
 export function rememberPartnerAppActivation(opts: {
   app: PartnerAppId;
   username: string;
   device: string;
+  deviceKey?: string;
   nickname?: string;
 }): SmartAppEntry {
   const meta = PARTNER_APPS.find((a) => a.id === opts.app);
@@ -3029,6 +3180,7 @@ export function rememberPartnerAppActivation(opts: {
     idDevice = opts.device.trim();
   }
   const id = partnerLocalId(opts.app, username, mac || idDevice);
+  writeSyncedDevice("hidden", hiddenDeviceKey({ app: opts.app, username, mac, idDevice }), null);
   const existing = loadLocalPartnerApps().find((r) => r.id === id);
   const nickname = (
     opts.nickname?.trim() ||
@@ -3046,6 +3198,7 @@ export function rememberPartnerAppActivation(opts: {
     app: opts.app,
     appLabel: meta?.label || opts.app,
     nickname: nickname || undefined,
+    deviceKey: opts.deviceKey?.trim(),
     createdAt: existing?.createdAt || new Date().toISOString(),
   };
   const prev = loadLocalPartnerApps().filter((r) => r.id !== id);
@@ -3058,6 +3211,7 @@ export function rememberPartnerAppActivation(opts: {
     app: entry.app,
     appLabel: entry.appLabel,
     nickname: entry.nickname || "",
+    deviceKey: entry.deviceKey,
     localOnly: true,
     source: "partner",
   };
@@ -3083,6 +3237,7 @@ function listLocalPartnerAppsForUsername(username: string): SmartAppEntry[] {
         app: r.app,
         appLabel: r.appLabel,
         nickname: r.nickname || "",
+        deviceKey: r.deviceKey,
         localOnly: true,
         source: "partner" as const,
       }),
@@ -3139,6 +3294,7 @@ function normalizeSmartApp(
     idDevice,
     app,
     appLabel,
+    deviceKey: String(row.device_key ?? row.deviceKey ?? "").trim() || undefined,
     localOnly: false,
     source: "smart-app",
   };
@@ -3171,18 +3327,48 @@ export async function listSmartAppsForUsername(
 ): Promise<SmartAppEntry[]> {
   const want = username.trim();
   if (!want) return [];
-  const local = listLocalPartnerAppsForUsername(want);
+  let local = listLocalPartnerAppsForUsername(want);
   let remote: SmartAppEntry[] = [];
+  // Ativações parceiras ficam separadas dos registros de Smart App.
+  const user = await findIptvUserByUsername(creds, want, { exactOnly: true });
+  if (user) {
+    const activations = asArray(await panelFetch(
+      creds, `/users-iptv/${encodeURIComponent(String(user.id))}/mac-activations`,
+    ));
+    remote = activations.flatMap((value): SmartAppEntry[] => {
+      if (!value || typeof value !== "object") return [];
+      const row = value as Record<string, unknown>;
+      const app = PARTNER_APPS.find((a) => a.id === row.tipo);
+      if (!app || !(row.ativo === true || row.ativo === 1 || row.ativo === "1") || row.id == null) return [];
+      const saved = local.find((entry) => entry.app === app.id &&
+        entry.mac.toLowerCase() === String(row.mac ?? "").trim().toLowerCase());
+      return [{
+        id: `activation:${app.id}:${row.id}`,
+        username: want,
+        mac: String(row.mac ?? "").trim(),
+        idDevice: String(row.identificador ?? row.device_identifier ?? row.device_id ?? "").trim(),
+        deviceKey: String(row.device_key ?? "").trim() || saved?.deviceKey,
+        app: app.id,
+        appLabel: app.label,
+        localOnly: false,
+        source: "partner",
+      }];
+    });
+    // O painel é a fonte de verdade para UTM, inclusive após desvincular fora do AuxPlus.
+    local = local.filter((entry) => entry.app !== "utm");
+  }
   try {
     const all = await listSmartApps(creds);
-    remote = all.filter((e) => usernameMatches(e.username, want));
+    remote.push(...all.filter((e) => usernameMatches(e.username, want)));
   } catch {
     // Se o Smart App falhar, ainda mostra as ativações locais
   }
 
   const seen = new Set<string>();
   const merged: SmartAppEntry[] = [];
+  const hidden = readSyncedDevices("hidden");
   for (const row of [...remote, ...local]) {
+    if (hidden[hiddenDeviceKey(row)] === true) continue;
     const key = `${String(row.app).toLowerCase()}|${(row.mac || row.idDevice).toLowerCase()}|${row.username.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -3192,6 +3378,42 @@ export async function listSmartAppsForUsername(
 }
 
 /** Remove um MAC/app: Smart App no painel e/ou registro local. */
+export async function findUtmActivationsByMac(
+  creds: IptvPanelCreds,
+  rawMac: string,
+): Promise<SmartAppEntry[]> {
+  const hex = rawMac.trim().replace(/[:-]/g, "");
+  if (!/^[a-f0-9]{12}$/i.test(hex)) throw new Error("Informe um MAC válido com 12 dígitos hexadecimais.");
+  const matches = new Map<string, SmartAppEntry>();
+  const visit = (value: unknown, inheritedUsername = "") => {
+    if (Array.isArray(value)) { value.forEach((row) => visit(row, inheritedUsername)); return; }
+    if (!value || typeof value !== "object") return;
+    const row = value as Record<string, unknown>;
+    const username = pickNestedUsername(row) || inheritedUsername;
+    const mac = String(row.mac ?? "").trim();
+    if (row.tipo === "utm" && row.id != null &&
+        (row.ativo === true || row.ativo === 1 || row.ativo === "1") &&
+        mac.replace(/[:-]/g, "").toLowerCase() === hex.toLowerCase()) {
+      const id = `activation:utm:${row.id}`;
+      matches.set(id, { id, username, mac, idDevice: "", app: "utm", appLabel: "UTM Play",
+        deviceKey: String(row.device_key ?? "").trim() || undefined,
+        source: "partner", localOnly: false });
+    }
+    for (const key of ["data", "activations", "items", "rows", "result"]) {
+      if (row[key]) visit(row[key], username);
+    }
+  };
+  for (let page = 1; page <= 100; page++) {
+    const data = await panelFetch(creds, `/mac-activations?page=${page}&_refresh=${Date.now()}`, { cache: "no-store" });
+    visit(data);
+    const root = data && typeof data === "object" ? data as Record<string, unknown> : {};
+    const meta = root.meta && typeof root.meta === "object" ? root.meta as Record<string, unknown> : root;
+    const last = Number(meta.last_page || 1);
+    if (page >= last) return [...matches.values()];
+  }
+  throw new Error("A consulta de ativações excedeu o limite de páginas. Procure o suporte UniPlay.");
+}
+
 export async function deleteSmartApp(
   creds: IptvPanelCreds,
   id: string | number,
@@ -3201,6 +3423,15 @@ export async function deleteSmartApp(
   if (sid.startsWith("local:")) {
     removeLocalPartnerApp(sid);
     return { ok: true, local: true };
+  }
+  if (sid.startsWith("activation:")) {
+    const [, app, activationId] = sid.split(":");
+    if (!activationId) throw new Error("ID da ativação inválido");
+    return panelFetch(
+      creds,
+      `/mac-activations/${encodeURIComponent(activationId)}${app === "utm" ? "/unlink-utm" : ""}`,
+      { method: app === "utm" ? "POST" : "DELETE" },
+    );
   }
   const result = await panelFetch(
     creds,
@@ -3212,7 +3443,8 @@ export async function deleteSmartApp(
 
 /**
  * Ativa app parceiro no painel.
- * Body: { username, password, mac } ou { username, password, deviceId } (Pixel).
+ * Prime: { username, password, mac }. Pixel: { id_usuario, device_identifier }.
+ * UTM Play usa { id_usuario, mac, device_key }.
  */
 export async function activatePartnerApp(
   creds: IptvPanelCreds,
@@ -3222,6 +3454,8 @@ export async function activatePartnerApp(
     password: string;
     /** MAC ou Device ID conforme o app */
     device: string;
+    /** Device Key para UTM Play (6 dígitos) */
+    deviceKey?: string;
   },
 ): Promise<unknown> {
   const username = opts.username.trim();
@@ -3251,10 +3485,32 @@ export async function activatePartnerApp(
     throw new Error("Device ID muito curto (mínimo 10 caracteres).");
   }
 
-  const body =
+  // Validar deviceKey para UTM Play
+  if (opts.app === "utm" && meta.secondaryField) {
+    const deviceKey = opts.deviceKey?.trim();
+    if (!deviceKey) {
+      throw new Error("Informe o Device Key UTM (6 dígitos).");
+    }
+    if (!/^\d{6}$/.test(deviceKey)) {
+      throw new Error("Device Key UTM deve ter exatamente 6 dígitos numéricos.");
+    }
+  }
+
+  let body: Record<string, string | number> =
     meta.deviceField === "mac"
       ? { username, password, mac: device }
       : { username, password, deviceId: device };
+
+  // UTM e Pixel vinculam pelo ID interno do cliente, não pelo login IPTV.
+  if (opts.app === "utm" || opts.app === "pixel") {
+    const user = await findIptvUserByUsername(creds, username, { exactOnly: true });
+    if (user?.id == null || user.id === "") {
+      throw new Error(`Cliente IPTV não encontrado no painel para ativar o ${meta.label}.`);
+    }
+    body = opts.app === "utm"
+      ? { id_usuario: user.id, mac: device, device_key: opts.deviceKey!.trim() }
+      : { id_usuario: user.id, device_identifier: device };
+  }
 
   try {
     return await panelFetch(creds, ACTIVATE_PATH[opts.app], {
@@ -3263,6 +3519,9 @@ export async function activatePartnerApp(
     });
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
+    if (opts.app === "pixel" && /dispositivo não encontrado no Pixel Player/i.test(raw)) {
+      throw new Error(raw.replace(/<[^>]+>/g, "").trim());
+    }
     const looksHtml = /<\/?html|503\s*Backend|Backend fetch failed/i.test(raw);
     const looksGateway =
       /\b503\b|\b502\b|\b504\b|Bad Gateway|Service Unavailable|fetch failed/i.test(

@@ -15,10 +15,14 @@ import {
   MoreVertical,
   Phone,
   Plus,
+  Pencil,
+  Power,
   RefreshCw,
+  Save,
   Search,
   Smartphone,
   Trash2,
+  Unlink2,
   UserCircle,
   Users,
   Wallet,
@@ -36,7 +40,7 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { hasUsedProrrogaInCurrentCycle, extractProrrogaUsage } from "@/lib/itemExtensions";
-import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage, ensureIptvToken, recreateIptvLine, isShortLivedIptvTest, isConfirmedIptvTestUser } from "@/lib/iptvPanelApi";
+import { prorrogaIptvUser, fetchIptvExpDate, buildProrrogaMessage, ensureIptvToken, recreateIptvLine, isShortLivedIptvTest, isConfirmedIptvTestUser, editIptvUser } from "@/lib/iptvPanelApi";
 import { applyProrrogaToItem } from "@/lib/iptvAutomation";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -44,6 +48,8 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Tabs,
   TabsContent,
@@ -91,6 +97,12 @@ import { loadWaBotStateRemote } from "@/lib/whatsappBotConfig";
 import { notifyUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
 import {
   activatePartnerApp,
+  fetchRecreatedIptvAccess,
+  isIptvPanelTestStatus,
+  cleanIptvTests,
+  type IptvTestCleanupRange,
+  toggleIptvUser,
+  iptvUserEnabled,
   addIptvResellerCredits,
   resolveIptvResellerPanelId,
   buildRenewalReceiptMessage,
@@ -115,10 +127,11 @@ import {
   listSmartAppsForUsername,
   PARTNER_APPS,
   rememberPartnerAppActivation,
-  removeLocalPartnerApp,
+  hideRegisteredApp,
   renewIptvUser,
   setDeviceNickname,
   type IptvPanelCreds,
+  type IptvRemoteUser,
   type IptvRenewOption,
   type IptvReseller,
   type PartnerAppId,
@@ -136,6 +149,11 @@ import {
 } from "@/lib/platformApi";
 import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
+import { readItemIptvAccess, replaceRecreatedItemAccess, replaceRecreatedJobAccess, type RecreatedIptvAccess } from "@/lib/iptvRecreation";
+import { UniplayEditUserDialog } from "@/components/UniplayEditUserDialog";
+import { UniplayUnlinkUtmDialog } from "@/components/UniplayUnlinkUtmDialog";
+import { UniplayTicketsPanel } from "@/components/UniplayTicketsPanel";
+import { configurePartnerAppsAccount, migratePartnerApps, syncPartnerApps } from "@/lib/partnerAppsSync";
 
 type ActivateAppScope = "clientes" | "testes";
 type ActivateAppForm = {
@@ -143,6 +161,7 @@ type ActivateAppForm = {
   username: string;
   password: string;
   device: string;
+  deviceKey?: string;
   nickname: string;
   showPass: boolean;
   registered: SmartAppEntry[];
@@ -179,6 +198,10 @@ export default function UniPlay() {
 
   const [tab, setTab] = useState("clientes");
   const [jobs, setJobs] = useState<IptvJob[]>([]);
+  const panelTestsSnapshot = useRef<IptvRemoteUser[] | null>(null);
+  const panelTestsRequest = useRef(0);
+  const testsRefreshInFlight = useRef(false);
+  const [testsCountConfirmed, setTestsCountConfirmed] = useState(false);
   const [q, setQ] = useState("");
   const [resellers, setResellers] = useState<IptvReseller[]>([]);
   const [loadingResellers, setLoadingResellers] = useState(false);
@@ -200,6 +223,9 @@ export default function UniPlay() {
   const [testUsername, setTestUsername] = useState("");
   const [testPhone, setTestPhone] = useState("");
   const [testCountryCode, setTestCountryCode] = useState("+55");
+  const [testPackage, setTestPackage] = useState("0");
+  const [testPackageToggle, setTestPackageToggle] = useState(false);
+  const [testAnotacoes, setTestAnotacoes] = useState("");
   const [syncingTests, setSyncingTests] = useState(false);
   const [jobsQ, setJobsQ] = useState("");
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
@@ -224,11 +250,17 @@ export default function UniPlay() {
     dueDate: string | null;
   } | null>(null);
   const [panelUsernames, setPanelUsernames] = useState<Set<string>>(new Set());
+  const [clientOnOff, setClientOnOff] = useState<Record<string, boolean | undefined>>({});
+  const [togglingClientId, setTogglingClientId] = useState<string | null>(null);
+  const [editingPanelUsername, setEditingPanelUsername] = useState<string | null>(null);
+  const [unlinkUtmByMacOpen, setUnlinkUtmByMacOpen] = useState(false);
+  const [cleaningTestRange, setCleaningTestRange] = useState<IptvTestCleanupRange | null>(null);
   const emptyActivateForm = (): ActivateAppForm => ({
     appId: "prime",
     username: "",
     password: "",
     device: "",
+    deviceKey: "",
     nickname: "",
     showPass: false,
     registered: [],
@@ -258,9 +290,36 @@ export default function UniPlay() {
     }));
   };
 
+  useEffect(() => {
+    if (!user) return;
+    configurePartnerAppsAccount(user.id);
+    migratePartnerApps();
+    const refresh = () => {
+      void syncPartnerApps().then(() => {
+        for (const scope of ["clientes", "testes"] as const) {
+          const username = activateForms[scope].username;
+          if (username.trim()) void loadRegisteredApps(scope, username, { silent: true });
+        }
+      }).catch(() => toast.error("Falha ao sincronizar aparelhos entre dispositivos. Tentaremos novamente.", { id: "partner-apps-sync" }));
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, activateForms.clientes.username, activateForms.testes.username]);
+
   // Carrega jobs (cache local) + mescla com a nuvem (regras/log em qualquer PC)
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
+    panelTestsSnapshot.current = null;
+    setTestsCountConfirmed(false);
     setJobs(loadIptvJobs(user.id));
     void (async () => {
       const [remoteJobs, waState, mpOrders, autoCfg] = await Promise.all([
@@ -269,18 +328,39 @@ export default function UniPlay() {
         loadMpOrdersRemote(user.id),
         loadAutomationsConfigRemote(user.id),
       ]);
-      const merged = mergeWhatsAppLogSources(remoteJobs, {
+      if (cancelled) return;
+      const history = mergeWhatsAppLogSources(remoteJobs, {
         testConsumed: waState.testConsumed,
         mpOrders,
         testHours: autoCfg.testHours || testHours,
       });
+      // Histórico do bot não pode ressuscitar testes apagados do painel.
+      const merged = panelTestsSnapshot.current
+        ? mergePanelTestsIntoJobs(history, panelTestsSnapshot.current, {
+            m3uHost: platform.m3uHost, dnsFallback: platform.dnsSmarters,
+            excludeUsernames: data.items.filter((item) => item.isActive !== false).map((item) => item.itemId),
+          }).jobs
+        : history;
       setJobs(merged);
       if (merged.length !== remoteJobs.length) {
         saveIptvJobs(user.id, merged);
       }
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!ready || !user || !uniplayConnected || tab !== "testes" || cleaningTestRange !== null) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void refreshPanelTests({ silent: true });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, user?.id, uniplayConnected, tab, cleaningTestRange]);
 
   const uniplayPrefetchKey = useRef("");
   // Prefetch contagens ao abrir UniPlay (não precisa entrar em cada aba)
@@ -298,6 +378,7 @@ export default function UniPlay() {
     if (uniplayPrefetchKey.current === key) return;
 
     let cancelled = false;
+    const request = ++panelTestsRequest.current;
 
     const credsBase = (): IptvPanelCreds => ({
       apiBaseUrl: platform.apiBaseUrl || config.iptvApiBaseUrl,
@@ -320,12 +401,18 @@ export default function UniPlay() {
 
         const [rows, users] = await Promise.all([
           listIptvResellers(tokenCreds),
-          listIptvUsers(tokenCreds),
+          listIptvUsers(tokenCreds, { fresh: true }),
         ]);
-        if (cancelled) return;
+        if (cancelled || request !== panelTestsRequest.current) return;
+        panelTestsSnapshot.current = users;
+        setTestsCountConfirmed(true);
 
         setResellers(rows);
         setPanelUsernames(new Set(users.map((u) => u.username).filter(Boolean)));
+        setClientOnOff(Object.fromEntries(data.items.map((item) => {
+          const remote = users.find((u) => u.username?.toLowerCase() === item.itemId.trim().toLowerCase());
+          return [item.id, remote ? iptvUserEnabled(remote) : undefined];
+        })));
 
         const clientUsernames = data.items
           .filter((i) => i.isActive !== false)
@@ -471,8 +558,10 @@ export default function UniPlay() {
     return jobs
       .filter((j) => {
         if (j.kind !== "test") return false;
+        const markedTest = panelTestsSnapshot.current?.some((remote) =>
+          isIptvPanelTestStatus(remote) && String(remote.username || remote.user || "").trim().toLowerCase() === j.panelUsername.trim().toLowerCase());
         // Plano longo (vence daqui a >2 dias) não é teste ativo
-        if (j.status !== "pending" && j.status !== "doing") {
+        if (!markedTest && j.status !== "pending" && j.status !== "doing") {
           const dueRaw = String(j.dueDate || "").trim();
           if (dueRaw) {
             const due = Date.parse(dueRaw.replace(" ", "T"));
@@ -508,11 +597,26 @@ export default function UniPlay() {
     }
     return true;
   };
-  const testJobsCount = useMemo(
-    () => jobs.filter(isRealTestJob).length,
+  const confirmedPanelTests = useMemo(
+    () => {
+      if (!testsCountConfirmed || !panelTestsSnapshot.current) return [];
+      const fallbackLogins = new Set(jobs.filter(isRealTestJob).map((job) => job.panelUsername.trim().toLowerCase()));
+      return panelTestsSnapshot.current.filter((remote) => {
+        if (isIptvPanelTestStatus(remote)) return true;
+        const login = String(remote.username || remote.user || "").trim().toLowerCase();
+        return fallbackLogins.has(login) && !clientUsernameSet.has(login);
+      });
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [jobs, clientUsernameSet],
+    [jobs, clientUsernameSet, testsCountConfirmed],
   );
+  const testJobsCount = confirmedPanelTests.length;
+  const isExpiredTestDate = (value?: string | null) => {
+    const parsed = parseIptvExpToDateTime(value || "");
+    return parsed ? new Date(parsed.replace(" ", "T")).getTime() < Date.now() : false;
+  };
+  const expiredTestsCount = confirmedPanelTests.filter((remote) =>
+    isExpiredTestDate(remote.exp_date ?? remote.expDate)).length;
 
   const detailJob = useMemo(
     () => (detailJobId ? jobs.find((j) => j.id === detailJobId) || null : null),
@@ -594,6 +698,24 @@ export default function UniPlay() {
   const persistJobs = (next: IptvJob[]) => {
     setJobs(next);
     saveIptvJobs(user.id, next);
+  };
+
+  const applyRecreatedAccess = (original: string, access: RecreatedIptvAccess, jobId?: string) => {
+    setData((prev) => replaceRecreatedItemAccess(prev, original, access));
+    persistJobs(replaceRecreatedJobAccess(loadIptvJobs(user.id), original, access, jobId));
+    panelTestsRequest.current += 1;
+    if (panelTestsSnapshot.current) panelTestsSnapshot.current = panelTestsSnapshot.current.map((row) =>
+      row.username?.trim().toLowerCase() === original.trim().toLowerCase()
+        ? { ...row, id: access.remoteId ?? row.id, username: access.username, password: access.password } : row);
+    setPanelUsernames((prev) => { const next = new Set(prev); next.delete(original); next.add(access.username); return next; });
+    setLastTest((prev) => prev?.username.trim().toLowerCase() === original.trim().toLowerCase()
+      ? { ...prev, username: access.username, password: access.password, m3u: access.m3u, dnsSmarters: access.dnsSmarters } : prev);
+    for (const scope of ["clientes", "testes"] as const) {
+      if (activateForms[scope].username.trim().toLowerCase() === original.trim().toLowerCase())
+        patchActivateForm(scope, { username: access.username, password: access.password });
+    }
+    if (data.items.some((item) => item.id === detailClientId && item.itemId.trim().toLowerCase() === original.trim().toLowerCase()))
+      setClientDetailAccess({ password: access.password, m3u: access.m3u, dnsSmarters: access.dnsSmarters });
   };
 
   const runApiTest = async (hours: number, notaRaw?: string, usernameRaw?: string) => {
@@ -771,42 +893,22 @@ export default function UniPlay() {
   };
 
   const recreateTest = async (jobId: string) => {
-    const job = jobs.find((j) => j.id === jobId);
-    if (!job || !job.panelRemoteId) {
-      toast.error("Teste não encontrado ou sem ID no painel");
-      return;
-    }
-
+    const job = jobs.find((entry) => entry.id === jobId);
+    if (!job || job.panelRemoteId == null) { toast.error("Teste sem ID no painel"); return; }
     setBusyId(job.id);
     try {
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
       const creds = { ...panelCreds(), bearerToken: ensured.token };
-
-      // Recria a linha no painel (mantém vencimento, apenas recria a linha)
-      await recreateIptvLine(creds, job.panelRemoteId);
-
-      // Atualiza o job com nota de sucesso
-      const nextJobs = patchIptvJob(jobs, job.id, {
-        status: "done",
-        note: `${job.note} · linha recriada em ${formatBrDate(new Date())}`,
-      });
-      persistJobs(nextJobs);
+      const result = await recreateIptvLine(creds, job.panelRemoteId);
+      const access = await fetchRecreatedIptvAccess(creds, job.panelUsername, job.panelRemoteId, result,
+        { m3uHost: platform.m3uHost, dnsFallback: platform.dnsSmarters });
+      applyRecreatedAccess(job.panelUsername, access, job.id);
       setDetailJobId(job.id);
-      toast.success(`Linha recriada: ${job.panelUsername}`);
-
-      // Sincroniza imediatamente com o painel para atualizar a lista
-      await refreshPanelTests();
-    } catch (e) {
-      const nextJobs = patchIptvJob(jobs, job.id, {
-        status: "failed",
-        note: `Falha ao recriar: ${e instanceof Error ? e.message : "erro"}`,
-      });
-      persistJobs(nextJobs);
-      toast.error(e instanceof Error ? e.message : "Falha ao recriar linha");
-    } finally {
-      setBusyId(null);
-    }
+      const issued = getLastIssuedIptvToken(); if (issued) persistToken(issued);
+      toast.success("Linha recriada. Dados de acesso atualizados na lista e nas pastas.");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Falha ao recriar linha"); }
+    finally { setBusyId(null); }
   };
 
   const deleteTest = async (jobId: string) => {
@@ -1179,7 +1281,7 @@ export default function UniPlay() {
     const item = clients.find((c) => c.id === itemId);
     if (!item) return;
     setDetailClientId(item.id);
-    setClientDetailAccess(null);
+    setClientDetailAccess(readItemIptvAccess(item.notes));
     const username = item.itemId.trim();
     if (
       !username ||
@@ -1213,122 +1315,30 @@ export default function UniPlay() {
   };
 
   const runRecreateLinhaAsync = async (itemId: string) => {
+    const item = data.items.find((entry) => entry.id === itemId);
+    if (!item?.itemId.trim()) { toast.error("Cliente sem usu?rio IPTV"); return; }
     setBusyId(itemId);
     try {
-      const item = data.items.find((i) => i.id === itemId);
-      if (!item) throw new Error("Item não encontrado");
-
-      if (!item.itemId.trim()) {
-        toast.error("Cliente sem usuário (campo Usuário) — preencha na pasta");
-        return;
-      }
-      if (!bearer.trim()) {
-        toast.error("Conecte sua conta UniPlay antes");
-        return;
-      }
-
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
       const creds = { ...panelCreds(), bearerToken: ensured.token };
-
-      // Busca usuário no painel (ID antigo)
-      const itemIdTrimmed = item.itemId?.trim() || "";
-       const remote = await findIptvUserByUsername(creds, itemIdTrimmed);
-
-      let newItem: Item;
-      let createdUsername: string;
-
-      if (remote?.id) {
-        const oldRemoteId = remote.id;
-
-        toast.info("Recriando a linha no painel...");
-        const recreateResult = await recreateIptvLine(creds, oldRemoteId);
-
-        const issued = getLastIssuedIptvToken();
-        if (issued) persistToken(issued);
-
-        await new Promise(resolve => setTimeout(resolve, 2500));
-
-        const allUsers = await listIptvUsers(creds);
-
-        let newUser = null;
-        if (recreateResult && typeof recreateResult === "object") {
-          const result = recreateResult as Record<string, any>;
-          const newUsername = result.username || result.user || result.login || result.name;
-          if (newUsername) {
-            newUser = allUsers.find(u => u.username?.trim().toLowerCase() === String(newUsername).trim().toLowerCase());
-          }
-        }
-
-        if (!newUser) {
-          newUser = allUsers.find(u => u.username?.trim().toLowerCase() === itemIdTrimmed.toLowerCase());
-        }
-
-        if (!newUser?.id) {
-          throw new Error(
-            `Após recriar, não consegui encontrar o novo usuário. O painel pode ter gerado um novo username. Sincronize manualmente e verifique a lista de clientes.`
-          );
-        }
-
-        newItem = {
-          ...item,
-          itemId: newUser.username || itemIdTrimmed,
-          id: String(Date.now()),
-          dueDate: parseIptvExpToDateTime(newUser.exp_date ?? newUser.expDate) || item.dueDate,
-        };
-        createdUsername = newItem.itemId;
-      } else {
-        const testResult = await createIptvTest(creds, {
-          testHours: 6,
-          packageId: platform.packageId,
-          nota: item.name || undefined,
-          username: itemIdTrimmed,
-          whatsapp: item.phone || undefined,
-          credits: 0,
-        });
-
-        const issued = getLastIssuedIptvToken();
-        if (issued) persistToken(issued);
-
-        createdUsername = testResult.username || itemIdTrimmed;
-        const createdPassword = testResult.password?.trim() || "";
-        let newDue = testResult.dueDate ? parseIptvExpToDateTime(testResult.dueDate) : null;
-        if (!newDue) {
-          const sixHoursLater = new Date(Date.now() + 6 * 60 * 60 * 1000);
-          newDue = format(sixHoursLater, "yyyy-MM-dd HH:mm:ss");
-        }
-
-        // Cria novo item com os dados do teste criado
-        newItem = {
-          ...item,
-          itemId: createdUsername,
-          id: String(Date.now()),
-          dueDate: newDue || item.dueDate,
-        };
-
+      const remote = await findIptvUserByUsername(creds, item.itemId, { exactOnly: true });
+      let result: unknown;
+      if (remote?.id != null) result = await recreateIptvLine(creds, remote.id);
+      else {
+        const created = await createIptvTest(creds, { testHours: 6, packageId: platform.packageId,
+          nota: item.name || undefined, username: item.itemId, whatsapp: item.phone || undefined, credits: 0 });
+        result = { username: created.username, password: created.password };
       }
-
-      // Atualiza state com item antigo removido e novo adicionado
-      setData((prev) => ({ ...prev, items: [...prev.items.filter((i) => i.id !== itemId), newItem] }));
-      setPanelUsernames((prev) => {
-        const next = new Set(prev);
-        next.delete(item.itemId.trim());
-        if (createdUsername) next.add(createdUsername);
-        return next;
-      });
-
-      toast.success("✅ Linha recriada com sucesso! Cliente atualizado em tempo real.");
-      setDetailClientId(null);
-      setClientDetailAccess(null);
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Falha ao recriar linha",
-      );
-    } finally {
-      setBusyId(null);
-    }
+      const access = await fetchRecreatedIptvAccess(creds, item.itemId, remote?.id, result,
+        { m3uHost: platform.m3uHost, dnsFallback: platform.dnsSmarters });
+      applyRecreatedAccess(item.itemId, access);
+      setClientDetailAccess({ password: access.password, m3u: access.m3u, dnsSmarters: access.dnsSmarters });
+      setDetailClientId(item.id);
+      const issued = getLastIssuedIptvToken(); if (issued) persistToken(issued);
+      toast.success("Linha recriada. Dados de acesso atualizados na lista e nas pastas.");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Falha ao recriar linha"); }
+    finally { setBusyId(null); }
   };
 
   const sendRenewalReceipt = async (
@@ -1536,6 +1546,9 @@ export default function UniPlay() {
     }
     setLoadingAppsScope(scope);
     try {
+      configurePartnerAppsAccount(user.id);
+      migratePartnerApps();
+      await syncPartnerApps();
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
       const creds = { ...panelCreds(), bearerToken: ensured.token };
@@ -1558,14 +1571,15 @@ export default function UniPlay() {
   const runDeleteSmartApp = async (
     scope: ActivateAppScope,
     entry: SmartAppEntry,
+    unlinkUtm = false,
   ) => {
     const device = entry.mac || entry.idDevice || String(entry.id);
-    const isLocal = entry.localOnly || String(entry.id).startsWith("local:");
+    const isLocal = !unlinkUtm;
     if (
       !window.confirm(
         isLocal
           ? `Remover ${entry.appLabel} (${device}) da lista deste usuário?`
-          : `Excluir ${entry.appLabel} (${device}) deste usuário no painel?`,
+          : `Desvincular UTM (${device}) no painel? As listas serão apagadas e a validade do app será encerrada.`,
       )
     ) {
       return;
@@ -1573,7 +1587,7 @@ export default function UniPlay() {
     setDeletingAppId(entry.id);
     try {
       if (isLocal) {
-        removeLocalPartnerApp(entry.id);
+        hideRegisteredApp(entry);
         setActivateForms((prev) => ({
           ...prev,
           [scope]: {
@@ -1581,7 +1595,8 @@ export default function UniPlay() {
             registered: prev[scope].registered.filter((r) => r.id !== entry.id),
           },
         }));
-        toast.success("Removido da lista");
+        await syncPartnerApps();
+        toast.success("MAC removido da lista em todos os dispositivos");
         return;
       }
       const ensured = await ensureIptvToken(panelCreds());
@@ -1598,6 +1613,7 @@ export default function UniPlay() {
         },
       }));
       toast.success("App/MAC removido do painel");
+      void loadRegisteredApps(scope, activateForms[scope].username, { silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao excluir");
     } finally {
@@ -1702,6 +1718,7 @@ export default function UniPlay() {
         username: form.username,
         password: form.password,
         device: form.device,
+        deviceKey: form.deviceKey,
       });
       const issued = getLastIssuedIptvToken();
       if (issued) persistToken(issued);
@@ -1709,6 +1726,7 @@ export default function UniPlay() {
         app: form.appId,
         username: form.username,
         device: form.device,
+        deviceKey: form.deviceKey,
         nickname: form.nickname,
       });
       const label =
@@ -1761,9 +1779,25 @@ export default function UniPlay() {
     }));
   };
 
-  const openTestDialog = (prefillNota?: string) => {
-    setTestNota(prefillNota?.trim() || "");
-    setTestHoursPick(testHours || 6);
+  const openTestDialog = (testJob?: IptvJob) => {
+    if (testJob) {
+      setTestNota(testJob.clientName || "");
+      setTestHoursPick(testJob.testHours || 6);
+      setTestUsername(testJob.panelUsername || "");
+      setTestPhone(testJob.phone || "");
+      setTestPackage("0");
+      setTestPackageToggle(false);
+      setTestAnotacoes("");
+    } else {
+      setTestNota("");
+      setTestHoursPick(testHours || 6);
+      setTestUsername("");
+      setTestPhone("");
+      setTestCountryCode("+55");
+      setTestPackage("0");
+      setTestPackageToggle(false);
+      setTestAnotacoes("");
+    }
     setTestDialogOpen(true);
   };
 
@@ -1777,20 +1811,27 @@ export default function UniPlay() {
     else toast.error(`Não foi possível copiar ${label.toLowerCase()}`);
   };
 
-  const refreshPanelTests = async () => {
+  const refreshPanelTests = async (opts?: { silent?: boolean }) => {
+    if (testsRefreshInFlight.current) return;
     const canReach =
       Boolean(bearer.trim()) || Boolean(panelUser.trim() && panelPass);
     if (!canReach) {
       toast.error("Conecte a conta UniPlay antes");
       return;
     }
+    testsRefreshInFlight.current = true;
+    const request = ++panelTestsRequest.current;
     setSyncingTests(true);
     try {
       const ensured = await ensureIptvToken(panelCreds());
       if (ensured.renewed) persistToken(ensured.token);
       const creds = { ...panelCreds(), bearerToken: ensured.token };
-      const users = await listIptvUsers(creds);
+      const users = await listIptvUsers(creds, { fresh: true });
+      if (request !== panelTestsRequest.current) return;
+      panelTestsSnapshot.current = users;
+      setTestsCountConfirmed(true);
       console.log("[DEBUG sync] usuarios do painel:", users.length, "clientes ativos:", users.filter(u => !isConfirmedIptvTestUser(u)).length);
+      setLastTest((prev) => prev && !users.some((remote) => remote.username?.trim().toLowerCase() === prev.username.trim().toLowerCase()) ? null : prev);
       console.log("[DEBUG sync] clientUsernames existentes:", data.items.filter(i => i.isActive !== false).map(i => i.itemId));
       const issued = getLastIssuedIptvToken();
       if (issued) persistToken(issued);
@@ -1866,7 +1907,7 @@ export default function UniPlay() {
         result.removed ? `${result.removed} removido(s)` : "",
         totalTests ? `${totalTests} no total` : "",
       ].filter(Boolean);
-      toast.success(
+      if (!opts?.silent) toast.success(
         totalTests === 0
           ? "Nenhum teste no painel UniPlay — lista limpa"
           : parts.length
@@ -1878,8 +1919,36 @@ export default function UniPlay() {
         e instanceof Error ? e.message : "Falha ao atualizar testes",
       );
     } finally {
+      testsRefreshInFlight.current = false;
       setSyncingTests(false);
     }
+  };
+
+  const runCleanTests = async (range: IptvTestCleanupRange) => {
+    if (cleaningTestRange || syncingTests || busyId) return;
+    const label = range === 1 ? "Todos os testes" : range === 2 ? "Testes de 15 dias" : "Testes de 7 dias";
+    if (!window.confirm(`Limpar no painel UniPlay: ${label}? Esta ação exclui os testes no painel e não pode ser desfeita. A busca do AuxPlus não limita esta limpeza.`)) return;
+    setCleaningTestRange(range);
+    try {
+      const ensured = await ensureIptvToken(panelCreds());
+      if (ensured.renewed) persistToken(ensured.token);
+      await cleanIptvTests({ ...panelCreds(), bearerToken: ensured.token }, range);
+      if (range === 1) {
+        panelTestsRequest.current += 1;
+        panelTestsSnapshot.current = (panelTestsSnapshot.current || []).filter((remote) => !isConfirmedIptvTestUser(remote));
+        setTestsCountConfirmed(true);
+        // A limpeza de todos já foi confirmada pelo painel: atualiza o contador agora.
+        persistJobs(loadIptvJobs(user.id).filter((job) => job.kind !== "test"));
+        setLastTest(null);
+        patchActivateForm("testes", { registered: [] });
+      }
+      const issued = getLastIssuedIptvToken();
+      if (issued) persistToken(issued);
+      await refreshPanelTests();
+      toast.success(`Limpeza concluída no UniPlay: ${label}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao limpar testes no UniPlay");
+    } finally { setCleaningTestRange(null); }
   };
 
   const openJobDetail = (job: IptvJob) => {
@@ -2065,21 +2134,35 @@ export default function UniPlay() {
             ) : null}
           </div>
           {form.username.trim() ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-8 text-xs"
-              disabled={loadingApps || !bearer.trim()}
-              onClick={() => void loadRegisteredApps(scope, form.username)}
-            >
-              {loadingApps ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Search className="h-3.5 w-3.5" />
+            <>
+              {scope === "testes" && matchTest && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 text-xs"
+                  onClick={() => void openTestDialog(matchTest)}
+                >
+                  <FlaskConical className="h-3.5 w-3.5" />
+                  Preencher
+                </Button>
               )}
-              Atualizar
-            </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-8 text-xs"
+                disabled={loadingApps || !bearer.trim()}
+                onClick={() => void loadRegisteredApps(scope, form.username)}
+              >
+                {loadingApps ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Search className="h-3.5 w-3.5" />
+                )}
+                Atualizar
+              </Button>
+            </>
           ) : null}
         </div>
 
@@ -2217,6 +2300,32 @@ export default function UniPlay() {
               }
             />
           </div>
+          {(() => {
+            const meta = PARTNER_APPS.find((a) => a.id === form.appId);
+            if (!meta?.secondaryField) return null;
+            return (
+              <div className="space-y-1" key="secondary-field">
+                <Label className="text-xs" htmlFor={`app-devicekey-${scope}`}>
+                  {meta.secondaryField.label}
+                </Label>
+                <Input
+                  id={`app-devicekey-${scope}`}
+                  value={form.deviceKey ?? ""}
+                  onChange={(e) =>
+                    patchActivateForm(scope, {
+                      deviceKey: e.target.value.slice(0, meta.secondaryField!.maxLength),
+                    })
+                  }
+                  placeholder={meta.secondaryField.hint}
+                  className="h-9 font-mono text-xs"
+                  autoComplete="off"
+                  spellCheck={false}
+                  inputMode={meta.secondaryField.inputMode}
+                  maxLength={meta.secondaryField.maxLength}
+                />
+              </div>
+            );
+          })()}
           <div className="space-y-1">
             <Label className="text-xs" htmlFor={`app-user-${scope}`}>
               Usuário
@@ -2227,7 +2336,7 @@ export default function UniPlay() {
                 type={hideSensitive ? "password" : "text"}
                 value={form.username}
                 placeholder={userPlaceholder}
-                className="h-9 bg-muted/40"
+                className="h-9 bg-muted/40 flex-1 min-w-0"
                 autoComplete="off"
                 readOnly
               />
@@ -2245,7 +2354,7 @@ export default function UniPlay() {
               </Button>
             </div>
           </div>
-          <div className="space-y-1 sm:col-span-2">
+          <div className="space-y-1">
             <Label className="text-xs" htmlFor={`app-pass-${scope}`}>
               Senha
             </Label>
@@ -2318,6 +2427,22 @@ export default function UniPlay() {
           Ativar
         </Button>
 
+        {form.appId === "utm" && form.registered.some((e) => e.app === "utm") && form.username.trim() && (
+          <Button
+            type="button"
+            variant="destructive"
+            className="w-full sm:w-auto"
+            disabled={deletingAppId !== null || loadingApps || activatingAppScope !== null || !bearer.trim()}
+            onClick={() => {
+              const utmEntry = form.registered.find((e) => e.app === "utm");
+              if (utmEntry) void runDeleteSmartApp(scope, utmEntry, true);
+            }}
+          >
+            <Unlink2 className="h-4 w-4" />
+            Desvincular UTM
+          </Button>
+        )}
+
         {form.username.trim() ? (
           loadingApps ? (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -2344,14 +2469,38 @@ export default function UniPlay() {
                     className="h-8 w-[7.5rem] shrink-0 text-xs font-medium"
                     maxLength={32}
                   />
-                  <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  <div className="min-w-0 flex-1 break-words text-xs text-muted-foreground">
                     <span className="text-foreground/80">
                       {entry.appLabel}
                     </span>
+                    {entry.app === "utm" && !entry.localOnly ? (
+                      <span className="ml-1.5 text-success">Ativo</span>
+                    ) : null}
                     <span className="mx-1.5">·</span>
-                    <span className="font-mono">
+                    <button
+                      type="button"
+                      className="rounded font-mono text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground"
+                      disabled={activatingAppScope !== null || !(entry.mac || entry.idDevice)}
+                      title="Preencher os campos de ativação com este aparelho"
+                      aria-label={`Usar ${entry.mac || entry.idDevice} na ativação`}
+                      onClick={() => {
+                        const app = PARTNER_APPS.find((a) => a.id === entry.app);
+                        patchActivateForm(scope, {
+                          ...(app ? { appId: app.id } : {}),
+                          device: entry.mac || entry.idDevice,
+                          deviceKey: entry.deviceKey || "",
+                          nickname: entry.nickname || "",
+                        });
+                        focusActivateApp(scope);
+                      }}
+                    >
                       {entry.mac || entry.idDevice || "—"}
-                    </span>
+                      {entry.app === "utm" && entry.deviceKey ? (
+                        <span className="ml-2 inline-block">
+                          Device Key: {entry.deviceKey}
+                        </span>
+                      ) : null}
+                    </button>
                   </div>
                   <Button
                     type="button"
@@ -2387,6 +2536,11 @@ export default function UniPlay() {
         title="UniPlay"
         description="Clientes, revendedores, testes, renovações e atendimento do seu painel IPTV."
       />
+      <Button type="button" variant="outline" size="sm"
+        disabled={!bearer.trim() && !(panelUser.trim() && panelPass)}
+        onClick={() => setUnlinkUtmByMacOpen(true)}>
+        <Unlink2 className="h-4 w-4" />Desvincular UTM por MAC
+      </Button>
 
       <Tabs
         value={tab}
@@ -2420,7 +2574,7 @@ export default function UniPlay() {
           <TabsTrigger value="testes" className="gap-1.5">
             <FlaskConical className="h-3.5 w-3.5" />
             Testes
-            {testJobsCount > 0 ? (
+            {testsCountConfirmed && testJobsCount > 0 ? (
               <Badge
                 variant="secondary"
                 className="ml-0.5 h-5 px-1.5 text-[10px]"
@@ -2437,8 +2591,14 @@ export default function UniPlay() {
             <Headset className="h-3.5 w-3.5" />
             Atendimento
           </TabsTrigger>
+          <TabsTrigger value="tickets" className="gap-1.5">
+            <Headset className="h-3.5 w-3.5" />Tickets
+          </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="tickets" className="mt-0 space-y-4">
+          {tab === "tickets" ? <UniplayTicketsPanel creds={panelCreds()} onToken={persistToken} resellers={resellers} /> : null}
+        </TabsContent>
         <TabsContent value="clientes" className="mt-0 space-y-4">
           <section className="ax-surface space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2527,16 +2687,44 @@ export default function UniPlay() {
                             📱 {item.phone}
                           </p>
                         ) : null}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
+</div>
+                      <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.5rem_2.5rem_2.5rem] items-center gap-1 sm:flex sm:w-auto sm:shrink-0 sm:gap-1.5">
+                        <Button type="button" size="sm" variant="secondary" className="order-1 h-10 gap-1 px-2 text-xs sm:h-9"
+                          disabled={!item.itemId?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
+                          onClick={() => fillActivateFromClient(item.id)}>
+                          <Smartphone className="h-4 w-4" /><span className="sm:hidden">App</span><span className="hidden sm:inline">Ativar app</span>
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" className="order-3 h-10 w-10 p-0 sm:h-9"
+                          disabled={!item.itemId?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
+                          title="Editar cliente" aria-label="Editar cliente" onClick={() => setEditingPanelUsername(item.itemId)}><Pencil className="h-4 w-4" /></Button>
                         <Button
                           type="button"
                           size="sm"
-                          variant="secondary"
-                          className="h-8 px-2.5"
-                          onClick={() => openClientDetail(item.id)}
+                          variant="outline"
+                          title={clientOnOff[item.id] === true ? "On: bloquear cliente" : clientOnOff[item.id] === false ? "Off: desbloquear cliente" : "Alterar On/Off"}
+                          aria-label={clientOnOff[item.id] === true ? "Bloquear cliente" : clientOnOff[item.id] === false ? "Desbloquear cliente" : "Alterar On/Off"}
+                          className="order-4 h-10 w-10 p-0 sm:h-9"
+                          disabled={togglingClientId !== null || (!bearer.trim() && !(panelUser.trim() && panelPass))}
+                          onClick={async () => {
+                            if (!window.confirm(`Alterar On/Off de ${item.itemId} no painel UniPlay?`)) return;
+                            setTogglingClientId(item.id);
+                            try {
+                              const ensured = await ensureIptvToken(panelCreds());
+                              if (ensured.renewed) persistToken(ensured.token);
+                              const enabled = await toggleIptvUser({ ...panelCreds(), bearerToken: ensured.token }, item.itemId);
+                              const issued = getLastIssuedIptvToken();
+                              if (issued) persistToken(issued);
+                              setClientOnOff((prev) => ({ ...prev, [item.id]: enabled }));
+                              toast.success(enabled === undefined ? "On/Off alterado no UniPlay. Atualize o painel para conferir o estado." : enabled ? "Cliente desbloqueado no UniPlay" : "Cliente bloqueado no UniPlay");
+                            } catch (e) {
+                              setClientOnOff((prev) => ({ ...prev, [item.id]: undefined }));
+                              toast.error(e instanceof Error ? e.message : "Falha ao alterar On/Off no UniPlay");
+                            } finally {
+                              setTogglingClientId(null);
+                            }
+                          }}
                         >
-                          Detalhes
+                          {togglingClientId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className={cn("h-4 w-4", clientOnOff[item.id] === true ? "text-success" : clientOnOff[item.id] === false ? "text-destructive" : "text-muted-foreground")} />}
                         </Button>
                         {(() => {
                           const extend = isClientStillActive(item.dueDate);
@@ -2546,8 +2734,8 @@ export default function UniPlay() {
                             <Button
                               type="button"
                               size="sm"
-                              variant="secondary"
-                              className="h-8 px-2.5"
+                              variant="default"
+                              className="order-2 h-10 gap-1 px-2 text-xs sm:h-9"
                               disabled={!bearer.trim() || busyId === item.id}
                               onClick={() => {
                                 if (showRecreate) {
@@ -2560,13 +2748,13 @@ export default function UniPlay() {
                               {busyId === item.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               ) : extend ? (
-                                <CalendarPlus className="h-3.5 w-3.5" />
+                                <CalendarPlus className="hidden h-3.5 w-3.5 sm:block" />
                               ) : showRecreate ? (
-                                <RefreshCw className="h-3.5 w-3.5" />
+                                <RefreshCw className="hidden h-3.5 w-3.5 sm:block" />
                               ) : (
-                                <RefreshCw className="h-3.5 w-3.5" />
+                                <RefreshCw className="hidden h-3.5 w-3.5 sm:block" />
                               )}
-                              <span className="hidden sm:inline ml-1">
+                              <span className="sm:ml-1">
                                 {extend ? "Estender" : showRecreate ? "Recriar" : "Renovar"}
                               </span>
                             </Button>
@@ -2578,12 +2766,14 @@ export default function UniPlay() {
                               type="button"
                               size="sm"
                               variant="ghost"
-                              className="h-8 w-8 p-0"
+                              className="order-5 h-10 w-10 p-0 sm:h-9"
+                              aria-label="Mais opções do cliente"
                             >
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openClientDetail(item.id)}><Eye className="mr-2 h-4 w-4" />Detalhes do cliente</DropdownMenuItem>
                             {(isClientStillActive(item.dueDate) || panelUsernames.has(item.itemId)) && (
                               <>
                                 <DropdownMenuItem
@@ -2613,12 +2803,6 @@ export default function UniPlay() {
                                 <DropdownMenuSeparator />
                               </>
                             )}
-                            <DropdownMenuItem
-                              onClick={() => fillActivateFromClient(item.id)}
-                            >
-                              <Smartphone className="h-3.5 w-3.5 mr-2" />
-                              Ativar app
-                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -2763,6 +2947,11 @@ export default function UniPlay() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold tracking-tight">Testes</h2>
+                {testsCountConfirmed ? (
+                  <p className={cn("mt-1 text-xs font-semibold", expiredTestsCount > 0 ? "text-destructive" : "text-muted-foreground")}>
+                    {expiredTestsCount} {expiredTestsCount === 1 ? "vencido" : "vencidos"} de {testJobsCount} testes
+                  </p>
+                ) : null}
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
                   Espelha o painel UniPlay · Atualizar limpa o que foi apagado lá
                 </p>
@@ -2790,9 +2979,10 @@ export default function UniPlay() {
                   disabled={
                     (!bearer.trim() && !(panelUser.trim() && panelPass)) ||
                     syncingTests ||
+                    cleaningTestRange !== null ||
                     Boolean(busyId)
                   }
-                  onClick={() => void refreshPanelTests()}
+                  onClick={() => { if (!cleaningTestRange) void refreshPanelTests(); }}
                 >
                   {syncingTests ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2809,13 +2999,31 @@ export default function UniPlay() {
                   disabled={
                     (!bearer.trim() && !(panelUser.trim() && panelPass)) ||
                     Boolean(busyId) ||
-                    syncingTests
+                    syncingTests || cleaningTestRange !== null
                   }
-                  onClick={() => openTestDialog()}
+                  onClick={() => { if (!cleaningTestRange) openTestDialog(); }}
                 >
                   <FlaskConical className="h-3.5 w-3.5" />
                   Gerar teste
                 </Button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3" aria-label="Manutenção de testes">
+              <span className="text-xs font-medium">Manutenção de testes</span>
+              <div className="flex flex-wrap gap-1.5">
+                {([
+                  { range: 1, label: "Todos os testes" },
+                  { range: 2, label: "Testes de 15 dias" },
+                  { range: 3, label: "Testes de 7 dias" },
+                ] as const).map(({ range, label }) => (
+                  <Button key={range} type="button" variant="outline" size="sm"
+                    className="h-8 border-destructive/30 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={cleaningTestRange !== null || syncingTests || Boolean(busyId) || (!bearer.trim() && !(panelUser.trim() && panelPass))}
+                    onClick={() => void runCleanTests(range)}>
+                    {cleaningTestRange === range ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    {label}
+                  </Button>
+                ))}
               </div>
             </div>
             {lastTest ? (
@@ -2891,12 +3099,13 @@ export default function UniPlay() {
             ) : (
               <ul className="space-y-1.5">
                 {filteredTests.map((job) => {
+                  const expired = isExpiredTestDate(job.dueDate);
                   const isOpen =
                     job.status === "pending" || job.status === "doing";
                   return (
                     <li
                       key={job.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2 text-sm"
+                      className={cn("flex flex-wrap items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-sm", expired ? "border-destructive/25 bg-destructive/5" : "border-border/70")}
                     >
                       <div className="min-w-0">
                         <p className="truncate font-medium leading-tight">
@@ -2905,9 +3114,11 @@ export default function UniPlay() {
                         <p className="truncate text-[11px] text-muted-foreground">
                           {maskUser(job.panelUsername)}
                           {job.testHours ? ` · ${job.testHours}h` : ""}
-                          {job.dueDate
-                            ? ` · ${formatBrDate(job.dueDate)}`
-                            : ""}
+                          {job.dueDate ? (
+                            <span className={cn(expired && "font-semibold text-destructive")}>
+                              {` · ${formatBrDate(job.dueDate)}`}{expired ? " · Vencido" : ""}
+                            </span>
+                          ) : null}
                         </p>
                         {job.phone ? (
                           <a
@@ -2920,45 +3131,54 @@ export default function UniPlay() {
                           </a>
                         ) : null}
                       </div>
-                      <div className="flex shrink-0 gap-1">
+                      <div className={cn("grid w-full items-center gap-1 sm:flex sm:w-auto sm:shrink-0 sm:gap-1.5", isOpen ? "grid-cols-[minmax(0,1fr)_repeat(4,2.5rem)]" : "grid-cols-[minmax(0,1fr)_repeat(3,2.5rem)]")}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="order-2 h-10 w-10 p-0 sm:h-9"
+                          title="Detalhes do teste"
+                          aria-label="Detalhes do teste"
+                          onClick={() => openJobDetail(job)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" className="order-3 h-10 w-10 p-0 sm:h-9"
+                          title="Editar teste" aria-label="Editar teste"
+                          disabled={!job.panelUsername?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
+                          onClick={() => setEditingPanelUsername(job.panelUsername!)}><Pencil className="h-4 w-4" /></Button>
                         <Button
                           type="button"
                           size="sm"
                           variant="secondary"
-                          className="h-8 px-2.5"
-                          onClick={() => openJobDetail(job)}
-                        >
-                          Detalhes
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 px-2.5"
+                          className="order-1 h-10 gap-1 px-2 text-xs sm:h-9"
                           onClick={() => fillActivateFromTest(job)}
                           disabled={!job.panelUsername?.trim()}
                         >
-                          <Smartphone className="h-3.5 w-3.5" />
-                          App
+                          <Smartphone className="h-4 w-4" />
+                          <span className="sm:hidden">App</span><span className="hidden sm:inline">Ativar app</span>
                         </Button>
                         {isOpen ? (
                           <Button
                             type="button"
                             size="sm"
                             variant="ghost"
-                            className="h-8 px-2.5"
+                            className="order-4 h-10 w-10 p-0 sm:h-9"
+                            title="Marcar como concluído"
+                            aria-label="Marcar como concluído"
                             onClick={() => completeJob(job)}
                             disabled={busyId === job.id}
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" />
-                            Concluí
                           </Button>
                         ) : null}
                         <Button
                           type="button"
                           size="sm"
                           variant="ghost"
-                          className="h-8 px-2.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          className="order-5 h-10 w-10 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 sm:h-9"
+                          title="Excluir teste"
+                          aria-label="Excluir teste"
                           onClick={() => void deleteTest(job.id)}
                           disabled={busyId === job.id}
                         >
@@ -3185,10 +3405,11 @@ export default function UniPlay() {
       <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Gerar teste avulso</DialogTitle>
+            <DialogTitle>
+              Gerar teste avulso
+            </DialogTitle>
             <DialogDescription>
-              Cria um usuário novo no painel (1–6 horas). Não vincula a cliente
-              existente.
+              Cria um usuário novo no painel (1–6 horas). Não vincula a cliente existente.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -3199,11 +3420,10 @@ export default function UniPlay() {
               id="test-username"
               value={testUsername}
               onChange={(e) => {
-                // Aceita apenas números
                 const numOnly = e.target.value.replace(/\D/g, "");
                 setTestUsername(numOnly);
               }}
-              placeholder="123456"
+              placeholder="244880"
               className="h-9"
               type="number"
               min="0"
@@ -3211,27 +3431,14 @@ export default function UniPlay() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="test-nota" className="text-xs">
-              Nota (nome no painel)
-            </Label>
-            <Input
-              id="test-nota"
-              value={testNota}
-              onChange={(e) => setTestNota(e.target.value)}
-              placeholder="Nome do teste"
-              className="h-9"
-            />
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="test-phone" className="text-xs">
-              Número de celular (opcional)
+              Telefone / WhatsApp
             </Label>
             <div className="flex items-center gap-2">
               <Input
                 id="test-country"
                 value={testCountryCode}
                 onChange={(e) => {
-                  // Aceita apenas + e números
                   let value = e.target.value.replace(/[^0-9+]/g, "");
                   if (value && !value.startsWith("+")) {
                     value = "+" + value;
@@ -3249,36 +3456,80 @@ export default function UniPlay() {
                   const numOnly = e.target.value.replace(/\D/g, "");
                   setTestPhone(numOnly);
                 }}
-                placeholder="11900000000"
+                placeholder="(11) 2345-6789"
                 className="h-9 flex-1"
                 inputMode="numeric"
               />
             </div>
-            {testPhone && (
-              <p className="text-[11px] text-muted-foreground">
-                {testCountryCode} {testPhone.slice(0, 2)}-{testPhone.slice(2)}
-              </p>
+            <p className="text-[11px] text-muted-foreground">
+              Preencha somente números, whatsapp 5511911111111
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs flex items-center gap-2">
+              Pacote Pronto
+              <Switch
+                checked={testPackageToggle}
+                onCheckedChange={setTestPackageToggle}
+              />
+            </Label>
+            {!testPackageToggle ? (
+              <Select value={testPackage} onValueChange={setTestPackage}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder=".::MANTÉM PLANO ATUAL::." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">.::MANTÉM PLANO ATUAL::.</SelectItem>
+                  <SelectItem value="1">Completo com adultos</SelectItem>
+                  <SelectItem value="2">Completo sem adultos</SelectItem>
+                  <SelectItem value="6">Pacote SSIPTV Com Adultos</SelectItem>
+                  <SelectItem value="7">Radio</SelectItem>
+                  <SelectItem value="8">Completo sem 4k</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={testPackage} onValueChange={setTestPackage}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder=".::Selecione::." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">.::MANTÉM PLANO ATUAL::.</SelectItem>
+                  <SelectItem value="9">Canais 24 horas</SelectItem>
+                  <SelectItem value="10">Filmes e Séries</SelectItem>
+                  <SelectItem value="11">Esportes</SelectItem>
+                  <SelectItem value="12">Infantil</SelectItem>
+                  <SelectItem value="13">Documentários</SelectItem>
+                  <SelectItem value="14">Variedades</SelectItem>
+                  <SelectItem value="15">Notícias</SelectItem>
+                  <SelectItem value="16">Música</SelectItem>
+                </SelectContent>
+              </Select>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-1.5 py-1">
-            {IPTV_TEST_HOURS.map((h) => {
-              const selected = testHoursPick === h;
-              return (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => setTestHoursPick(h)}
-                  className={cn(
-                    "rounded-md border px-2 py-2.5 text-sm transition",
-                    selected
-                      ? "border-primary bg-primary/10 font-semibold text-foreground"
-                      : "border-border/70 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                  )}
-                >
-                  {h}h
-                </button>
-              );
-            })}
+          <div className="space-y-2">
+            <Label htmlFor="test-anotacoes" className="text-xs">
+              Anotações
+            </Label>
+            <Textarea
+              id="test-anotacoes"
+              value={testAnotacoes}
+              onChange={(e) => setTestAnotacoes(e.target.value)}
+              placeholder="Digite aqui as anotações"
+              className="h-24 resize-none"
+              rows={3}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="test-nota" className="text-xs">
+              Nota (nome no painel)
+            </Label>
+            <Input
+              id="test-nota"
+              value={testNota}
+              onChange={(e) => setTestNota(e.target.value)}
+              placeholder="Nome do teste"
+              className="h-9"
+            />
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
@@ -3288,6 +3539,10 @@ export default function UniPlay() {
                 setTestDialogOpen(false);
                 setTestUsername("");
                 setTestNota("");
+                setTestPhone("");
+                setTestPackage("0");
+                setTestPackageToggle(false);
+                setTestAnotacoes("");
               }}
             >
               Cancelar
@@ -3308,6 +3563,41 @@ export default function UniPlay() {
         </DialogContent>
       </Dialog>
 
+      {unlinkUtmByMacOpen ? <UniplayUnlinkUtmDialog creds={panelCreds()} onToken={persistToken} onClose={() => setUnlinkUtmByMacOpen(false)} /> : null}
+      {editingPanelUsername ? <UniplayEditUserDialog
+        key={editingPanelUsername}
+        username={editingPanelUsername}
+        creds={panelCreds()}
+        onToken={persistToken}
+        onClose={() => setEditingPanelUsername(null)}
+        onSaved={(original, updated) => {
+          const matches = (value?: string) => value?.trim().toLowerCase() === original.trim().toLowerCase();
+          setData((prev) => {
+            let next = prev;
+            for (const item of prev.items) {
+              if (matches(item.itemId)) next = updateItem(next, { ...item,
+                itemId: updated.username, phone: updated.phone, name: updated.nota,
+              });
+            }
+            return next;
+          });
+          persistJobs(jobs.map((job) => matches(job.panelUsername)
+            ? { ...job, panelUsername: updated.username, phone: updated.phone, clientName: updated.nota }
+            : job));
+          setLastTest((prev) => prev && matches(prev.username)
+            ? { ...prev, username: updated.username, clientName: updated.nota } : prev);
+          setPanelUsernames((prev) => {
+            const next = new Set(prev); next.delete(original); next.add(updated.username); return next;
+          });
+          for (const scope of ["clientes", "testes"] as const) {
+            if (matches(activateForms[scope].username)) {
+              patchActivateForm(scope, { username: updated.username, registered: [] });
+              void loadRegisteredApps(scope, updated.username, { silent: true });
+            }
+          }
+        }}
+      /> : null}
+
       {/* Detalhes do cliente */}
       <Dialog
         open={!!detailClient}
@@ -3318,10 +3608,10 @@ export default function UniPlay() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[90dvh] gap-4 overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] [&>div]:shrink-0 sm:max-h-[80vh] sm:max-w-lg sm:p-6">
           {detailClient ? (
             <>
-              <DialogHeader>
+              <DialogHeader className="pr-8">
                 <DialogTitle>Detalhes do cliente</DialogTitle>
                 <DialogDescription>
                   {detailClient.name}
@@ -3408,73 +3698,19 @@ export default function UniPlay() {
                       : clientDetailAccess?.dnsSmarters || "—"}
                   </p>
                 </div>
-
-                <div className="space-y-2 border-t pt-3">
-                  <p className="text-sm font-medium">Ativar app (MAC)</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Carrega usuário e senha do cliente em Ativar app para
-                    cadastrar o aparelho.
-                  </p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-9 w-full sm:w-auto"
-                    disabled={!detailClient.itemId?.trim()}
-                    onClick={() => {
-                      const username = detailClient.itemId || "";
-                      const password = clientDetailAccess?.password;
-                      setDetailClientId(null);
-                      setClientDetailAccess(null);
-                      fillActivateFromLogin("clientes", username, password, {
-                        emptyMessage: "Cliente sem usuário IPTV cadastrado",
-                        silentToast: true,
-                      });
-                      if (username.trim()) focusActivateApp("clientes");
-                    }}
-                  >
-                    <Smartphone className="h-3.5 w-3.5" />
-                    Ir para Ativar app
-                  </Button>
-                </div>
               </div>
-              <DialogFooter className="gap-2 sm:gap-0">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setDetailClientId(null);
-                    setClientDetailAccess(null);
-                  }}
-                >
-                  Fechar
-                </Button>
+              <DialogFooter className="gap-2 border-t pt-4">
                 <Button
                   type="button"
                   variant="secondary"
-                  size="sm"
+                  className="h-10 w-full sm:w-auto"
                   disabled={!bearer.trim() || busyId === detailClient.id}
                   onClick={() => void runRecreateLinhaAsync(detailClient.id)}
                 >
+                  {busyId === detailClient.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   Recriar linha
                 </Button>
-                <Button
-                  type="button"
-                  disabled={!bearer.trim() || busyId === detailClient.id}
-                  onClick={() => {
-                    openRenewDialog(detailClient.id);
-                    setDetailClientId(null);
-                    setClientDetailAccess(null);
-                  }}
-                >
-                  {isClientStillActive(detailClient.dueDate) ? (
-                    <CalendarPlus className="h-4 w-4" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  {isClientStillActive(detailClient.dueDate)
-                    ? "Estender"
-                    : "Renovar"}
-                </Button>
+                <Button type="button" variant="outline" className="h-10 w-full sm:w-auto" onClick={() => { setDetailClientId(null); setClientDetailAccess(null); }}>Fechar</Button>
               </DialogFooter>
             </>
           ) : null}
@@ -3488,10 +3724,10 @@ export default function UniPlay() {
           if (!open) setDetailJobId(null);
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[90dvh] gap-4 overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] [&>div]:shrink-0 sm:max-h-[80vh] sm:max-w-lg sm:p-6">
           {detailJob ? (
             <>
-              <DialogHeader>
+              <DialogHeader className="pr-8">
                 <DialogTitle>
                   {detailJob.kind === "renew"
                     ? "Detalhes da renovação"
@@ -3608,31 +3844,10 @@ export default function UniPlay() {
                         </p>
                       ) : null}
                     </div>
-
-                    <div className="space-y-2 border-t pt-3">
-                      <p className="text-sm font-medium">Ativar app (MAC)</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Carrega usuário e senha em Ativar app para cadastrar o
-                        aparelho.
-                      </p>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-9 w-full sm:w-auto"
-                        disabled={!detailJob.panelUsername?.trim()}
-                        onClick={() => {
-                          fillActivateFromTest(detailJob);
-                          setDetailJobId(null);
-                        }}
-                      >
-                        <Smartphone className="h-3.5 w-3.5" />
-                        Ir para Ativar app
-                      </Button>
-                    </div>
                   </div>
                 );
               })()}
-              <DialogFooter className="gap-2 sm:gap-0">
+              <DialogFooter className="grid grid-cols-1 gap-2 border-t pt-4 [&>button]:min-h-11 sm:flex sm:flex-row sm:gap-2 sm:space-x-0">
                 <Button
                   type="button"
                   variant="outline"
@@ -3647,7 +3862,6 @@ export default function UniPlay() {
                     disabled={!bearer.trim() || Boolean(busyId)}
                     onClick={() => {
                       void recreateTest(detailJob.id);
-                      setDetailJobId(null);
                     }}
                   >
                     <RefreshCw className="h-4 w-4" />

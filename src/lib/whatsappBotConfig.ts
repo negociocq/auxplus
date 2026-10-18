@@ -73,16 +73,16 @@ export interface WhatsappBotConfig {
     testAskDevice: string;
     /** Qual tipo de TV? */
     testAskTv: string;
-    /** Samsung: FunPlay ou XCloud */
+    /** Samsung: Pixel Player ou UTM Play */
     testAskAppSamsung: string;
-    /** Roku/LG: Prime ou XCloud */
+    /** Roku/LG: Prime ou UTM Play */
     testAskAppRokuLg: string;
-    /** FunPlay — pedir MAC ({user} {password} {hours}) */
-    testAppFunReady: string;
+    /** Pixel Player — pedir MAC ({user} {password} {hours}) */
+    testAppPixelReady: string;
     /** Prime IPTV — pedir MAC ({user} {password} {hours}) */
     testAppPrimeReady: string;
-    /** XCloud — provedor/usuário/senha ({user} {password} {hours}) */
-    testAppXcloudReady: string;
+    /** UTM Play — provedor/usuário/senha ({user} {password} {hours}) */
+    testAppUtmReady: string;
     /** MAC ativado ({mac} {hours} {app}) */
     testMacOk: string;
     /** MAC inválido */
@@ -199,9 +199,9 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
       testAskTv: "",
       testAskAppSamsung: "",
       testAskAppRokuLg: "",
-      testAppFunReady: "",
+      testAppPixelReady: "",
       testAppPrimeReady: "",
-      testAppXcloudReady: "",
+      testAppUtmReady: "",
       testMacOk: "",
       testMacInvalid: "",
       testOfferPlan: "",
@@ -499,7 +499,7 @@ export interface WaBotSession {
   testUsername?: string;
   testPassword?: string;
   testRemoteId?: string | number;
-  testApp?: "fun" | "prime" | "xcloud";
+  testApp?: "pixel" | "prime" | "utm";
   testDevice?: "tv" | "pc" | "phone";
   testTv?: "box" | "android" | "roku" | "samsung" | "lg";
   testHours?: number;

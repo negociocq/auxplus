@@ -81,12 +81,13 @@ import {
 import { getItemScreens, stripScreensMarker } from "@/lib/itemScreens";
 import { stripDebtMarker } from "@/lib/debts";
 import type { Item, ItemStatus } from "@/types";
+import { stripItemIptvAccess } from "@/lib/iptvRecreation";
 
 /** Nota que o usuário vê/edita — sem marcadores internos (plano, pagamentos, etc.). */
 function notesForDisplay(notes?: string | null): string {
   return stripScreensMarker(
     stripPlanMarker(
-      stripResellerMarker(stripDebtMarker(stripPaymentMarker(notes))),
+      stripResellerMarker(stripDebtMarker(stripPaymentMarker(stripItemIptvAccess(notes)))),
     ),
   );
 }
