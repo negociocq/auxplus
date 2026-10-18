@@ -2798,7 +2798,9 @@ Deno.serve(async (req) => {
       return json({ ok: true, skipped: "human_paused" });
     }
 
-    const ocrApiKey = Deno.env.get("OPENAI_API_KEY") || "";
+    let ocrApiKey = Deno.env.get("OPENAI_API_KEY") || "";
+    const { data: photoConfig } = await client.from("platform_private_secrets").select("value").eq("name", "openai_device_photo").maybeSingle();
+    if (typeof photoConfig?.value?.apiKey === "string" && photoConfig.value.apiKey.trim()) ocrApiKey = photoConfig.value.apiKey.trim();
     const ocrModel = Deno.env.get("DEVICE_PHOTO_MODEL") || "gpt-4.1-mini";
     if (receivesDevicePhoto) {
       const current = sessions[phone];

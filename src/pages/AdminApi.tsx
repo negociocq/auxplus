@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AdminPhotoApiConfig } from "@/components/AdminPhotoApiConfig";
 import {
   defaultEvolutionPlatformConfig,
   loadEvolutionPlatformConfig,
@@ -49,7 +50,7 @@ export default function AdminApi() {
     <div className="space-y-6">
       <PageHeader
         title="API"
-        description="Configure a Evolution API uma vez. Os clientes só escaneiam o QR — sem colar chave."
+        description="Configure as APIs do WhatsApp e da leitura de fotos do atendimento."
       />
 
       <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
@@ -131,6 +132,7 @@ export default function AdminApi() {
           {saving ? "Salvando…" : "Salvar API"}
         </Button>
       </form>
+      <AdminPhotoApiConfig />
     </div>
   );
 }

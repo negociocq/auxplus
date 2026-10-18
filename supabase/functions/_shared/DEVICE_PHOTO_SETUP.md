@@ -6,6 +6,14 @@ Fotos fora dessas etapas continuam com o comportamento anterior.
 
 ## Configuração no servidor
 
+Alternativa pelo AuxPlus: **Admin → API → OpenAI — leitura de fotos**.
+Cole a chave e confirme a senha do administrador. A função `admin-photo-config`
+confere a senha e a permissão no servidor e grava a chave em
+`platform_private_secrets`, tabela sem acesso para anon/authenticated.
+O campo nunca carrega a chave salva. Não há cópia no localStorage.
+Aplique `20261018210000_private_api_secrets.sql` antes de publicar a função.
+O webhook prioriza a chave salva no Admin; a variável de ambiente é o fallback.
+
 No painel Supabase, em **Edge Functions → Secrets**, configure:
 
 - `OPENAI_API_KEY`: chave de um projeto OpenAI com acesso à API e faturamento.
