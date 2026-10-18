@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { KeyRound, Save } from "lucide-react";
+import { ExternalLink, KeyRound, Save } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
@@ -57,7 +57,14 @@ export function AdminPhotoApiConfig() {
       <p className="text-sm text-muted-foreground">Permite ler MAC, Device Key e Device ID nas fotos enviadas ao atendimento. O cliente confirma os dados antes da ativação.</p>
       <p className="text-sm" role="status">{loading ? "Consultando configuração…" : loadError ? "Não foi possível consultar a configuração. Tente salvar novamente." : configured ? "Chave configurada no servidor." : "Chave ainda não configurada."}</p>
       <div className="space-y-2">
-        <Label htmlFor="openai-photo-key">Chave da API OpenAI</Label>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Label htmlFor="openai-photo-key">Chave da API OpenAI</Label>
+          <Button asChild type="button" variant="outline" size="sm">
+            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4" />Abrir site da OpenAI
+            </a>
+          </Button>
+        </div>
         <Input id="openai-photo-key" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={configured ? "Cole uma nova chave para substituir a atual" : "sk-…"} autoComplete="off" spellCheck={false} disabled={saving || loading} required />
         <p className="text-xs text-muted-foreground">A chave fica salva somente no servidor e não aparece novamente neste campo.</p>
       </div>
