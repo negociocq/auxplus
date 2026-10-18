@@ -22,6 +22,7 @@ import {
   persistAppDataToSupabase,
 } from "@/lib/supabaseApi";
 import { mergeLocalAvatars } from "@/lib/avatar";
+import { endAdminSession } from "@/lib/adminSession";
 
 interface AppContextValue {
   data: AppData;
@@ -176,6 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    endAdminSession();
     setSessionUserId(null);
     setSessionId(null);
   }, []);

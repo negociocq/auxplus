@@ -11,6 +11,7 @@ import type {
   WhatsappMessage,
 } from "@/types";
 import { verifyPassword } from "@/lib/password";
+import { startAdminSession } from "@/lib/adminSession";
 import { extractDebtFromNotes } from "@/lib/debts";
 import { extractPaymentsFromNotes } from "@/lib/payments";
 import { extractPlanMonths, getPlanSegments } from "@/lib/planMonths";
@@ -422,6 +423,10 @@ export async function loginWithSupabase(
   }
   if (!user.isActive) {
     return { error: "Sua conta está desativada. Entre em contato com o suporte." };
+  }
+  if (user.isAdmin) {
+    try { await startAdminSession(user.username, password); }
+    catch (error) { return { error: error instanceof Error ? error.message : "Falha ao iniciar sessão administrativa." }; }
   }
   return { user };
 }

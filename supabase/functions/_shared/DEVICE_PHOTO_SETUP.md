@@ -7,8 +7,13 @@ Fotos fora dessas etapas continuam com o comportamento anterior.
 ## Configuração no servidor
 
 Alternativa pelo AuxPlus: **Admin → API → OpenAI — leitura de fotos**.
-Cole a chave e confirme a senha do administrador. A função `admin-photo-config`
-confere a senha e a permissão no servidor e grava a chave em
+Cole a chave e salve. A sessão administrativa é criada no login normal do
+AuxPlus, após verificar a senha no servidor; não há senha neste formulário.
+Contas que já estavam abertas precisam entrar novamente uma vez para obter
+a sessão administrativa. A sessão expira em sete dias, é revogada no logout
+e é recusada se o usuário perder permissão, for desativado ou mudar de senha.
+O servidor armazena apenas o hash do token aleatório. A função `admin-photo-config`
+confere a sessão e a permissão no servidor e grava a chave em
 `platform_private_secrets`, tabela sem acesso para anon/authenticated.
 O campo nunca carrega a chave salva. Não há cópia no localStorage.
 Aplique `20261018210000_private_api_secrets.sql` antes de publicar a função.
