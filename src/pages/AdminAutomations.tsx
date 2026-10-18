@@ -37,9 +37,11 @@ export default function AdminAutomations() {
       const result = await saveIptvPlatformConfig({
         ...current,
         apiProxyUrl: form.apiProxyUrl,
+        dnsSmarters: form.dnsSmarters,
+        m3uHost: form.m3uHost,
       });
       if (result.warning) toast.message(result.warning);
-      else toast.success("Proxy UniPlay atualizado para todos os clientes");
+      else toast.success("Proxy, DNS e Host M3U atualizados para todos os clientes");
     } finally {
       setSaving(false);
     }
@@ -57,8 +59,9 @@ export default function AdminAutomations() {
           <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <p className="text-muted-foreground">
             Os dados do UniPlay são fixos e aparecem somente para consulta.
-            Altere apenas o <strong className="text-foreground">Proxy API (produção)</strong>{" "}
-            quando o endereço do túnel mudar.
+            Você pode alterar o <strong className="text-foreground">Proxy API (produção)</strong>,{" "}
+            o <strong className="text-foreground">DNS Smarters</strong> e o{" "}
+            <strong className="text-foreground">Host M3U</strong>.
           </p>
         </div>
       </div>
@@ -159,9 +162,7 @@ export default function AdminAutomations() {
             id="iptv-dns"
             value={form.dnsSmarters || ""}
             disabled={loading}
-            readOnly
-            aria-readonly="true"
-            className="bg-muted/50 text-muted-foreground"
+            onChange={(e) => setForm((f) => ({ ...f, dnsSmarters: e.target.value }))}
             placeholder="http://blushes.top"
             autoComplete="off"
           />
@@ -173,9 +174,7 @@ export default function AdminAutomations() {
             id="iptv-m3u-host"
             value={form.m3uHost || ""}
             disabled={loading}
-            readOnly
-            aria-readonly="true"
-            className="bg-muted/50 text-muted-foreground"
+            onChange={(e) => setForm((f) => ({ ...f, m3uHost: e.target.value }))}
             placeholder="http://ibetsa.top"
             autoComplete="off"
           />
@@ -187,7 +186,7 @@ export default function AdminAutomations() {
 
         <Button type="submit" disabled={loading || saving}>
           <Save className="h-4 w-4" />
-          {saving ? "Salvando…" : "Salvar proxy"}
+          {saving ? "Salvando…" : "Salvar alterações"}
         </Button>
       </form>
     </div>
