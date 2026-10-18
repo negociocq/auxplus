@@ -33,9 +33,13 @@ export default function AdminAutomations() {
     }
     setSaving(true);
     try {
-      const result = await saveIptvPlatformConfig(form);
+      const current = await loadIptvPlatformConfig();
+      const result = await saveIptvPlatformConfig({
+        ...current,
+        apiProxyUrl: form.apiProxyUrl,
+      });
       if (result.warning) toast.message(result.warning);
-      else toast.success("UniPlay configurado para todos os clientes");
+      else toast.success("Proxy UniPlay atualizado para todos os clientes");
     } finally {
       setSaving(false);
     }
@@ -52,9 +56,9 @@ export default function AdminAutomations() {
         <div className="flex gap-2">
           <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <p className="text-muted-foreground">
-            API, pacote, reg_password e URL do painel ficam aqui. No app do
-            cliente aparece só como <strong className="text-foreground">UniPlay</strong>{" "}
-            — login da conta + renovar/teste/ativar app.
+            Os dados do UniPlay são fixos e aparecem somente para consulta.
+            Altere apenas o <strong className="text-foreground">Proxy API (produção)</strong>{" "}
+            quando o endereço do túnel mudar.
           </p>
         </div>
       </div>
@@ -74,9 +78,9 @@ export default function AdminAutomations() {
             id="iptv-api"
             value={form.apiBaseUrl}
             disabled={loading}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, apiBaseUrl: e.target.value }))
-            }
+            readOnly
+            aria-readonly="true"
+            className="bg-muted/50 text-muted-foreground"
             placeholder="https://gesapioffice.com/api"
             required
           />
@@ -88,9 +92,9 @@ export default function AdminAutomations() {
             id="iptv-pkg"
             value={form.packageId}
             disabled={loading}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, packageId: e.target.value }))
-            }
+            readOnly
+            aria-readonly="true"
+            className="bg-muted/50 text-muted-foreground"
             placeholder="1"
           />
         </div>
@@ -102,9 +106,9 @@ export default function AdminAutomations() {
             type="password"
             value={form.regPassword}
             disabled={loading}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, regPassword: e.target.value }))
-            }
+            readOnly
+            aria-readonly="true"
+            className="bg-muted/50 text-muted-foreground"
             placeholder="Só se a listagem exigir"
             autoComplete="off"
           />
@@ -116,9 +120,9 @@ export default function AdminAutomations() {
             id="iptv-url"
             value={form.panelUrl}
             disabled={loading}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, panelUrl: e.target.value }))
-            }
+            readOnly
+            aria-readonly="true"
+            className="bg-muted/50 text-muted-foreground"
             placeholder="https://searchdefense.top/#/login"
             autoComplete="off"
           />
@@ -155,9 +159,9 @@ export default function AdminAutomations() {
             id="iptv-dns"
             value={form.dnsSmarters || ""}
             disabled={loading}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, dnsSmarters: e.target.value }))
-            }
+            readOnly
+            aria-readonly="true"
+            className="bg-muted/50 text-muted-foreground"
             placeholder="http://blushes.top"
             autoComplete="off"
           />
@@ -169,9 +173,9 @@ export default function AdminAutomations() {
             id="iptv-m3u-host"
             value={form.m3uHost || ""}
             disabled={loading}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, m3uHost: e.target.value }))
-            }
+            readOnly
+            aria-readonly="true"
+            className="bg-muted/50 text-muted-foreground"
             placeholder="http://ibetsa.top"
             autoComplete="off"
           />
@@ -183,7 +187,7 @@ export default function AdminAutomations() {
 
         <Button type="submit" disabled={loading || saving}>
           <Save className="h-4 w-4" />
-          {saving ? "Salvando…" : "Salvar"}
+          {saving ? "Salvando…" : "Salvar proxy"}
         </Button>
       </form>
     </div>
