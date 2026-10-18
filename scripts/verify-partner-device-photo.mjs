@@ -10,7 +10,7 @@ async function loadTs(path) {
   assert.equal(result.diagnostics.length, 0, path);
   return import(`data:text/javascript;base64,${Buffer.from(result.outputText).toString("base64")}`);
 }
-const { validatePhotoDevice, readPartnerDevicePhoto, photoConfirmation } = await loadTs("supabase/functions/_shared/partnerDevicePhoto.ts");
+const { validatePhotoDevice, readPartnerDevicePhoto, photoConfirmation, photoFailureCode, photoFailureMessage } = await loadTs("supabase/functions/_shared/partnerDevicePhoto.ts");
 const { parsePartnerDeviceText } = await loadTs("supabase/functions/_shared/partnerTestFlow.ts");
 const utm = validatePhotoDevice("utm", { readable: true, device: "021122334455", deviceKey: "001234" });
 assert.deepEqual(utm, { device: "02:11:22:33:44:55", deviceKey: "001234" });
@@ -57,6 +57,27 @@ let stage = 0;
 await assert.rejects(readPartnerDevicePhoto(options, async () => ++stage === 1
   ? Response.json({ base64: "aGVsbG8=", mimetype: "image/png" })
   : Response.json({ status: "incomplete", output: [] })), /incomplete_reading/);
+
+for (const [status, providerCode, type, expected] of [
+  [401, "invalid_api_key", "invalid_request_error", "ocr_auth"],
+  [429, "insufficient_quota", "insufficient_quota", "ocr_quota"],
+  [429, "credit_balance_exhausted", "insufficient_quota", "ocr_quota"],
+  [429, "rate_limit_exceeded", "rate_limit_error", "ocr_rate_limit"],
+  [403, "permission_denied", "permission_error", "ocr_permission"],
+  [400, "invalid_request", "invalid_request_error", "ocr_request"],
+]) {
+  let count = 0;
+  await assert.rejects(readPartnerDevicePhoto(options, async () => ++count === 1
+    ? Response.json({ data: { base64: "aGVsbG8=", mimetype: "image/jpeg; charset=binary" } })
+    : Response.json({ error: { code: providerCode, type, message: "Private provider details must never be logged" } }, { status })), error => {
+      assert.deepEqual(photoFailureCode(error), { code: expected, status });
+      assert.equal(photoFailureMessage(expected, "pixel").includes("UTM"), false);
+      return true;
+    });
+}
+assert.ok(photoFailureMessage("unreadable", "pixel").includes("duas linhas"));
+assert.equal(photoFailureMessage("unreadable", "pixel").includes("UTM"), false);
+assert.throws(() => validatePhotoDevice("pixel", { readable: false, reason: "example_image" }), /example_image/);
 
 const webhook = fs.readFileSync("supabase/functions/evolution-webhook/index.ts", "utf8");
 // The guide module imports only a type, so transpilation needs no module resolver.

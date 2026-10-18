@@ -1,5 +1,5 @@
 import { upgradePartnerTestFlow, parsePartnerDeviceText } from "../_shared/partnerTestFlow.ts";
-import { readPartnerDevicePhoto, photoConfirmation, type PhotoDevice } from "../_shared/partnerDevicePhoto.ts";
+import { readPartnerDevicePhoto, photoConfirmation, photoFailureCode, photoFailureMessage, type PhotoDevice } from "../_shared/partnerDevicePhoto.ts";
 import { partnerDeviceGuide, partnerGuideUrl } from "../_shared/partnerDeviceGuide.ts";
 /**
  * Webhook Evolution → bot AuxPlus (renovação / atendentes / créditos / testes).
@@ -2819,9 +2819,14 @@ Deno.serve(async (req) => {
         await persistState();
         await send(photoConfirmation(device, app));
         return json({ ok: true, action: "photo_confirmation" });
-      } catch {
-        await send("Não consegui ler todos os dados com segurança. Tire outra foto de perto, sem reflexo, mostrando a tela do aplicativo e todos os números. No UTM, mostre *MAC e Device Key juntos*. Você também pode digitar os dados ou escrever *atendente*.");
-        return json({ ok: true, action: "photo_retry" });
+      } catch (error) {
+        const failure = photoFailureCode(error);
+        // Store only diagnostic codes, never images, keys, identifiers or provider bodies.
+        const diagnostic = { ...failure, app: current.testApp, at: new Date().toISOString() };
+        console.warn("device_photo_failed", diagnostic);
+        await client.from("platform_private_secrets").upsert({ name: "openai_device_photo_last_error", value: diagnostic, updated_at: diagnostic.at }, { onConflict: "name" });
+        await send(photoFailureMessage(failure.code, current.testApp!));
+        return json({ ok: true, action: "photo_retry", error: failure.code });
       }
     }
     const pendingPhoto = sessions[phone]?.devicePhoto;
