@@ -12,6 +12,7 @@ scripts/tmp-tools
 dist
 dist-ssr
 *.local
+.local/
 
 # Editor directories and files
 .vscode/*

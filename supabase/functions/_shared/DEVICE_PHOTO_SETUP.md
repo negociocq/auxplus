@@ -1,64 +1,61 @@
-# Leitura de fotos no atendimento
+# Leitura gratuita de fotos no atendimento
 
-O webhook `evolution-webhook` aceita fotos durante a coleta do MAC/Device ID,
-inclusive na confirmação de instalação e nas telas adicionais do plano.
-Fotos fora dessas etapas continuam com o comportamento anterior.
+O atendimento usa **Tesseract no PC do proxy**, sem chamadas à OpenAI e sem
+fallback para serviços pagos. A chave OpenAI anteriormente salva é preservada,
+mas não é usada. O Admin → API mostra o OCR gratuito como modo principal.
 
-## Configuração no servidor
+## Preparar o PC
 
-Alternativa pelo AuxPlus: **Admin → API → OpenAI — leitura de fotos**.
-Cole a chave e salve. A sessão administrativa é criada no login normal do
-AuxPlus, após verificar a senha no servidor; não há senha neste formulário.
-Contas que já estavam abertas precisam entrar novamente uma vez para obter
-a sessão administrativa. A sessão expira em sete dias, é revogada no logout
-e é recusada se o usuário perder permissão, for desativado ou mudar de senha.
-O servidor armazena apenas o hash do token aleatório. A função `admin-photo-config`
-confere a sessão e a permissão no servidor e grava a chave em
-`platform_private_secrets`, tabela sem acesso para anon/authenticated.
-O campo nunca carrega a chave salva. Não há cópia no localStorage.
-Aplique `20261018210000_private_api_secrets.sql` antes de publicar a função.
-O webhook prioriza a chave salva no Admin; a variável de ambiente é o fallback.
+1. Instale as dependências com `pnpm install`.
+2. Rode `node scripts/prepare-local-ocr.mjs`.
+3. Um administrador com Supabase CLI autenticado deve registrar o token:
+   `supabase db query --linked --file .local/register-local-ocr.sql`.
+4. Inicie/reinicie `npm run ges-proxy` na porta 8787.
+5. Mantenha o túnel existente apontando para essa porta e salve seu endereço
+   HTTPS em Admin → Automações → Proxy API.
+6. Publique `evolution-webhook` e `admin-photo-config`.
 
-No painel Supabase, em **Edge Functions → Secrets**, configure:
+O OCR utiliza `/ocr/device` no mesmo proxy. Não é necessário abrir outra porta.
+O PC, o proxy e o túnel precisam permanecer ligados. Em outro PC, prepare um
+novo token e registre-o no servidor. A preparação preserva o token existente.
 
-- `OPENAI_API_KEY`: chave de um projeto OpenAI com acesso à API e faturamento.
-- `DEVICE_PHOTO_MODEL`: opcional; padrão `gpt-4.1-mini`.
-- `DEVICE_GUIDE_ASSET_BASE_URL`: opcional; endereço HTTPS público do AuxPlus,
-  sem barra final, após publicar os arquivos de `public/atendimento/`.
-  Quando configurado, envia a imagem de exemplo do aplicativo junto das
-  instruções para localizar os dados. Sem endereço, envia somente o texto.
-  Se a Evolution recusar a imagem, tenta enviar as instruções em texto.
+## Proteção dos dados
 
-Não coloque a chave em variáveis `VITE_*`, no navegador, no Git ou em mensagens.
-Publique o webhook e os módulos compartilhados depois da configuração.
-Sem chave, o bot não oferece leitura automática; se receber uma foto nessa
-etapa, orienta digitar os dados ou chamar um atendente.
-
-A integração usa a configuração Evolution já salva na conta para baixar a
-imagem por `POST /chat/getBase64FromMediaMessage/{instance}`. É necessário
-que a instalação Evolution suporte esse endpoint para as mensagens recebidas.
+- `.local/` está no `.gitignore`; não publique nem compartilhe esses arquivos.
+- O token fica em `.local/ocr-token` no PC e em `platform_private_secrets` no
+  servidor. A tabela só pode ser acessada pela função com service_role.
+- As rotas OCR exigem o token. O corpo tem limite, só aceita imagens embutidas
+  e não baixa URLs arbitrárias. Há uma leitura por vez e timeout do worker.
+- As imagens e o texto extraído ficam somente em memória durante a leitura.
+- O modelo de idioma e o motor OCR são instalados com as dependências; não há
+  download ou envio de imagens a serviços de IA durante cada leitura.
+- O servidor rejeita exemplos, MACs conflitantes, Device Key incompleto e
+  Device ID do Pixel cortado. Não troca caracteres ambíguos como O por zero.
 
 ## Comportamento
 
-- Prime: MAC; UTM: MAC e Device Key de seis dígitos; Pixel: Device ID completo.
-- A foto é enviada à API OpenAI para leitura; `store: false` é usado no pedido.
-- O bot não salva a foto nem a resposta completa do modelo no estado.
-- Os dados reconhecidos ficam pendentes por até dez minutos, ligados ao app e à
-  etapa atuais, e precisam de confirmação explícita antes da ativação.
-- Uma foto nova substitui a leitura anterior, mesmo quando não pode ser lida.
-- Dados incompletos, ambíguos ou inválidos pedem nova foto ou digitação.
-- Respostas negativas descartam a leitura e pedem novos dados.
-- As chamadas à API de leitura são cobradas no projeto OpenAI configurado.
+O webhook aceita fotos na coleta de dados, na confirmação de instalação e nas
+telas extras do plano. Usa a Evolution já configurada para baixar a foto e a
+envia ao PC pelo túnel HTTPS. O cliente confere e confirma antes da ativação.
 
-## Verificação antes do uso
+- Prime: somente MAC.
+- UTM: MAC e Device Key de seis dígitos, preservando zeros iniciais.
+- Pixel: Device ID completo, juntando as linhas, ou MAC quando não há Device ID.
+- Leitura pendente expira em dez minutos. Foto nova substitui a anterior.
+- Se o PC estiver indisponível ou não conseguir ler, o cliente pode digitar.
+- O diagnóstico salva só código, status, app e data; nunca foto, código do
+  aparelho ou credencial. O diagnóstico não usa a OpenAI.
 
-Execute `node scripts/verify-partner-device-photo.mjs` para os testes com
-serviços simulados, sem enviar fotos reais nem consumir a API.
-Após publicar, faça um teste controlado no WhatsApp para cada app, com confirmação,
-recusa e foto ilegível. A validação local não verifica credenciais ou a conexão
-real entre Evolution, OpenAI e UniPlay.
+`DEVICE_GUIDE_ASSET_BASE_URL` continua configurando as imagens de orientação.
+
+## Testes
+
+`node scripts/verify-local-device-ocr.mjs` executa o OCR real com imagens
+fictícias dos três apps e verifica autenticação do endpoint local.
+`node scripts/verify-partner-device-photo.mjs` verifica o fluxo do webhook,
+incluindo a ausência de fallback pago. Depois, valide fotos reais pelo WhatsApp:
+reflexo, ângulo e letras pequenas podem exigir nova foto ou digitação.
 
 Referências:
-- https://developers.openai.com/api/docs/guides/images-vision
-- https://developers.openai.com/api/reference/resources/responses/methods/create
+- https://github.com/naptha/tesseract.js
 - https://docs.evoapicloud.com/api-reference/chat-controller/get-base64

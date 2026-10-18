@@ -1,0 +1,12 @@
+import fs from "node:fs";
+import path from "node:path";
+import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
+const folder = fileURLToPath(new URL("../.local/", import.meta.url));
+fs.mkdirSync(folder, { recursive: true });
+const tokenFile = path.join(folder, "ocr-token");
+if (!fs.existsSync(tokenFile)) fs.writeFileSync(tokenFile, randomBytes(32).toString("hex"), { mode: 0o600 });
+const token = fs.readFileSync(tokenFile, "utf8").trim();
+if (!/^[a-f0-9]{64}$/.test(token)) throw new Error("Token OCR local inválido.");
+fs.writeFileSync(path.join(folder, "register-local-ocr.sql"), `insert into public.platform_private_secrets(name,value,updated_at) values ('local_device_ocr',jsonb_build_object('token','${token}','provider','local'),now()) on conflict(name) do update set value=excluded.value,updated_at=excluded.updated_at;\n`, { mode: 0o600 });
+console.log("Configuração OCR preparada. O token está protegido em .local/ e não deve ser compartilhado.");

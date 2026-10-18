@@ -2798,22 +2798,24 @@ Deno.serve(async (req) => {
       return json({ ok: true, skipped: "human_paused" });
     }
 
-    let ocrApiKey = Deno.env.get("OPENAI_API_KEY") || "";
-    const { data: photoConfig } = await client.from("platform_private_secrets").select("value").eq("name", "openai_device_photo").maybeSingle();
-    if (typeof photoConfig?.value?.apiKey === "string" && photoConfig.value.apiKey.trim()) ocrApiKey = photoConfig.value.apiKey.trim();
-    const ocrModel = Deno.env.get("DEVICE_PHOTO_MODEL") || "gpt-4.1-mini";
+    // Free local OCR only. Never fall back to a paid provider.
+    const { data: photoConfig } = await client.from("platform_private_secrets").select("value").eq("name", "local_device_ocr").maybeSingle();
+    const photoPanel = await getSetting<Record<string, unknown>>(client, "iptv_panel");
+    const localOcrBase = String(photoPanel?.apiProxyUrl || photoPanel?.api_proxy_url || "").trim();
+    const localOcrToken = String(photoConfig?.value?.token || "");
+    const ocrEnabled = Boolean(localOcrBase && localOcrToken);
     if (receivesDevicePhoto) {
       const current = sessions[phone];
       // A new image always replaces any previous reading, even if it is unreadable.
       sessions[phone] = { ...current, devicePhoto: undefined, updatedAt: new Date().toISOString() };
       await persistState();
-      if (!ocrApiKey) {
+      if (!ocrEnabled) {
         await send("A leitura de fotos ainda não está disponível. Por enquanto, digite os dados da tela ou escreva *atendente* para pedir ajuda.");
         return json({ ok: true, action: "photo_not_configured" });
       }
       try {
         const app = current.testApp!;
-        const device = await readPartnerDevicePhoto({ app, apiKey: ocrApiKey, model: ocrModel,
+        const device = await readPartnerDevicePhoto({ app, apiKey: "", model: "", local: { baseUrl: localOcrBase, token: localOcrToken },
           evolutionBase: apiBaseUrl, evolutionKey: apiKey, instance, message: data });
         sessions[phone] = { ...current, devicePhoto: { device, app, state: current.state!, at: new Date().toISOString() }, updatedAt: new Date().toISOString() };
         await persistState();
@@ -3457,7 +3459,7 @@ Deno.serve(async (req) => {
         ),
       );
       const guideUrl = partnerGuideUrl(Deno.env.get("DEVICE_GUIDE_ASSET_BASE_URL") || "", app);
-      await send(partnerDeviceGuide(app, Boolean(ocrApiKey)) + (guideUrl ? "\n\nA imagem é um *exemplo com dados fictícios*. Envie os dados da SUA TV." : ""), guideUrl);
+      await send(partnerDeviceGuide(app, ocrEnabled) + (guideUrl ? "\n\nA imagem é um *exemplo com dados fictícios*. Envie os dados da SUA TV." : ""), guideUrl);
       await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
       return json({ ok: true, action: "test_confirm_install" });
     };
@@ -3998,7 +4000,7 @@ Deno.serve(async (req) => {
               };
               await persistState();
               await send(
-                partnerDeviceGuide(session.testApp!, Boolean(ocrApiKey)),
+                partnerDeviceGuide(session.testApp!, ocrEnabled),
               );
               return json({ ok: true, action: "test_confirm_install_ok_mac" });
             }

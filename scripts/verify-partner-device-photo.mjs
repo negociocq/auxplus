@@ -50,6 +50,20 @@ assert.equal(request.store, false);
 assert.equal(request.text.format.strict, true);
 assert.ok(request.input[0].content[1].image_url.startsWith("data:image/jpeg;base64,"));
 assert.ok(calls.every(call => !call.url.includes("activate")));
+const localCalls = [];
+const localResult = await readPartnerDevicePhoto({ ...options, apiKey: "", local: { baseUrl: "https://proxy.test", token: "local-test-token" } }, async (url, init) => {
+  localCalls.push(url);
+  if (localCalls.length === 1) return Response.json({ base64: "aGVsbG8=", mimetype: "image/png" });
+  assert.equal(init.headers.Authorization, "Bearer local-test-token");
+  return Response.json({ readable: true, device: "021122334455", deviceKey: "001234" });
+});
+assert.equal(localResult.deviceKey, "001234");
+assert.equal(localCalls[1], "https://proxy.test/ocr/device");
+assert.equal(localCalls.some(url => url.includes("openai")), false);
+let failedLocalCalls = 0;
+await assert.rejects(readPartnerDevicePhoto({ ...options, apiKey: "", local: { baseUrl: "https://proxy.test", token: "test" } }, async () => ++failedLocalCalls === 1
+  ? Response.json({ base64: "aGVsbG8=", mimetype: "image/png" }) : new Response("", { status: 503 })), /local_ocr_unavailable/);
+assert.equal(failedLocalCalls, 2, "Must never fall back to a paid API");
 await assert.rejects(readPartnerDevicePhoto({ ...options, apiKey: "" }, () => { throw new Error("Must not call network"); }), /not_configured/);
 await assert.rejects(readPartnerDevicePhoto(options, async () => new Response("", { status: 503 })), /media_unavailable/);
 await assert.rejects(readPartnerDevicePhoto(options, async () => Response.json({ base64: "aGVsbG8=", mimetype: "video/mp4" })), /invalid_image/);

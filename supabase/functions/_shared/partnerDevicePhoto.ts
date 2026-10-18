@@ -17,6 +17,8 @@ export function photoFailureMessage(code: string, app: PartnerApp): string {
   if (code === "example_image") return `Essa é uma imagem de exemplo. Envie uma foto da tela da *SUA TV*, com os dados do seu aparelho. ${typing}`;
   if (code === "wrong_app") return `A foto não mostra os dados do aplicativo escolhido. Abra o *${app === "pixel" ? "Pixel Player" : app === "utm" ? "UTM Play" : "Prime IPTV"}* e fotografe a tela com os dados do aparelho. ${typing}`;
   if (code.startsWith("media_") || code === "invalid_image") return `Não consegui abrir a foto recebida no WhatsApp. Envie novamente como *foto*, sem usar “visualização única”. ${typing}`;
+  if (["local_ocr_unavailable", "local_ocr_auth"].includes(code)) return `A leitura de fotos está temporariamente indisponível. ${typing}`;
+  if (code === "local_ocr_busy") return `Estou lendo outra foto. Aguarde alguns segundos e envie novamente. ${typing}`;
   if (["ocr_quota", "ocr_auth", "ocr_permission", "ocr_request", "ocr_unavailable", "not_configured"].includes(code)) return `O serviço de leitura de fotos está indisponível no momento. ${typing}`;
   if (code === "ocr_rate_limit" || code === "ocr_timeout") return `A leitura da foto demorou ou o serviço está ocupado. Aguarde um pouco e envie novamente. ${typing}`;
   const target = app === "pixel" ? "o *Device ID completo*, incluindo as *duas linhas* se houver" : app === "utm" ? "o *MAC e o Device Key juntos*" : "a linha *Endereço MAC*, no canto inferior direito";
@@ -48,8 +50,9 @@ export async function readPartnerDevicePhoto(options: {
   app: PartnerApp; apiKey: string; model: string;
   evolutionBase: string; evolutionKey: string; instance: string;
   message: Record<string, unknown>;
+  local?: { baseUrl: string; token: string };
 }, request: typeof fetch = fetch): Promise<PhotoDevice> {
-  if (!options.apiKey) throw new Error("not_configured");
+  if (!options.apiKey && !options.local) throw new Error("not_configured");
   const media = await request(`${options.evolutionBase.replace(/\/$/, "")}/chat/getBase64FromMediaMessage/${encodeURIComponent(options.instance)}`, {
     method: "POST", headers: { "Content-Type": "application/json", apikey: options.evolutionKey },
     body: JSON.stringify({ message: options.message, convertToMp4: false }),
@@ -64,6 +67,16 @@ export async function readPartnerDevicePhoto(options: {
   if (!/^image\/(jpeg|png|webp)$/.test(mime)) throw new Error("invalid_image");
   const imageUrl = base64.startsWith("data:") ? base64 : `data:${mime};base64,${base64}`;
   if (!/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=\s]+$/.test(imageUrl)) throw new Error("invalid_image");
+  if (options.local) {
+    const base = new URL(options.local.baseUrl);
+    if (base.protocol !== "https:") throw new DevicePhotoError("local_ocr_unavailable");
+    const response = await request(`${base.href.replace(/\/$/, "")}/ocr/device`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.local.token}`, "ngrok-skip-browser-warning": "true" },
+      body: JSON.stringify({ app: options.app, image: imageUrl }), signal: AbortSignal.timeout(45000),
+    }).catch(() => { throw new DevicePhotoError("local_ocr_unavailable"); });
+    if (!response.ok) throw new DevicePhotoError(response.status === 429 ? "local_ocr_busy" : response.status === 401 ? "local_ocr_auth" : "local_ocr_unavailable", response.status);
+    return validatePhotoDevice(options.app, await response.json());
+  }
   const response = await request("https://api.openai.com/v1/responses", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.apiKey}` },
     signal: AbortSignal.timeout(30000),

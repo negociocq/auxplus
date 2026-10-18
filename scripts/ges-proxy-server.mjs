@@ -11,6 +11,7 @@
  */
 
 import http from "node:http";
+import { handleLocalDeviceOcr } from "./lib/local-device-ocr.mjs";
 
 const PORT = Number(process.env.GES_PROXY_PORT || 8787);
 const UPSTREAM = "https://gesapioffice.com/api";
@@ -39,6 +40,8 @@ const server = http.createServer(async (req, res) => {
     res.end("ok");
     return;
   }
+
+  if (await handleLocalDeviceOcr(req, res)) return;
 
   const pathHeader = String(req.headers["x-iptv-path"] || "").trim();
   // Preferir path da URL (túneis Cloudflare às vezes perdem headers custom)

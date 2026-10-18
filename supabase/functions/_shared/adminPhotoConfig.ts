@@ -17,7 +17,11 @@ export function createPhotoConfigHandler(db: SupabaseClient, verify: (plain: str
       if (req.method === "GET") {
         const { data, error } = await db.from("platform_private_secrets").select("value,updated_at").eq("name", name).maybeSingle();
         if (error) return reply({ error: "Não foi possível consultar a configuração." }, 503);
-        return reply({ configured: Boolean(data?.value?.apiKey || environmentKey), model, updatedAt: data?.updated_at || null });
+        const { data: local } = await db.from("platform_private_secrets").select("value").eq("name", "local_device_ocr").maybeSingle();
+        const { data: panel } = await db.from("platform_settings").select("value").eq("key", "iptv_panel").maybeSingle();
+        const panelValue = typeof panel?.value === "string" ? JSON.parse(panel.value) : panel?.value;
+        return reply({ configured: Boolean(data?.value?.apiKey || environmentKey), model, updatedAt: data?.updated_at || null,
+          provider: "local", local: { configured: Boolean(local?.value?.token), proxyConfigured: Boolean(panelValue?.apiProxyUrl || panelValue?.api_proxy_url) } });
       }
       const raw = await req.text();
       if (raw.length > 4096) return reply({ error: "Pedido muito grande." }, 413);
