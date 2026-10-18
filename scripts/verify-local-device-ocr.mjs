@@ -9,6 +9,11 @@ const id = "1234ABCD-5678-90AB-CDEF-1234567890AB";
 assert.equal(extractDeviceFromOcr("prime", `Endereço MAC: ${mac}`).device, mac);
 assert.equal(extractDeviceFromOcr("utm", `MAC: ${mac}\nDevice Key: 001234`).deviceKey, "001234");
 assert.equal(extractDeviceFromOcr("pixel", `Device ID:\n1234ABCD-5678-90AB-CDEF-\n1234567890AB`).device, id);
+assert.equal(extractDeviceFromOcr("pixel", `Device ID:\n${mac}\nTrial Ends: 19/07/2026`).device, mac);
+assert.equal(extractDeviceFromOcr("pixel", `Device ID: ${mac}\n(AndroidTV v1.6.0)`).device, mac);
+assert.equal(extractDeviceFromOcr("pixel", `Device ID;\n\n${mac}\n\n(AndroidTV v1.6.0)`).device, mac);
+assert.equal(extractDeviceFromOcr("pixel", "Device ID:\n021122334455\nTrial Ends").device, mac);
+assert.equal(extractDeviceFromOcr("pixel", `Device ID:\n${mac}\n02:99:88:77:66:55`).readable, false);
 assert.equal(extractDeviceFromOcr("pixel", "Device ID:\n1234ABCD-5678-90AB-CDEF-").readable, false);
 assert.equal(extractDeviceFromOcr("pixel", "Device ID:\n1234ABCD-5678-90AB-CDEF-123456789OAB").readable, false);
 assert.equal(extractDeviceFromOcr("utm", `MAC: ${mac}\nDevice Key: 01234`).readable, false);
@@ -21,14 +26,24 @@ const cases = [
   ["prime", ["Prime IPTV", `MAC: ${mac}`], { device: mac }],
   ["utm", ["UTM Play", `Your TV MAC Address: ${mac}`, "Your Device Key: 001234"], { device: mac, deviceKey: "001234" }],
   ["pixel", ["Pixel Player", "Device ID:", "1234ABCD-5678-90AB-CDEF-", "1234567890AB"], { device: id }],
+  ["pixel", ["Pixel Player", "Device ID:", mac, "(AndroidTV v1.6.0)"], { device: mac }],
 ];
 let server;
 try {
   for (const [app, lines, expected] of cases) {
-    const result = await recognizeDeviceImage(await makeImage(lines), app);
-    assert.equal(result.readable, true, app);
+    const passes = [];
+    const result = await recognizeDeviceImage(await makeImage(lines), app, pass => passes.push(pass));
+    assert.equal(result.readable, true, `${app}: ${JSON.stringify(passes)}`);
     for (const [key, value] of Object.entries(expected)) assert.equal(result[key], value, `${app}: ${key}`);
     console.log(`PASS real local OCR: ${app}`);
+  }
+  for (const angle of [-15, 15]) {
+    const image = await sharp(await makeImage(["Pixel Player", "Device ID:", mac, "(AndroidTV v1.6.0)"])).rotate(angle, { background: "white" }).png().toBuffer();
+    const passes = [];
+    const result = await recognizeDeviceImage(image, "pixel", pass => passes.push(pass));
+    assert.equal(result.readable, true, `Pixel MAC rotated ${angle}: ${JSON.stringify(passes)}`);
+    assert.equal(result.device, mac);
+    console.log(`PASS real local OCR: Pixel MAC rotated ${angle}`);
   }
   process.env.LOCAL_OCR_TOKEN = "f".repeat(64);
   server = http.createServer((req, res) => void handleLocalDeviceOcr(req, res));

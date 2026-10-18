@@ -12,9 +12,18 @@ export function extractDeviceFromOcr(app, text) {
     const ids = unique((normalized.match(guid) || []).map(value => value.replace(/\s/g, "")));
     if (ids.length > 1) return failed("unreadable");
     if (ids.length === 1) return { readable: true, device: ids[0], deviceKey: "", reason: "ok" };
-    const label = normalized.match(/device\s*id\s*[:：]?([^\n]*)\n?([^\n]*)/i);
+    const label = normalized.match(/device\s*id\s*[:：;]?\s*([^\n]*)\n?([^\n]*)/i);
     if (label) {
       const fragments = [label[1], label[2]].map(part => part.trim()).filter(Boolean);
+      // Android Pixel versions label a full MAC as "Device ID".
+      const exactMac = /^(?:(?:[a-f0-9]{2}\s*[:-]\s*){5}[a-f0-9]{2}|[a-f0-9]{12})$/i;
+      const labeledMacs = unique(fragments.filter(part => exactMac.test(part)).map(part => part.replace(/[\s:-]/g, "").toLowerCase()));
+      if (labeledMacs.length) {
+        const allMacs = unique((normalized.match(macPattern) || []).map(part => part.replace(/[\s:-]/g, "").toLowerCase()));
+        if (labeledMacs.length !== 1 || allMacs.length !== 1) return failed("unreadable");
+        if (labeledMacs[0] === "aabbccddeeff") return failed("example_image");
+        return { readable: true, device: labeledMacs[0].match(/.{2}/g).join(":"), deviceKey: "", reason: "ok" };
+      }
       const value = fragments.filter(part => /^[a-z0-9-]+$/i.test(part)).join("");
       // A UUID which was cut off must never be accepted as a shorter ID.
       if (/^[a-f0-9-]+$/i.test(value) && value.includes("-")) return failed("unreadable");

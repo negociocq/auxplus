@@ -18,12 +18,13 @@ const worker = () => workerPromise ||= createWorker("eng", 1, { langPath: langua
   return instance;
 }).catch(error => { workerPromise = undefined; throw error; });
 
-export async function recognizeDeviceImage(buffer, app) {
+export async function recognizeDeviceImage(buffer, app, observe) {
   const engine = await worker();
   const image = await sharp(buffer, { limitInputPixels: 16000000 }).rotate().png().toBuffer();
   const { width, height } = await sharp(image).metadata();
-  const areas = [null, app === "utm" ? { left: .15, top: .2, width: .7, height: .65 } : { left: .5, top: .35, width: .5, height: .65 }];
-  for (const area of areas) {
+  const region = app === "utm" ? { left: .15, top: .2, width: .7, height: .65 } : { left: .5, top: .35, width: .5, height: .65 };
+  const passes = [{ area: null, angle: 0 }, { area: region, angle: 0 }, { area: null, angle: -15 }, { area: null, angle: 15 }];
+  for (const { area, angle } of passes) {
     let pipeline = sharp(image);
     let sourceWidth = width;
     if (area) {
@@ -31,9 +32,11 @@ export async function recognizeDeviceImage(buffer, app) {
       sourceWidth = Math.floor(width * area.width);
       pipeline = pipeline.extract({ left, top, width: Math.min(width - left, sourceWidth), height: Math.min(height - top, Math.floor(height * area.height)) });
     }
+    if (angle) pipeline = pipeline.rotate(angle, { background: "white" });
     const processed = await pipeline.resize({ width: Math.min(sourceWidth * 2, 3000) }).grayscale().normalise().sharpen().png().toBuffer();
-    const { data } = await engine.recognize(processed);
+    const { data } = await engine.recognize(processed, { rotateAuto: true });
     const result = extractDeviceFromOcr(app, data.text);
+    observe?.({ confidence: data.confidence, text: data.text, result });
     if (result.reason === "example_image") return result;
     if (data.confidence >= 55 && result.readable) return result;
   }
