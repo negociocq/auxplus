@@ -20,7 +20,7 @@ const worker = () => workerPromise ||= createWorker("eng", 1, { langPath: langua
 
 // Locate the printed code before restricting the alphabet. Restricting a whole
 // screen would turn unrelated words into plausible hexadecimal identifiers.
-async function refineDeviceLines(engine, data, app) {
+async function refineDeviceLines(engine, data, app, isolateCode = false) {
   if (!data.tsv || !data.imageColor) return null;
   const groups = new Map();
   for (const row of data.tsv.split("\n").slice(1)) {
@@ -41,7 +41,14 @@ async function refineDeviceLines(engine, data, app) {
   if (app === "prime") {
     const candidates = lines.filter(line => /mac/i.test(line.text) && (line.text.match(/:/g) || []).length >= 4);
     if (candidates.length !== 1) return null;
-    const box = candidates[0];
+    const line = candidates[0];
+    const codeWords = data.tsv.split("\n").slice(1).map(row => row.split("\t")).filter(c => c[0] === "5" && +c[7] >= line.top && +c[7] <= line.bottom && (String(c[11]).match(/:/g) || []).length >= 4);
+    const labelWord = data.tsv.split("\n").slice(1).map(row => row.split("\t")).find(c => c[0] === "5" && +c[7] >= line.top && +c[7] <= line.bottom && /^mac[:;]?$/i.test(c[11]));
+    if (isolateCode && codeWords.length !== 1 && !labelWord) return null;
+    const c = codeWords[0];
+    const box = !isolateCode ? line : codeWords.length === 1
+      ? { left: +c[6], top: +c[7], right: +c[6] + +c[8], bottom: +c[7] + +c[9] }
+      : { ...line, left: +labelWord[6] + +labelWord[8] + 12 };
     const corrected = Buffer.from(data.imageColor.split(",")[1], "base64");
     const metadata = await sharp(corrected).metadata();
     const readings = [];
@@ -122,11 +129,16 @@ export async function recognizeDeviceImage(buffer, app, observe) {
       await engine.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
       for (const angle of [0, 5, -5, 15, -15]) {
         const processed = await sharp(crop).rotate(angle, { background: "white" }).resize({ width: Math.min(Math.round(width * 2.5), 3000) }).grayscale().normalise().negate().png().toBuffer();
-        const { data } = await engine.recognize(processed, { rotateAuto: false });
+        const { data } = await engine.recognize(processed, { rotateAuto: false }, { text: true, tsv: app === "prime", imageColor: app === "prime" });
         const result = extractDeviceFromOcr(app, data.text);
         observe?.({ confidence: data.confidence, text: data.text, result });
         if (result.reason === "example_image") return result;
         if (data.confidence >= 70 && result.readable) return result;
+        if (app === "prime" && data.confidence >= 55) {
+          const refined = await refineDeviceLines(engine, data, app, true);
+          await engine.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+          if (refined) return refined;
+        }
       }
     } finally {
       await engine.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
