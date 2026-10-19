@@ -3523,7 +3523,7 @@ Deno.serve(async (req) => {
             hours,
           ),
         );
-        await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
+        await send("Conseguiu abrir o link e assistir? (sim/n?o)");
         return json({ ok: true, action: "test_confirm_install" });
       }
       if (device === "phone_ios") {
