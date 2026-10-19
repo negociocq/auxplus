@@ -107,7 +107,7 @@ function compactPartnerFlow<T>(input: T): T {
   const brands: Record<string, string> = { samsung: "Samsung", lg: "LG", roku: "Roku", android: "Android / Google TV" };
   const stores: Record<string, string> = { samsung: "Apps", lg: "Apps / LG Content Store", roku: "Loja / Canais de streaming", android: "Apps / Play Store" };
   const tv = flow.tvMenu as { options: Array<Record<string, unknown>> };
-  return { ...flow, appCatalogVersion: 6,
+  return { ...flow, appCatalogVersion: 7,
     deviceMenu: { ...(flow.deviceMenu as object), message: "Onde vai assistir?" },
     tvMenu: { ...tv, message: "Qual é sua TV?", options: tv.options.map(option => {
       const id = String(option.nextMenuId || "").replace(/^install_/, "");
@@ -128,11 +128,18 @@ function compactPartnerFlow<T>(input: T): T {
       }
       if (brands[id]) return { ...menu, menu: { ...current,
         message: `*${brands[id]}*: qual app encontrou na loja?\nInstale apenas *um* deles.`,
-        options: current.options.map(option => option.key === "9" ? { ...option, label: "Não sei instalar", keywords: "ajuda,instalar,nao sei instalar,não sei instalar", action: "ask_app", nextMenuId: `help_${id}` } : option),
+        options: [
+          ...current.options.filter(option => option.key !== "4" && option.key !== "9" && option.action !== "back"),
+          { key: "4", label: "Não sei instalar", keywords: "9,ajuda,instalar,nao sei instalar,não sei instalar", action: "ask_app", nextMenuId: `help_${id}` },
+          ...current.options.filter(option => option.action === "back"),
+        ],
       } };
       if (id.startsWith("help_") && brands[id.slice(5)]) return { ...menu, menu: { ...current,
-        message: "Qual app quer instalar?",
-        options: current.options.map(option => option.key === "9" ? { ...option, label: "Chamar atendente" } : option),
+        message: `Na sua *${brands[id.slice(5)]}*:\n\n1. Aperte a casinha 🏠 no controle.\n2. Abra *${stores[id.slice(5)]}*.\n3. Na lupa 🔎, procure um app abaixo.\n4. Selecione, ${id === "help_roku" ? "adicione" : "instale"} e abra.\n\nQual app conseguiu abrir?`,
+        options: current.options.map(option => {
+          if (option.action === "ask_app" && String(option.nextMenuId).startsWith("guide_")) return { ...option, action: `app_${String(option.nextMenuId).split("_").at(-1)}`, nextMenuId: undefined };
+          return option.key === "9" ? { ...option, label: "Chamar atendente" } : option;
+        }),
       } };
       if (id.startsWith("install_")) return { ...menu, menu: { ...current, message: "Você sabe instalar apps?" } };
       return menu;
@@ -143,7 +150,8 @@ function compactPartnerFlow<T>(input: T): T {
 export function upgradePartnerTestFlow<T>(input: T): T {
   if (!input || typeof input !== "object") return input;
   const original = input as Record<string, unknown>;
-  if (Number(original.appCatalogVersion) >= 6) return input;
+  if (Number(original.appCatalogVersion) >= 7) return input;
+  if (Number(original.appCatalogVersion) === 6) return compactPartnerFlow(input);
   if (Number(original.appCatalogVersion) >= 3) return compactPartnerFlow(clarifyAppSelection(input));
   const flow = upgradeAppCatalog(input) as Record<string, unknown>;
   const menus = ((flow.appMenus || []) as Array<Record<string, unknown>>).filter(menu => !/^(install_|help_|guide_)/.test(String(menu.id)) && menu.id !== "android");
