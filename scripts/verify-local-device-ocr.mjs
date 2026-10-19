@@ -57,6 +57,9 @@ try {
   const samsungResult = await recognizeDeviceImage(samsungImage, "pixel");
   assert.equal(samsungResult.device, samsungId);
   console.log("PASS real local OCR: Samsung two-line ID on dark background");
+  const primePhoto = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280"><rect width="100%" height="100%" fill="#1665a8"/><g font-family="Arial" font-weight="bold" fill="white"><text x="60" y="850" font-size="27">Chave do dispositivo: 001234</text><text x="60" y="895" font-size="27">Endereco Mac: ${mac}</text></g></svg>`)).rotate(15, { background: "#1665a8" }).jpeg().toBuffer();
+  assert.equal((await recognizeDeviceImage(primePhoto, "prime")).device, mac);
+  console.log("PASS real local OCR: tilted Prime MAC on blue background");
   process.env.LOCAL_OCR_TOKEN = "f".repeat(64);
   server = http.createServer((req, res) => void handleLocalDeviceOcr(req, res));
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));

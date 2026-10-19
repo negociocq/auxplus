@@ -20,7 +20,7 @@ const worker = () => workerPromise ||= createWorker("eng", 1, { langPath: langua
 
 // Locate the printed code before restricting the alphabet. Restricting a whole
 // screen would turn unrelated words into plausible hexadecimal identifiers.
-async function refinePixelLines(engine, data) {
+async function refineDeviceLines(engine, data, app) {
   if (!data.tsv || !data.imageColor) return null;
   const groups = new Map();
   for (const row of data.tsv.split("\n").slice(1)) {
@@ -38,6 +38,27 @@ async function refinePixelLines(engine, data) {
     } else groups.set(key, box);
   }
   const lines = [...groups.values()].sort((a, b) => a.top - b.top);
+  if (app === "prime") {
+    const candidates = lines.filter(line => /mac/i.test(line.text) && (line.text.match(/:/g) || []).length >= 4);
+    if (candidates.length !== 1) return null;
+    const box = candidates[0];
+    const corrected = Buffer.from(data.imageColor.split(",")[1], "base64");
+    const metadata = await sharp(corrected).metadata();
+    const readings = [];
+    try {
+      await engine.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE, tessedit_char_whitelist: "0123456789ABCDEFabcdef:-" });
+      for (const invert of [false, true]) {
+        const left = Math.max(0, box.left - 12), top = Math.max(0, box.top - 10);
+        let crop = sharp(corrected).extract({ left, top, width: Math.min(metadata.width, box.right + 12) - left, height: Math.min(metadata.height, box.bottom + 10) - top }).resize({ height: 160 });
+        if (invert) crop = crop.negate();
+        const reading = await engine.recognize(await crop.png().toBuffer());
+        readings.push(extractDeviceFromOcr("prime", reading.data.text));
+      }
+    } finally {
+      await engine.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT, tessedit_char_whitelist: "" });
+    }
+    return readings.every(result => result.readable && result.device === readings[0].device) ? readings[0] : null;
+  }
   const starts = lines.filter(line => /^[a-z0-9\s-]+$/i.test(line.text) && (line.text.match(/-/g) || []).length >= 3);
   if (starts.length !== 1) return null;
   const first = starts[0];
@@ -81,13 +102,13 @@ export async function recognizeDeviceImage(buffer, app, observe) {
     }
     if (angle) pipeline = pipeline.rotate(angle, { background: "white" });
     const processed = await pipeline.resize({ width: Math.min(sourceWidth * 2, 3000) }).grayscale().normalise().sharpen().png().toBuffer();
-    const { data } = await engine.recognize(processed, { rotateAuto: true }, { text: true, tsv: app === "pixel", imageColor: app === "pixel" });
+    const { data } = await engine.recognize(processed, { rotateAuto: true }, { text: true, tsv: app !== "utm", imageColor: app !== "utm" });
     const result = extractDeviceFromOcr(app, data.text);
     observe?.({ confidence: data.confidence, text: data.text, result });
     if (result.reason === "example_image") return result;
     if (data.confidence >= 55 && result.readable) return result;
-    if (app === "pixel" && data.confidence >= 55) {
-      const refined = await refinePixelLines(engine, data);
+    if (app !== "utm" && data.confidence >= 55) {
+      const refined = await refineDeviceLines(engine, data, app);
       if (refined) return refined;
     }
   }
