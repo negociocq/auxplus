@@ -112,6 +112,25 @@ export async function recognizeDeviceImage(buffer, app, observe) {
       if (refined) return refined;
     }
   }
+  if (app === "utm") {
+    // TV scan patterns can look like scattered characters. Read the dialog as
+    // a block, with its light text inverted, without automatic orientation.
+    const top = Math.floor(height * (height > width ? .4 : .2));
+    const crop = await sharp(image).extract({ left: 0, top, width, height: Math.min(height - top, Math.floor(height * (height > width ? .25 : .65))) }).png().toBuffer();
+    try {
+      await engine.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+      for (const angle of [0, 5, -5, 15, -15]) {
+        const processed = await sharp(crop).rotate(angle, { background: "white" }).resize({ width: Math.min(Math.round(width * 2.5), 3000) }).grayscale().normalise().negate().png().toBuffer();
+        const { data } = await engine.recognize(processed, { rotateAuto: false });
+        const result = extractDeviceFromOcr(app, data.text);
+        observe?.({ confidence: data.confidence, text: data.text, result });
+        if (result.reason === "example_image") return result;
+        if (data.confidence >= 70 && result.readable) return result;
+      }
+    } finally {
+      await engine.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
+    }
+  }
   return { readable: false, device: "", deviceKey: "", reason: "unreadable" };
 }
 

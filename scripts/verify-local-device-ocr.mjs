@@ -60,6 +60,11 @@ try {
   const primePhoto = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280"><rect width="100%" height="100%" fill="#1665a8"/><g font-family="Arial" font-weight="bold" fill="white"><text x="60" y="850" font-size="27">Chave do dispositivo: 001234</text><text x="60" y="895" font-size="27">Endereco Mac: ${mac}</text></g></svg>`)).rotate(15, { background: "#1665a8" }).jpeg().toBuffer();
   assert.equal((await recognizeDeviceImage(primePhoto, "prime")).device, mac);
   console.log("PASS real local OCR: tilted Prime MAC on blue background");
+  const utmPhoto = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280"><rect width="100%" height="100%" fill="#344566"/><rect x="0" y="520" width="720" height="310" fill="#858da0"/><g font-family="Arial" fill="white" font-size="27"><text x="25" y="605">Upload your playlist</text><text x="25" y="670">Your TV MAC Address: ${mac}</text><text x="25" y="725">Your Device Key: 001234</text></g></svg>`)).rotate(-5, { background: "#344566" }).jpeg().toBuffer();
+  const utmResult = await recognizeDeviceImage(utmPhoto, "utm");
+  assert.equal(utmResult.device, mac);
+  assert.equal(utmResult.deviceKey, "001234");
+  console.log("PASS real local OCR: portrait UTM dialog with leading-zero key");
   process.env.LOCAL_OCR_TOKEN = "f".repeat(64);
   server = http.createServer((req, res) => void handleLocalDeviceOcr(req, res));
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
