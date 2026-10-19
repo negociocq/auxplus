@@ -4168,6 +4168,13 @@ Deno.serve(async (req) => {
           },
         );
       } catch (e) {
+        if (["test_await_mac", "test_confirm_install"].includes(String(session.state)) && session.testApp && !session.testDoneAt) {
+          sessions[phone] = { ...sessions[phone], state: "test_await_mac", devicePhoto: undefined, updatedAt: new Date().toISOString() };
+          await persistState();
+          const target = session.testApp === "utm" ? "MAC e Device Key" : session.testApp === "pixel" ? "Device ID completo" : "MAC";
+          await send(`Não foi possível ativar com esse código.\n\nMande outra *foto do ${target}* ou *digite o código correto* para tentar novamente.\n\nSe continuar, digite *atendente*.`);
+          return json({ ok: false, action: "test_device_retry" });
+        }
         const raw =
           e instanceof Error
             ? e.message
