@@ -1,22 +1,24 @@
 import type { PartnerApp } from "./partnerDevicePhoto.ts";
 
 export function partnerDeviceGuide(app: PartnerApp, acceptsPhoto: boolean): string {
+  const name = app === "prime" ? "Prime IPTV" : app === "utm" ? "UTM Play" : "Pixel Player";
+  const target = app === "prime" ? "MAC" : app === "utm" ? "MAC e Device Key" : "Device ID";
+  const action = acceptsPhoto ? `📷 *Mande uma foto do ${target} ou digite ${app === "utm" ? "os dois juntos" : "o código completo"}.*` : `*Digite ${app === "utm" ? "o MAC e o Device Key juntos" : `o ${target} completo`}.*`;
   const location = app === "prime"
-    ? "*Prime IPTV — encontre seu MAC*\n\nAbra o aplicativo e olhe o *canto de baixo, à direita*. Procure a linha *Endereço MAC*."
+    ? "Procure *Endereço MAC* no canto de baixo, à direita."
     : app === "utm"
-    ? "*UTM Play — encontre MAC e Device Key*\n\nNa primeira tela, procure *Your TV MAC Address* e *Your Device Key*.\n\nJá saiu dessa tela?\n1. Abra *Settings* (Configurações).\n2. Entre em *User Account* (Conta do usuário).\n3. Procure o *MAC* e o *Device Key*."
-    : "*Pixel Player — encontre o Device ID*\n\nAbra a tela de escolher o perfil (*Select Your Profile*). Olhe o lado direito, *abaixo do QR Code*, e procure *Device ID*.";
-  const photo = app === "prime"
-    ? "Fotografe o canto de baixo, à direita, deixando a linha *Endereço MAC* inteira e legível."
+    ? "Não achou? Abra *Settings → User Account*."
+    : "Ele fica abaixo do QR Code. Se ocupar *duas linhas*, envie as duas.";
+  return `Instale e abra o *${name}*.\n\n${action}\n\n${location}\n\nPrecisa de ajuda? Digite *ajuda*.`;
+}
+
+export function partnerDeviceHelp(app: PartnerApp, acceptsPhoto: boolean): string {
+  const location = app === "prime"
+    ? "No Prime, procure *Endereço MAC* no canto inferior direito."
     : app === "utm"
-    ? "Fotografe a parte que mostra *MAC e Device Key juntos*. Os dois precisam aparecer inteiros e legíveis na mesma foto."
-    : "Fotografe a parte escrita *Device ID*. Se o código estiver em *duas linhas*, mostre as *duas linhas inteiras* na mesma foto. O QR Code não é necessário.";
-  const typing = app === "prime"
-    ? "Envie somente o *Endereço MAC*. Pode ser com ou sem os dois-pontos (:). Não precisa enviar a chave do dispositivo."
-    : app === "utm"
-    ? "Envie o *MAC*, um espaço e o *Device Key de 6 números*, tudo na mesma mensagem. O MAC pode ser com ou sem os dois-pontos (:)."
-    : "Envie o *Device ID completo*. Se estiver em duas linhas, junte as duas sem espaço. Mantenha todas as letras, números e traços, inclusive os zeros do começo.";
-  return `${location}\n\n${acceptsPhoto ? `*Você escolhe: foto OU digitar.*\n\n📷 *Se mandar foto:*\n${photo}\n\n⌨️ *Se preferir digitar:*\n` : "*O que digitar:*\n"}${typing}\n\n${acceptsPhoto ? "Use os dados da *SUA TV*. Se mandar foto, tire de perto e sem reflexo.\n\n" : ""}Se não encontrar, escreva *atendente*.`;
+    ? "No UTM, abra a engrenagem *Settings* (Configurações) → *User Account* (Conta do usuário). Lá estão o *MAC* e o *Device Key de 6 números*."
+    : "No Pixel, vá à tela de escolher o perfil. O *Device ID* fica abaixo do QR Code. Pode ser curto, como um MAC, ou ocupar duas linhas. Envie o código inteiro.";
+  return `${location}\n\n${acceptsPhoto ? "Mande uma foto dessa parte da TV ou digite os dados." : "Digite os dados aqui."}\n\nAinda não instalou? Digite *instalar*.\nPara falar com a equipe, digite *atendente*.`;
 }
 
 export function partnerGuideUrl(base: string, app: PartnerApp): string | undefined {

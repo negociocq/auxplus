@@ -102,13 +102,51 @@ function clarifyAppSelection<T>(input: T): T {
   } as T;
 }
 
+function compactPartnerFlow<T>(input: T): T {
+  const flow = input as Record<string, unknown>;
+  const brands: Record<string, string> = { samsung: "Samsung", lg: "LG", roku: "Roku", android: "Android / Google TV" };
+  const stores: Record<string, string> = { samsung: "Apps", lg: "Apps / LG Content Store", roku: "Loja / Canais de streaming", android: "Apps / Play Store" };
+  const tv = flow.tvMenu as { options: Array<Record<string, unknown>> };
+  return { ...flow, appCatalogVersion: 6,
+    deviceMenu: { ...(flow.deviceMenu as object), message: "Onde vai assistir?" },
+    tvMenu: { ...tv, message: "Qual é sua TV?", options: tv.options.map(option => {
+      const id = String(option.nextMenuId || "").replace(/^install_/, "");
+      if (!brands[id]) return option;
+      return id === "android" ? { ...option, action: "app_pixel", nextMenuId: undefined } : { ...option, action: "ask_app", nextMenuId: id };
+    }) },
+    appMenus: ((flow.appMenus || []) as Array<Record<string, unknown>>).map(menu => {
+      const id = String(menu.id);
+      const current = menu.menu as { message: string; options: Array<Record<string, unknown>> };
+      if (id.startsWith("guide_")) {
+        const [, brand, app] = id.split("_");
+        const name = ({ prime: "Prime IPTV", pixel: "Pixel Player", utm: "UTM Play" } as Record<string, string>)[app];
+        if (!name || !stores[brand]) return menu;
+        return { ...menu, menu: { ...current,
+          message: `*Instalar ${name}*\n\n1. Aperte a casinha 🏠 no controle.\n2. Abra *${stores[brand]}* e procure a lupa 🔎.\n3. Busque *${name}*, ${brand === "roku" ? "adicione" : "instale"} e abra.`,
+          options: current.options.map(option => ({ ...option, label: option.key === "1" ? "Já abri o app" : option.key === "2" ? "Preciso de um atendente" : option.label })),
+        } };
+      }
+      if (brands[id]) return { ...menu, menu: { ...current,
+        message: `*${brands[id]}*: qual app encontrou na loja?\nInstale apenas *um* deles.`,
+        options: current.options.map(option => option.key === "9" ? { ...option, label: "Não sei instalar", keywords: "ajuda,instalar,nao sei instalar,não sei instalar", action: "ask_app", nextMenuId: `help_${id}` } : option),
+      } };
+      if (id.startsWith("help_") && brands[id.slice(5)]) return { ...menu, menu: { ...current,
+        message: "Qual app quer instalar?",
+        options: current.options.map(option => option.key === "9" ? { ...option, label: "Chamar atendente" } : option),
+      } };
+      if (id.startsWith("install_")) return { ...menu, menu: { ...current, message: "Você sabe instalar apps?" } };
+      return menu;
+    }),
+  } as T;
+}
+
 export function upgradePartnerTestFlow<T>(input: T): T {
   if (!input || typeof input !== "object") return input;
   const original = input as Record<string, unknown>;
-  if (Number(original.appCatalogVersion) >= 5) return input;
-  if (Number(original.appCatalogVersion) >= 3) return clarifyAppSelection(input);
+  if (Number(original.appCatalogVersion) >= 6) return input;
+  if (Number(original.appCatalogVersion) >= 3) return compactPartnerFlow(clarifyAppSelection(input));
   const flow = upgradeAppCatalog(input) as Record<string, unknown>;
-  const menus = [...((flow.appMenus || []) as Array<Record<string, unknown>>)];
+  const menus = ((flow.appMenus || []) as Array<Record<string, unknown>>).filter(menu => !/^(install_|help_|guide_)/.test(String(menu.id)) && menu.id !== "android");
   const brands = [
     { id: "samsung", name: "Samsung", store: "a loja de aplicativos da TV (Apps)" },
     { id: "lg", name: "LG", store: "a loja de aplicativos da TV (Apps / LG Content Store)" },
@@ -152,10 +190,10 @@ export function upgradePartnerTestFlow<T>(input: T): T {
     options: [{ key: "1", label: "Pixel Player", keywords: "pixel,pixel player", action: "app_pixel" }, back],
   } });
   const tvMenu = flow.tvMenu as { options: Array<Record<string, unknown>> };
-  return clarifyAppSelection({ ...flow, appCatalogVersion: 3, appMenus: menus,
+  return compactPartnerFlow(clarifyAppSelection({ ...flow, appCatalogVersion: 3, appMenus: menus,
     tvMenu: { ...tvMenu, options: tvMenu.options.map(option => {
       const brand = brands.find(b => option.nextMenuId === b.id || (b.id === "android" && option.action === "app_pixel"));
       return brand ? { ...option, action: "ask_app", nextMenuId: `install_${brand.id}` } : option;
     }) },
-  } as T);
+  } as T));
 }

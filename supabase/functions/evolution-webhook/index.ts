@@ -1,6 +1,6 @@
 import { upgradePartnerTestFlow, parsePartnerDeviceText } from "../_shared/partnerTestFlow.ts";
 import { readPartnerDevicePhoto, photoConfirmation, photoFailureCode, photoFailureMessage, type PhotoDevice } from "../_shared/partnerDevicePhoto.ts";
-import { partnerDeviceGuide, partnerGuideUrl } from "../_shared/partnerDeviceGuide.ts";
+import { partnerDeviceGuide, partnerDeviceHelp, partnerGuideUrl } from "../_shared/partnerDeviceGuide.ts";
 /**
  * Webhook Evolution → bot AuxPlus (renovação / atendentes / créditos / testes).
  * Configure na Evolution: POST {SUPABASE_URL}/functions/v1/evolution-webhook
@@ -1891,11 +1891,7 @@ function withNavOptions(
     });
   }
   const msg = String(menu?.message || "").trim();
-  const footer =
-    "\n\n_Digite *voltar* para o menu anterior ou *atendente* para falar com a equipe._";
-  const message =
-    msg && !/atendente/i.test(msg) ? `${msg}${footer}` : msg || footer.trim();
-  return { message, options };
+  return { message: msg, options };
 }
 
 function defaultTestOfferMenu() {
@@ -2843,13 +2839,13 @@ Deno.serve(async (req) => {
       };
       if (!valid || answer === "2" || answer === "nao") {
         await clearPhoto();
-        await send("Envie uma nova foto da tela do aplicativo ou digite os dados corretos. No UTM, envie *MAC e Device Key juntos*.");
+        await send(pendingPhoto.app === "utm" ? "Mande outra foto com *MAC e Device Key*, ou digite os dois juntos." : "Mande outra foto do código ou digite o código correto.");
         return json({ ok: true, action: "photo_replace" });
       }
       if (["1", "sim", "confirmo", "correto", "pode ativar"].includes(answer)) {
         text = `${pendingPhoto.device.device}${pendingPhoto.device.deviceKey ? ` ${pendingPhoto.device.deviceKey}` : ""}`;
         await clearPhoto();
-      } else if (["0", "voltar", "menu", "atendente", "atendentes"].includes(answer)) {
+      } else if (["0", "voltar", "menu", "atendente", "atendentes", "ajuda", "instalar", "9"].includes(answer)) {
         await clearPhoto();
       } else {
         try {
@@ -3444,24 +3440,12 @@ Deno.serve(async (req) => {
         panelUsername: username,
         updatedAt: new Date().toISOString(),
       };
-      sessions[phone] = { ...baseSess, state: "test_confirm_install" };
+      sessions[phone] = { ...baseSess, state: "test_await_mac", devicePhoto: undefined };
       await persistState();
-      const tpl = app === "utm" ? tfTexts.utmReady : app === "pixel" ? tfTexts.pixelReady : tfTexts.primeReady;
-      const askMacFallback =
-        app === "utm" ? DEFAULT_MESSAGES.testAppUtmReady : app === "pixel"
-          ? DEFAULT_MESSAGES.testAppPixelReady
-          : DEFAULT_MESSAGES.testAppPrimeReady;
-      await send(
-        fillTestReady(
-          tpl || askMacFallback,
-          { user: username, password, hours },
-          hours,
-        ),
-      );
       const guideUrl = partnerGuideUrl(Deno.env.get("DEVICE_GUIDE_ASSET_BASE_URL") || "", app);
-      await send(partnerDeviceGuide(app, ocrEnabled) + (guideUrl ? "\n\nA imagem é um *exemplo com dados fictícios*. Envie os dados da SUA TV." : ""), guideUrl);
-      await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
-      return json({ ok: true, action: "test_confirm_install" });
+      const prompt = `*Teste de ${hours}h*\n\n${partnerDeviceGuide(app, ocrEnabled)}${guideUrl ? "\n\nImagem de exemplo. Use os dados da sua TV." : ""}`;
+      await send(fillTestReady(prompt, { user: username, password, hours }, hours), guideUrl);
+      return json({ ok: true, action: "test_await_mac" });
     };
 
     const finishTestPcPhone = async (
@@ -3954,6 +3938,16 @@ Deno.serve(async (req) => {
           t === "voltar menu"
         ) {
           return await goBackTest(session);
+        }
+        if (["test_await_mac", "test_confirm_install"].includes(String(session.state)) && session.testApp) {
+          if (["ajuda", "9", "nao achei", "nao encontrei"].includes(t)) {
+            await send(partnerDeviceHelp(session.testApp, ocrEnabled));
+            return json({ ok: true, action: "test_device_help" });
+          }
+          if (["instalar", "nao instalei", "nao sei instalar"].includes(t)) {
+            const brand = session.testTv === "box" ? "android" : session.testTv || ["samsung", "lg", "roku"].find(id => session.testAppMenuId?.includes(id)) || "android";
+            return await runTestAction(session, "ask_app", `guide_${brand}_${session.testApp}`);
+          }
         }
         if (wantsAttendant || t === "atendente" || t === "atendentes") {
           return await runTestAction(session, "human");

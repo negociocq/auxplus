@@ -43,7 +43,7 @@ export function validatePhotoDevice(app: PartnerApp, raw: unknown): PhotoDevice 
 }
 
 export function photoConfirmation(device: PhotoDevice, app: PartnerApp): string {
-  return `Li estes dados na foto:\n\n*${app === "pixel" ? "Device ID" : "MAC"}:* ${device.device}${device.deviceKey ? `\n*Device Key:* ${device.deviceKey}` : ""}\n\nConfira com a tela da TV. Está correto?\n\n1 — Sim, pode ativar\n2 — Não, vou mandar outra foto\n\nSe preferir, digite os dados corretos ou escreva *atendente*.`;
+  return `*${app === "pixel" ? "Device ID" : "MAC"}:* ${device.device}${device.deviceKey ? `\n*Device Key:* ${device.deviceKey}` : ""}\n\nEstá correto?\n1 — Sim, ativar\n2 — Enviar outra foto\n\nOu digite o código correto.`;
 }
 
 export async function readPartnerDevicePhoto(options: {
