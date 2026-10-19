@@ -147,7 +147,7 @@ function compactPartnerFlow<T>(input: T): T {
   } as T;
 }
 
-export function upgradePartnerTestFlow<T>(input: T): T {
+function upgradeLegacyPartnerTestFlow<T>(input: T): T {
   if (!input || typeof input !== "object") return input;
   const original = input as Record<string, unknown>;
   if (Number(original.appCatalogVersion) >= 7) return input;
@@ -204,4 +204,21 @@ export function upgradePartnerTestFlow<T>(input: T): T {
       return brand ? { ...option, action: "ask_app", nextMenuId: `install_${brand.id}` } : option;
     }) },
   } as T));
+}
+
+/** UTM is available for paid clients, never for the WhatsApp trial flow. */
+export function upgradePartnerTestFlow<T>(input: T): T {
+  if (!input || typeof input !== "object") return input;
+  if (Number((input as Record<string, unknown>).appCatalogVersion) >= 8) return input;
+  const flow = upgradeLegacyPartnerTestFlow(input) as Record<string, unknown>;
+  const cleanMenu = (raw: unknown) => {
+    if (!raw || typeof raw !== "object") return raw;
+    const menu = raw as Record<string, unknown>;
+    return { ...menu, options: ((menu.options || []) as Array<Record<string, unknown>>).filter(option => option.action !== "app_utm" && !String(option.nextMenuId || "").endsWith("_utm")) };
+  };
+  return { ...flow, appCatalogVersion: 8,
+    deviceMenu: cleanMenu(flow.deviceMenu), phoneMenu: cleanMenu(flow.phoneMenu), tvMenu: cleanMenu(flow.tvMenu),
+    appMenus: ((flow.appMenus || []) as Array<Record<string, unknown>>).filter(menu => !String(menu.id).endsWith("_utm")).map(menu => ({ ...menu, menu: cleanMenu(menu.menu) })),
+    texts: { ...(flow.texts as object), utmReady: "", macPrompt: "Envie o MAC do Prime IPTV ou o Device ID completo do Pixel Player." },
+  } as T;
 }

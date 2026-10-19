@@ -9,10 +9,10 @@ async function load(path) {
 const { upgradePartnerTestFlow: upgrade } = await load("supabase/functions/_shared/partnerTestFlow.ts");
 const { partnerDeviceGuide, partnerDeviceHelp } = await load("supabase/functions/_shared/partnerDeviceGuide.ts");
 const base = upgrade({ texts: { askName: "Custom name", macOk: "Custom success" }, monthPriceBrl: 29, deviceMenu: { options: [] }, offerMenu: { options: [{ key: "1", action: "activate_month" }] } });
-for (const version of [2, 3, 4, 5, 6, 7]) {
+for (const version of [2, 3, 4, 5, 6, 7, 8]) {
   const input = { ...base, appCatalogVersion: version };
   const flow = upgrade(input);
-  assert.equal(flow.appCatalogVersion, 7);
+  assert.equal(flow.appCatalogVersion, 8);
   assert.equal(flow.texts.askName, "Custom name");
   assert.equal(flow.texts.macOk, "Custom success");
   assert.equal(flow.monthPriceBrl, 29);
@@ -27,7 +27,7 @@ for (const version of [2, 3, 4, 5, 6, 7]) {
     assert.ok(menu.message.length < 120);
     assert.equal(menu.options.find(option => option.key === "1").action, "app_prime");
     assert.equal(menu.options.find(option => option.key === "2").action, "app_pixel");
-    assert.equal(menu.options.find(option => option.key === "3").action, "app_utm");
+    assert.equal(menu.options.some(option => option.action === "app_utm"), false);
     const help = menu.options.find(option => option.key === "4");
     assert.equal(help.action, "ask_app");
     assert.equal(help.label, "Não sei instalar");
@@ -35,7 +35,7 @@ for (const version of [2, 3, 4, 5, 6, 7]) {
     assert.ok(guide.message.includes("casinha"));
     assert.ok(guide.message.includes("4."));
     assert.ok(guide.message.length < 280);
-    assert.deepEqual(guide.options.filter(option => option.action.startsWith("app_")).map(option => option.action), ["app_prime", "app_pixel", "app_utm"]);
+    assert.deepEqual(guide.options.filter(option => option.action.startsWith("app_")).map(option => option.action), ["app_prime", "app_pixel"]);
     assert.equal(guide.options.find(option => option.key === "9").action, "human");
   }
   assert.equal(flow.tvMenu.options.find(option => option.key === "4").action, "app_pixel");
