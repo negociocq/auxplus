@@ -112,11 +112,12 @@ export async function recognizeDeviceImage(buffer, app, observe) {
       if (refined) return refined;
     }
   }
-  if (app === "utm") {
+  if (app === "utm" || app === "prime") {
     // TV scan patterns can look like scattered characters. Read the dialog as
     // a block, with its light text inverted, without automatic orientation.
-    const top = Math.floor(height * (height > width ? .4 : .2));
-    const crop = await sharp(image).extract({ left: 0, top, width, height: Math.min(height - top, Math.floor(height * (height > width ? .25 : .65))) }).png().toBuffer();
+    const portrait = height > width;
+    const top = Math.floor(height * (app === "prime" ? .5 : portrait ? .4 : .2));
+    const crop = await sharp(image).extract({ left: 0, top, width, height: Math.min(height - top, Math.floor(height * (app === "prime" ? .3 : portrait ? .25 : .65))) }).png().toBuffer();
     try {
       await engine.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
       for (const angle of [0, 5, -5, 15, -15]) {
