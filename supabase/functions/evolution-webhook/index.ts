@@ -3136,6 +3136,9 @@ Deno.serve(async (req) => {
     };
 
     const goBackTest = async (sess: Session) => {
+      if (sess.testDoneAt) {
+        return await sendTestOfferPlan(sess);
+      }
       if (sess.testDevice === "pc" || sess.testDevice === "phone") {
         await send("Você já escolheu computador ou celular para este teste e não pode trocar de aparelho. Continue com as instruções recebidas ou digite *atendente* para pedir ajuda.");
         return json({ ok: true, action: "test_device_locked" });
