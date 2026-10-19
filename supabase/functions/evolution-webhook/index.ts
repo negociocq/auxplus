@@ -2845,7 +2845,7 @@ Deno.serve(async (req) => {
       if (["1", "sim", "confirmo", "correto", "pode ativar"].includes(answer)) {
         text = `${pendingPhoto.device.device}${pendingPhoto.device.deviceKey ? ` ${pendingPhoto.device.deviceKey}` : ""}`;
         await clearPhoto();
-      } else if (["0", "voltar", "menu", "atendente", "atendentes", "ajuda", "instalar", "9"].includes(answer)) {
+      } else if (["0", "voltar", "menu", "atendente", "atendentes", "ajuda", "instalar", "9", "trocar app", "trocar aplicativo", "trocar aparelho", "trocar dispositivo"].includes(answer)) {
         await clearPhoto();
       } else {
         try {
@@ -3443,7 +3443,7 @@ Deno.serve(async (req) => {
       sessions[phone] = { ...baseSess, state: "test_await_mac", devicePhoto: undefined };
       await persistState();
       const guideUrl = partnerGuideUrl(Deno.env.get("DEVICE_GUIDE_ASSET_BASE_URL") || "", app);
-      const prompt = `*Teste de ${hours}h*\n\n${partnerDeviceGuide(app, ocrEnabled)}${guideUrl ? "\n\nImagem de exemplo. Use os dados da sua TV." : ""}`;
+      const prompt = `*Teste de ${hours}h*\n\n${partnerDeviceGuide(app, ocrEnabled)}${guideUrl ? "\n\nImagem de exemplo. Use os dados da sua TV." : ""}\n\nQuer mudar? Digite *trocar app* ou *trocar aparelho* antes de ativar.`;
       await send(fillTestReady(prompt, { user: username, password, hours }, hours), guideUrl);
       return json({ ok: true, action: "test_await_mac" });
     };
@@ -3929,6 +3929,20 @@ Deno.serve(async (req) => {
     // Fluxo guiado de teste (menus editáveis da conta)
     if (flowObj && testFlowStates.has(String(session.state || ""))) {
       try {
+        const switchApp = ["trocar app", "trocar aplicativo"].includes(t);
+        const switchDevice = ["trocar aparelho", "trocar dispositivo"].includes(t);
+        if (switchApp || switchDevice) {
+          if (session.testDoneAt || session.state === "test_offer_plan") return await sendTestOfferPlan(session);
+          const nextSess: Session = { ...session, testApp: undefined, devicePhoto: undefined, updatedAt: new Date().toISOString() };
+          const brand = String(session.testTv || session.testAppMenuId || "").replace(/^help_/, "");
+          if (switchApp && session.testDevice === "tv" && ["samsung", "lg", "roku", "android"].includes(brand)) {
+            return await runTestAction(nextSess, "ask_app", brand);
+          }
+          sessions[phone] = { ...nextSess, state: "test_ask_device", testAppMenuId: undefined, testTv: undefined, testDevice: undefined };
+          await persistState();
+          await sendMenu(flowObj.deviceMenu, { hours: session.testHours || testHours }, { allowBack: false });
+          return json({ ok: true, action: "test_switch_device" });
+        }
         // Atalhos globais no fluxo
         if (
           t === "voltar" ||
