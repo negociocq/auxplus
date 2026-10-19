@@ -3124,7 +3124,8 @@ Deno.serve(async (req) => {
     const currentTestMenu = (sess: Session): FlowMenu | null => {
       if (sess.state === "test_ask_device") return flowObj?.deviceMenu || null;
       if (sess.state === "test_ask_phone_os") {
-        return flowObj?.phoneMenu || defaultPhoneOsMenu();
+        const menu = flowObj?.phoneMenu || defaultPhoneOsMenu();
+        return { ...menu, options: menu.options.filter(option => option.action !== "back") };
       }
       if (sess.state === "test_ask_tv") return flowObj?.tvMenu || null;
       if (sess.state === "test_ask_app") {
@@ -3135,6 +3136,10 @@ Deno.serve(async (req) => {
     };
 
     const goBackTest = async (sess: Session) => {
+      if (sess.testDevice === "pc" || sess.testDevice === "phone") {
+        await send("Você já escolheu computador ou celular para este teste e não pode trocar de aparelho. Continue com as instruções recebidas ou digite *atendente* para pedir ajuda.");
+        return json({ ok: true, action: "test_device_locked" });
+      }
       if (sess.state === "test_ask_phone_os") {
         sessions[phone] = {
           ...sess,
@@ -3594,9 +3599,10 @@ Deno.serve(async (req) => {
           updatedAt: new Date().toISOString(),
         };
         await persistState();
-        await sendMenu(flowObj?.phoneMenu || defaultPhoneOsMenu(), {
+        const phoneMenu = flowObj?.phoneMenu || defaultPhoneOsMenu();
+        await sendMenu({ ...phoneMenu, options: phoneMenu.options.filter(option => option.action !== "back") }, {
           hours: sess.testHours || testHours,
-        });
+        }, { allowBack: false });
         return json({ ok: true, action: "test_ask_phone_os" });
       }
       if (action === "phone_android") {
