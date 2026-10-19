@@ -3413,6 +3413,18 @@ export default function UniPlay() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
+            <Label htmlFor="test-nota" className="text-xs">
+              Nota (nome no painel)
+            </Label>
+            <Input
+              id="test-nota"
+              value={testNota}
+              onChange={(e) => setTestNota(e.target.value)}
+              placeholder="Nome do teste"
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="test-username" className="text-xs">
               Usuário (números - opcional)
             </Label>
@@ -3519,18 +3531,7 @@ export default function UniPlay() {
               rows={3}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="test-nota" className="text-xs">
-              Nota (nome no painel)
-            </Label>
-            <Input
-              id="test-nota"
-              value={testNota}
-              onChange={(e) => setTestNota(e.target.value)}
-              placeholder="Nome do teste"
-              className="h-9"
-            />
-          </div>
+
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               type="button"
