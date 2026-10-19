@@ -15,6 +15,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { runRecoveryQueue } from "../_shared/waRecovery.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -638,6 +639,7 @@ Deno.serve(async (req) => {
 
   try {
     const client = await sb();
+    await runRecoveryQueue(client);
 
     const evo = await getSetting<{ apiBaseUrl?: string; apiKey?: string; instancePrefix?: string }>(
       client,

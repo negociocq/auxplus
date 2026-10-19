@@ -12,6 +12,7 @@ import type {
 } from "@/types";
 import { verifyPassword } from "@/lib/password";
 import { startAdminSession } from "@/lib/adminSession";
+import { startRecoverySession } from "@/lib/whatsappRecovery";
 import { extractDebtFromNotes } from "@/lib/debts";
 import { extractPaymentsFromNotes } from "@/lib/payments";
 import { extractPlanMonths, getPlanSegments } from "@/lib/planMonths";
@@ -428,6 +429,8 @@ export async function loginWithSupabase(
     try { await startAdminSession(user.username, password); }
     catch (error) { return { error: error instanceof Error ? error.message : "Falha ao iniciar sessão administrativa." }; }
   }
+  try { await startRecoverySession(user.username, password); }
+  catch { /* Recovery asks for a new login if its independent session is unavailable. */ }
   return { user };
 }
 

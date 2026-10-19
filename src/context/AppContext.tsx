@@ -23,6 +23,7 @@ import {
 } from "@/lib/supabaseApi";
 import { mergeLocalAvatars } from "@/lib/avatar";
 import { endAdminSession } from "@/lib/adminSession";
+import { endRecoverySession } from "@/lib/whatsappRecovery";
 
 interface AppContextValue {
   data: AppData;
@@ -178,6 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     endAdminSession();
+    endRecoverySession();
     setSessionUserId(null);
     setSessionId(null);
   }, []);

@@ -65,6 +65,7 @@ import {
   type WaSendLog,
 } from "@/lib/whatsappAutomation";
 import { cn } from "@/lib/utils";
+import { WhatsAppRecovery } from "@/components/WhatsAppRecovery";
 
 export default function WhatsAppPage() {
   const { user, data } = useApp();
@@ -348,6 +349,7 @@ export default function WhatsAppPage() {
 
       <Tabs defaultValue="fila" className="space-y-4">
         <TabsList className="h-auto flex-wrap bg-background/80">
+          <TabsTrigger value="recuperacao">Recuperar clientes</TabsTrigger>
           <TabsTrigger value="fila" className="gap-1.5">
             <ListOrdered className="h-3.5 w-3.5" />
             Fila
@@ -373,6 +375,7 @@ export default function WhatsAppPage() {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="recuperacao" className="mt-0">{user && <WhatsAppRecovery userId={user.id}/>}</TabsContent>
         <TabsContent value="fila" className="mt-0 space-y-4">
           <section className="ax-surface space-y-4 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">

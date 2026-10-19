@@ -14,6 +14,9 @@ verify_jwt = false
 [functions.admin-photo-config]
 verify_jwt = false
 
+[functions.wa-recovery]
+verify_jwt = false
+
 [functions.mp-pix]
 verify_jwt = false
 

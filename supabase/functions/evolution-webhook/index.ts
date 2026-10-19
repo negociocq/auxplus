@@ -1,4 +1,5 @@
 import { upgradePartnerTestFlow, parsePartnerDeviceText } from "../_shared/partnerTestFlow.ts";
+import { recoveryPhone, recoveryPanel } from "../_shared/waRecovery.ts";
 import { readPartnerDevicePhoto, photoConfirmation, photoFailureCode, photoFailureMessage, type PhotoDevice } from "../_shared/partnerDevicePhoto.ts";
 import { partnerDeviceGuide, partnerDeviceHelp, partnerGuideUrl } from "../_shared/partnerDeviceGuide.ts";
 /**
@@ -1569,6 +1570,7 @@ async function createUniplayTestUser(
   phone: string,
   packageId?: string,
   clientName?: string,
+  requestedUsername?: string,
 ) {
   const password = genTestPassword();
   const hoursSafe = String(Math.max(1, Math.min(6, hours)));
@@ -1578,6 +1580,7 @@ async function createUniplayTestUser(
   const pkg = String(packageId || "1");
   const nota = sanitizeTestClientName(clientName || "") || "";
   const baseFields: Record<string, unknown> = {
+    ...(requestedUsername ? { username: requestedUsername } : {}),
     test_hours: hoursSafe,
     nota,
     password,
@@ -1603,7 +1606,7 @@ async function createUniplayTestUser(
   ];
   let lastErr: Error | null = null;
   let created: unknown = null;
-  for (const body of attempts) {
+  for (const body of requestedUsername ? attempts.slice(0,1) : attempts) {
     try {
       created = await uniplayFetch("/users-iptv", bearer, {
         method: "POST",
@@ -2451,6 +2454,8 @@ Deno.serve(async (req) => {
       testTv?: "box" | "android" | "roku" | "samsung" | "lg";
       testHours?: number;
       testDoneAt?: string;
+      recoveryId?: string;
+      recoveryUsername?: string;
       testAppMenuId?: string;
       devicePhoto?: { device: PhotoDevice; app: "pixel" | "prime" | "utm"; at: string; state: string };
       /** Nome informado antes de criar o teste (vai na nota do painel). */
@@ -2716,6 +2721,14 @@ Deno.serve(async (req) => {
 
     if (fromMe) return json({ ok: true, skipped: "fromMe" });
 
+    const { data: recoveryContact } = await client.from("wa_recovery_contacts").select("*").eq("user_id", String(userId)).eq("phone", recoveryPhone(phone)).maybeSingle();
+    if (recoveryContact?.status === "invited" && (cmdNorm === "2" || ["parar","stop","sair"].includes(cmdNorm))) {
+      await client.from("wa_recovery_contacts").update({status:"opted_out",updated_at:new Date().toISOString()}).eq("id",recoveryContact.id).eq("status","invited");
+      await send("Tudo bem. Você não receberá novas mensagens de recuperação.");
+      return json({ok:true,action:"recovery_opt_out"});
+    }
+    if (recoveryContact?.status === "invited" && cmdNorm === "1") setHumanPaused(phone, false);
+
     // Foto/áudio/vídeo/doc sem legenda → não ficar calado
     const photoStates = ["test_await_mac", "test_confirm_install", "test_plan_await_mac"];
     const receivesDevicePhoto = mediaKind === "image" && photoStates.includes(sessions[phone]?.state || "") && Boolean(sessions[phone]?.testApp);
@@ -2948,9 +2961,10 @@ Deno.serve(async (req) => {
     const resellerItem = byPhone.find(
       (i) => String(i.folder_id) === syncResellersFolderId,
     );
-    const clientItem =
+    let clientItem =
       byPhone.find((i) => String(i.folder_id) !== syncResellersFolderId) ||
       byPhone[0];
+    if (recoveryContact && ["accepted","creating","trial","activated"].includes(recoveryContact.status) && clientItem?.due_date && Date.parse(clientItem.due_date) < Date.now()) clientItem = undefined;
 
     let session = sessions[phone] || {
       state: "idle",
@@ -3365,6 +3379,28 @@ Deno.serve(async (req) => {
      * Compartilhado entre o estado test_await_mac e a confirmação de
      * instalação (quando o cliente já manda o MAC sem responder sim/não).
      */
+    const createTestForSession = async (sess: Session) => {
+      if (sess.testUsername && sess.testPassword) return { username:sess.testUsername,password:sess.testPassword,remoteId:sess.testRemoteId };
+      if (sess.recoveryId) {
+        const checked = await recoveryPanel(client,String(userId));
+        if (checked.usernames.has(String(sess.recoveryUsername).toLowerCase())) throw new Error("Este usuário já existe no painel. Digite atendente para conferir seu acesso.");
+        const {data:claimed,error}=await client.from("wa_recovery_contacts").update({status:"creating",updated_at:new Date().toISOString()}).eq("id",sess.recoveryId).eq("user_id",String(userId)).eq("status","accepted").select("id");
+        if(error||!claimed?.length)throw new Error("Seu teste de recuperação já está em processamento. Digite atendente se precisar de ajuda.");
+      }
+      try {
+        const created=await createUniplayTestUser(bearer,Number(sess.testHours)||testHours,phone,defaultPackage,sess.testClientName,sess.recoveryUsername);
+        if(sess.recoveryUsername&&created.username!==sess.recoveryUsername)throw new Error("O painel não confirmou o usuário solicitado. Digite atendente para conferir o teste.");
+        sessions[phone]={...sess,testUsername:created.username,testPassword:created.password,testRemoteId:created.remoteId,updatedAt:new Date().toISOString()};
+        markTestConsumed(phone,{at:new Date().toISOString(),username:created.username,name:sess.testClientName,remoteId:created.remoteId});
+        await persistState();
+        if(sess.recoveryId)await client.from("wa_recovery_contacts").update({status:"trial",updated_at:new Date().toISOString()}).eq("id",sess.recoveryId).eq("status","creating");
+        return created;
+      } catch(error) {
+        if(sess.recoveryId)await client.from("wa_recovery_contacts").update({status:"failed",reason:"Confira o painel antes de qualquer nova criação de teste.",updated_at:new Date().toISOString()}).eq("id",sess.recoveryId).eq("status","creating");
+        throw error;
+      }
+    };
+
     const activateMacForSession = async (sess: Session, rawMac: string) => {
       const app = sess.testApp === "utm" ? "utm" : sess.testApp === "prime" ? "prime" : "pixel";
       const { device: mac, deviceKey } = parsePartnerDeviceText(app, rawMac);
@@ -3383,6 +3419,7 @@ Deno.serve(async (req) => {
         updatedAt: new Date().toISOString(),
       };
       await persistState();
+      if (sess.recoveryId) await client.from("wa_recovery_contacts").update({status:"activated",updated_at:doneAt}).eq("id",sess.recoveryId).eq("user_id",String(userId));
       const isRoku = sess.testTv === "roku";
       await send(
         fillTestReady(
@@ -3413,13 +3450,7 @@ Deno.serve(async (req) => {
         if (!clientName) {
           return await startTestAskName();
         }
-        const created = await createUniplayTestUser(
-          bearer,
-          hours,
-          phone,
-          defaultPackage,
-          clientName,
-        );
+        const created = await createTestForSession(sess);
         username = created.username;
         password = created.password;
         remoteId = created.remoteId;
@@ -3466,13 +3497,7 @@ Deno.serve(async (req) => {
       }
       bearer = await ensurePanelBearer(client, userId, automations);
       const hours = Number(sess.testHours) || testHours;
-      const created = await createUniplayTestUser(
-        bearer,
-        hours,
-        phone,
-        defaultPackage,
-        clientName,
-      );
+      const created = await createTestForSession(sess);
       const doneAt = new Date().toISOString();
       markTestConsumed(phone, {
         at: doneAt,
@@ -3753,7 +3778,7 @@ Deno.serve(async (req) => {
             id: `mp_${Date.now().toString(36)}`,
             mpPaymentId: pix.id,
             status: "pending",
-            itemRefId: clientItem ? String(clientItem.id) : "",
+            itemRefId: clientItem ? String(clientItem.id) : sess.recoveryId ? String(sess.itemRefId || "") : "",
             clientName: username,
             panelUsername: username,
             phone,
@@ -3795,6 +3820,40 @@ Deno.serve(async (req) => {
       await send(messages.errorGeneric || "Opção inválida.");
       return json({ ok: true, action: "test_bad_action" });
     };
+
+    // Campaign replies are isolated from ordinary renewal menus and old trial limits.
+    if (recoveryContact?.status === "invited") {
+      if (wantsAttendant) return await runTestAction(session,"human");
+      if (t !== "1") {
+        await send("Quer experimentar novamente?\n\n*1 — Quero experimentar*\n*2 — Parar de receber mensagens*");
+        return json({ok:true,action:"recovery_invitation"});
+      }
+      if (!flowObj || !testPhrase) {
+        await send("O atendimento de testes precisa ser configurado. Digite *atendente* para pedir ajuda.");
+        return json({ok:false,action:"recovery_not_configured"});
+      }
+      const checked = await recoveryPanel(client,String(userId));
+      if (checked.usernames.has(String(recoveryContact.username).toLowerCase())) {
+        await client.from("wa_recovery_contacts").update({status:"skipped",reason:"Usuário voltou a existir no painel."}).eq("id",recoveryContact.id).eq("status","invited");
+        await send("Seu usuário já consta no painel. Digite *atendente* para conferir seu acesso.");
+        return json({ok:true,action:"recovery_already_active"});
+      }
+      const {data:claimed,error}=await client.from("wa_recovery_contacts").update({status:"accepted",updated_at:new Date().toISOString()}).eq("id",recoveryContact.id).eq("status","invited").select("id");
+      if(error||!claimed?.length)return json({ok:true,action:"recovery_already_accepted"});
+      sessions[phone]={state:"test_ask_device",role:"unknown",recoveryId:recoveryContact.id,itemRefId:recoveryContact.item_ref,recoveryUsername:recoveryContact.username,testClientName:recoveryContact.client_name||recoveryContact.username,testHours,updatedAt:new Date().toISOString()};
+      setHumanPaused(phone,false);
+      await persistState();
+      return await startTestDeviceAsk(sessions[phone]);
+    }
+    if (recoveryContact?.status === "accepted" && !session.recoveryId) {
+      sessions[phone]={state:"test_ask_device",role:"unknown",recoveryId:recoveryContact.id,itemRefId:recoveryContact.item_ref,recoveryUsername:recoveryContact.username,testClientName:recoveryContact.client_name||recoveryContact.username,testHours,updatedAt:new Date().toISOString()};
+      await persistState();
+      return await startTestDeviceAsk(sessions[phone]);
+    }
+    if (session.recoveryId && session.testDoneAt && !testFlowStates.has(String(session.state))) {
+      if (wantsAttendant) return await runTestAction(session,"human");
+      return await sendTestOfferPlan(session);
+    }
 
     // Teste: frase do site OU só "teste" (pessoa não sabe a frase longa).
     // Cliente já cadastrado → menu de renovação (não mistura com teste).
@@ -4018,6 +4077,7 @@ Deno.serve(async (req) => {
               updatedAt: new Date().toISOString(),
             };
             await persistState();
+            if (session.recoveryId) await client.from("wa_recovery_contacts").update({status:"activated",updated_at:doneAt}).eq("id",session.recoveryId).eq("user_id",String(userId));
             await send(
               fill(
                 tfTexts.confirmInstallOk ||
