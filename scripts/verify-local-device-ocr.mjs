@@ -6,9 +6,15 @@ import { recognizeDeviceImage, closeOcrWorker, handleLocalDeviceOcr } from "./li
 
 const mac = "02:11:22:33:44:55";
 const id = "1234ABCD-5678-90AB-CDEF-1234567890AB";
+const tizenId = "1234ABC-D5678-90AB-CDEF-1234567890AB";
 assert.equal(extractDeviceFromOcr("prime", `Endereço MAC: ${mac}`).device, mac);
 assert.equal(extractDeviceFromOcr("utm", `MAC: ${mac}\nDevice Key: 001234`).deviceKey, "001234");
 assert.equal(extractDeviceFromOcr("pixel", `Device ID:\n1234ABCD-5678-90AB-CDEF-\n1234567890AB`).device, id);
+assert.equal(extractDeviceFromOcr("pixel", "Device ID:\n1234ABC-D5678-90AB-CDEF-\n1234567890AB\n(Tizen v1.5.91)").device, tizenId);
+assert.equal(extractDeviceFromOcr("pixel", "Device ID:\n1234ABC-D5678-90AB-CDEF-\n1234567890A\n(Tizen v1.5.91)").readable, false);
+assert.equal(extractDeviceFromOcr("pixel", "Device ID:\n1234ABC-D5678-90AB-CDEF-\n123456789OAB\n(Tizen v1.5.91)").readable, false);
+assert.equal(extractDeviceFromOcr("pixel", "1234ABC-D5678-90AB-CDEF-\n123456789OAB").readable, false);
+assert.equal(extractDeviceFromOcr("pixel", `Device ID:\n${id}\n${tizenId}`).readable, false);
 assert.equal(extractDeviceFromOcr("pixel", `Device ID:\n${mac}\nTrial Ends: 19/07/2026`).device, mac);
 assert.equal(extractDeviceFromOcr("pixel", `Device ID: ${mac}\n(AndroidTV v1.6.0)`).device, mac);
 assert.equal(extractDeviceFromOcr("pixel", `Device ID;\n\n${mac}\n\n(AndroidTV v1.6.0)`).device, mac);
@@ -27,6 +33,7 @@ const cases = [
   ["utm", ["UTM Play", `Your TV MAC Address: ${mac}`, "Your Device Key: 001234"], { device: mac, deviceKey: "001234" }],
   ["pixel", ["Pixel Player", "Device ID:", "1234ABCD-5678-90AB-CDEF-", "1234567890AB"], { device: id }],
   ["pixel", ["Pixel Player", "Device ID:", mac, "(AndroidTV v1.6.0)"], { device: mac }],
+  ["pixel", ["Pixel Player", "Device ID:", "1234ABC-D5678-90AB-CDEF-", "1234567890AB"], { device: tizenId }],
 ];
 let server;
 try {

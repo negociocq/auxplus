@@ -8,8 +8,10 @@ export function extractDeviceFromOcr(app, text) {
   const normalized = String(text).replace(/[–—−]/g, "-");
   if (/EXEMPLO|DADOS\s+FICT[IÍ]CIOS|EXAMPLE/i.test(normalized)) return failed("example_image");
   if (app === "pixel") {
-    const guid = /\b[a-f0-9]{8}\s*-\s*[a-f0-9]{4}\s*-\s*[a-f0-9]{4}\s*-\s*[a-f0-9]{4}\s*-\s*[a-f0-9]{12}\b/gi;
-    const ids = unique((normalized.match(guid) || []).map(value => value.replace(/\s/g, "")));
+    // Some Tizen versions use different group lengths (e.g. 7-5-4-4-12).
+    // Preserve the printed groups; require all 32 hex characters, across line wraps.
+    const groupedId = /\b[a-f0-9]{4,12}\s*-\s*[a-f0-9]{3,8}\s*-\s*[a-f0-9]{3,8}\s*-\s*[a-f0-9]{3,8}\s*-\s*[a-f0-9]{8,20}\b/gi;
+    const ids = unique((normalized.match(groupedId) || []).map(value => value.replace(/\s/g, "")).filter(value => value.replace(/-/g, "").length === 32));
     if (ids.length > 1) return failed("unreadable");
     if (ids.length === 1) return { readable: true, device: ids[0], deviceKey: "", reason: "ok" };
     const label = normalized.match(/device\s*id\s*[:：;]?\s*([^\n]*)\n?([^\n]*)/i);
@@ -17,6 +19,8 @@ export function extractDeviceFromOcr(app, text) {
       const fragments = [label[1], label[2]].map(part => part.trim()).filter(Boolean);
       // Android Pixel versions label a full MAC as "Device ID".
       const exactMac = /^(?:(?:[a-f0-9]{2}\s*[:-]\s*){5}[a-f0-9]{2}|[a-f0-9]{12})$/i;
+      // Never mistake the final 12 characters of a long ID for a standalone MAC.
+      if (fragments.some(part => part.includes("-") && !exactMac.test(part))) return failed("unreadable");
       const labeledMacs = unique(fragments.filter(part => exactMac.test(part)).map(part => part.replace(/[\s:-]/g, "").toLowerCase()));
       if (labeledMacs.length) {
         const allMacs = unique((normalized.match(macPattern) || []).map(part => part.replace(/[\s:-]/g, "").toLowerCase()));
@@ -30,6 +34,7 @@ export function extractDeviceFromOcr(app, text) {
       if (/^[a-z0-9]{16,128}$/i.test(value)) return { readable: true, device: value, deviceKey: "", reason: "ok" };
       return failed("unreadable");
     }
+    if (/\b[a-f0-9]{4,}\s*-\s*[a-f0-9-]{4,}/i.test(normalized)) return failed("unreadable");
   }
   const matches = normalized.match(macPattern) || [];
   const macs = unique(matches.map(value => value.replace(/[\s:-]/g, "").toLowerCase()));
