@@ -268,7 +268,8 @@ export function patchMpOrder(
 function formatDueBr(value: string | null | undefined): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || "").trim());
   if (!m) return "—";
-  return `${m[3]}/${m[2]}/${m[1]}`;
+  const time = String(value || "").match(/[T\s](\d{2}:\d{2})(?::(\d{2}))?/);
+  return `${m[3]}/${m[2]}/${m[1]} ${time ? `${time[1]}:${time[2] || "00"}` : "(horário não informado)"}`;
 }
 
 /**

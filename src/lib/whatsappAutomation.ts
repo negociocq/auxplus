@@ -427,7 +427,7 @@ function formatDueForMessage(value: string | null | undefined): string {
   );
   if (!m) return "—";
   const date = `${m[3]}/${m[2]}/${m[1]}`;
-  const time = m[4] != null ? `${m[4]}:${m[5]}:${m[6] ?? "00"}` : "00:00:00";
+  const time = m[4] != null ? `${m[4]}:${m[5]}:${m[6] ?? "00"}` : "(horário não informado)";
   return `${date} ${time}`;
 }
 
@@ -436,7 +436,9 @@ export function fillWhatsappTemplate(
   item: Pick<Item, "name" | "itemId" | "dueDate" | "price" | "phone">,
   kind: "before" | "onday",
 ) {
-  const due = formatDueForMessage(item.dueDate);
+  const fullDue = formatDueForMessage(item.dueDate);
+  const dueTime = fullDue.split(" ").slice(1).join(" ") || "horário não informado";
+  const due = template.includes("{dueTime}") ? fullDue.split(" ")[0] : fullDue;
   const dateText =
     kind === "onday" ? "Vence hoje:" : "Vai vencer em:";
   const phoneFormatted = item.phone || item.itemId || "";
@@ -452,6 +454,8 @@ export function fillWhatsappTemplate(
     .replace(/\{name\}/g, item.name || "")
     .replace(/\{dateText\}/g, dateText)
     .replace(/\{due_date\}/g, due)
+    .replace(/\{due\}/g, due)
+    .replace(/\{dueTime\}/g, dueTime)
     .replace(/\{valor\}/g, String(item.price ?? ""))
     .replace(/\{price\}/g, String(item.price ?? ""));
 }

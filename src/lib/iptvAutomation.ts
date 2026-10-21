@@ -62,6 +62,8 @@ export interface IptvJob {
   phone: string;
   dueDate: string | null;
   months: number;
+  /** Valor registrado no momento da renovação, independente do preço futuro. */
+  amount?: number;
   testHours: number;
   note: string;
   createdAt: string;

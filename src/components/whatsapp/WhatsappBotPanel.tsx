@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   Loader2,
   Save,
@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { normalizeBrPhone } from "@/lib/whatsappAutomation";
 import {
   defaultWhatsappBotConfig,
   loadWaBotStateRemote,
@@ -36,6 +37,7 @@ import {
   loadAutomationsConfigRemote,
 } from "@/lib/automationsConfig";
 import { TestFlowEditor } from "@/components/whatsapp/TestFlowEditor";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 type Props = {
   /** Notifica a página (badge da aba) quando o interruptor muda */
@@ -83,6 +85,9 @@ function MessageFields({
 
 export function WhatsappBotPanel({ onEnabledChange }: Props) {
   const { user } = useApp();
+  const userId = user?.id;
+  const onEnabledChangeRef = useRef(onEnabledChange);
+  onEnabledChangeRef.current = onEnabledChange;
   const [cfg, setCfg] = useState<WhatsappBotConfig>(() =>
     defaultWhatsappBotConfig(),
   );
@@ -100,22 +105,27 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
   const [botTab, setBotTab] = useState("atendimento");
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
+    let cancelled = false;
     setLoading(true);
     void Promise.all([
-      loadWhatsappBotConfigRemote(user.id),
-      loadWaBotStateRemote(user.id),
-      loadAutomationsConfigRemote(user.id),
+      loadWhatsappBotConfigRemote(userId),
+      loadWaBotStateRemote(userId),
+      loadAutomationsConfigRemote(userId),
     ])
       .then(([c, s, auto]) => {
+        if (cancelled) return;
         setCfg(c);
         setState(s);
         setUniplayOn(isUniplayConnected(auto));
-        onEnabledChange?.(c.enabled);
+        onEnabledChangeRef.current?.(c.enabled);
       })
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só recarrega ao trocar usuário
-  }, [user]);
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Falha ao carregar atendimento");
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [userId]);
 
   useEffect(() => {
     if (!uniplayOn && (botTab === "revendedores" || botTab === "teste")) {
@@ -180,10 +190,17 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
   const removePaused = async (phone: string) => {
     if (!user) return;
     try {
-      const next = { ...state };
-      delete next.humanPaused[phone];
-      setState(next);
+      const next = await loadWaBotStateRemote(user.id);
+      for (const key of Object.keys(next.humanPaused)) {
+        if (normalizeBrPhone(key) === normalizeBrPhone(phone)) delete next.humanPaused[key];
+      }
+      for (const [key, session] of Object.entries(next.sessions)) {
+        if (normalizeBrPhone(key) === normalizeBrPhone(phone) && session.state === "human") {
+          next.sessions[key] = { ...session, state: "idle", updatedAt: new Date().toISOString() };
+        }
+      }
       await saveWaBotStateRemote(user.id, next);
+      setState(next);
       toast.success(`Bot reativado para ${phone}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao reativar");
@@ -193,10 +210,13 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
   const removeAllPaused = async () => {
     if (!user) return;
     try {
-      const next = { ...state };
+      const next = await loadWaBotStateRemote(user.id);
       next.humanPaused = {};
-      setState(next);
+      for (const [key, session] of Object.entries(next.sessions)) {
+        if (session.state === "human") next.sessions[key] = { ...session, state: "idle", updatedAt: new Date().toISOString() };
+      }
       await saveWaBotStateRemote(user.id, next);
+      setState(next);
       toast.success(`Todos os bots reativados (${Object.keys(state.humanPaused).length} telefone(s))`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao reativar");
@@ -271,14 +291,14 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
         onValueChange={setBotTab}
         className="space-y-4"
       >
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:flex sm:flex-wrap sm:justify-start">
           <TabsTrigger value="atendimento" className="gap-1.5">
             <Headset className="h-3.5 w-3.5" />
-            Atendimento
+            Visão geral
           </TabsTrigger>
           <TabsTrigger value="clientes" className="gap-1.5">
             <Users className="h-3.5 w-3.5" />
-            Clientes
+            Renovação de clientes
           </TabsTrigger>
           {uniplayOn ? (
             <>
@@ -288,13 +308,38 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
               </TabsTrigger>
               <TabsTrigger value="teste" className="gap-1.5">
                 <FlaskConical className="h-3.5 w-3.5" />
-                Teste
+                Testes e planos
               </TabsTrigger>
             </>
           ) : null}
         </TabsList>
 
         <TabsContent value="atendimento" className="mt-0 space-y-4">
+          <section className="space-y-4 rounded-xl border bg-muted/20 p-5">
+            <div>
+              <h3 className="font-semibold">Por onde começar</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Escolha o que deseja configurar. Todas as alterações desta tela são da sua loja.</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Button variant="outline" type="button" onClick={() => setBotTab("clientes")} className="block h-auto whitespace-normal rounded-lg bg-background p-4 text-left hover:border-primary">
+                <Users className="mb-3 h-5 w-5 text-primary" />
+                <span className="block text-sm font-semibold">Renovação de clientes</span>
+                <span className="mt-1 block text-xs text-muted-foreground">Edite o menu e as mensagens de renovação e Pix.</span>
+              </Button>
+              {uniplayOn ? <>
+                <Button variant="outline" type="button" onClick={() => setBotTab("teste")} className="block h-auto whitespace-normal rounded-lg bg-background p-4 text-left hover:border-primary">
+                  <FlaskConical className="mb-3 h-5 w-5 text-primary" />
+                  <span className="block text-sm font-semibold">Testes, planos e preços</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">Configure aparelhos, mensagens e valores do Pix.</span>
+                </Button>
+                <Button variant="outline" type="button" onClick={() => setBotTab("revendedores")} className="block h-auto whitespace-normal rounded-lg bg-background p-4 text-left hover:border-primary">
+                  <Store className="mb-3 h-5 w-5 text-primary" />
+                  <span className="block text-sm font-semibold">Revendedores</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">Personalize a oferta de créditos e a mensagem de Pix.</span>
+                </Button>
+              </> : null}
+            </div>
+          </section>
           <section className="ax-surface space-y-3 p-4">
             <div className="flex items-center gap-2">
               <Bot className="h-4 w-4 text-primary" />
@@ -307,9 +352,12 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
             </p>
           </section>
 
-          <section className="ax-surface space-y-3 p-4">
+          <Accordion type="single" collapsible className="ax-surface px-4">
+            <AccordionItem value="advanced" className="border-0">
+              <AccordionTrigger>Mensagens gerais e restauração</AccordionTrigger>
+              <AccordionContent className="space-y-3">
             <div>
-              <h3 className="text-sm font-semibold">Mensagens</h3>
+              <h3 className="text-sm font-semibold">Mensagens do sistema</h3>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 Textos usados no autoatendimento.
               </p>
@@ -337,11 +385,14 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
               )}
               Redefinir Configuração do Bot
             </Button>
-          </section>
+            <p className="text-xs text-muted-foreground">Atenção: redefinir substitui a configuração atual pelo modelo padrão, incluindo as mensagens personalizadas.</p>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
 
           <section className="ax-surface space-y-3 p-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Pausados (Humano)</h3>
+              <h3 className="text-sm font-semibold">Conversas com atendimento humano</h3>
               {Object.keys(state.humanPaused).length > 0 && (
                 <Button
                   type="button"
@@ -395,6 +446,9 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
                 Com vencimento em dia, {"{renewLabel}"} vira *Estender
                 vencimento*; se já venceu, *Renovar*. A nota do cliente não é
                 enviada.
+              </p>
+              <p className="mt-2 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                Vencimento atual: {"{due}"} {"{dueTime}"}. Após o pagamento: {"{newDue}"} {"{newDueTime}"}. A hora depende do vencimento registrado no cliente; quando ausente, a mensagem informa isso.
               </p>
             </div>
             <MessageFields
@@ -452,7 +506,9 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
         ) : null}
       </Tabs>
 
-      <Button type="button" disabled={saving} onClick={() => void onSave()}>
+      <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur">
+        <p className="text-xs text-muted-foreground">Depois de editar, salve para aplicar as configurações da sua loja.</p>
+      <Button type="button" className="w-full sm:w-auto" disabled={saving} onClick={() => void onSave()}>
         {saving ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
@@ -460,6 +516,7 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
         )}
         Salvar ajustes
       </Button>
+      </div>
     </div>
   );
 }

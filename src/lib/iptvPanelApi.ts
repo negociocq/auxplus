@@ -7,6 +7,26 @@ import { SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
 import { formatBrDate } from "@/lib/format";
 import { DEFAULT_PRORROGA_MESSAGE } from "@/lib/whatsappAutomation";
 import { readSyncedDevices, writeSyncedDevice } from "@/lib/partnerAppsSync";
+import { parseUniplayRenewalLogs, parseUniplayRecreatedLines, parseUniplayCreditLogs } from "@/lib/uniplayRenewalLogs";
+
+/** Mesmo endpoint mensal da tela Listagem de Logs da Uniplay. */
+export async function listUniplayRenewalLogs(creds: IptvPanelCreds, year: number, month: number) {
+  const query = new URLSearchParams({ month: String(month), year: String(year), log_type: "1", reseller: "0" });
+  const raw = await panelFetch(creds, `/log?${query}`, { cache: "no-store" });
+  if (!raw || typeof raw !== "object" || !Array.isArray((raw as { logs?: unknown }).logs)) {
+    throw new Error("A Uniplay não retornou a listagem mensal de logs.");
+  }
+  return { events: parseUniplayRenewalLogs(raw), recreations: parseUniplayRecreatedLines(raw) };
+}
+
+export async function listUniplayCreditLogs(creds: IptvPanelCreds, year: number, month: number) {
+  const query = new URLSearchParams({ month: String(month), year: String(year), log_type: "10", reseller: "0" });
+  const raw = await panelFetch(creds, `/log?${query}`, { cache: "no-store" });
+  if (!raw || typeof raw !== "object" || !Array.isArray((raw as { logs?: unknown }).logs)) {
+    throw new Error("A Uniplay não retornou os logs mensais de créditos.");
+  }
+  return parseUniplayCreditLogs(raw, creds.username || "");
+}
 
 export type IptvPanelCreds = {
   apiBaseUrl: string;
@@ -197,17 +217,24 @@ function parseBrDateTimeToCanonical(raw: string): string | undefined {
 export function parseWelcomeAccessMessage(text: string): {
   m3u?: string;
   dnsSmarters?: string;
+  webPlayer?: string;
   username?: string;
   password?: string;
   dueDate?: string;
 } {
-  const src = String(text || "");
+  const src = String(text || "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?\s*>|<\/(?:p|div|li)>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&");
   if (!src.trim()) return {};
 
   const username =
-    src.match(/USU[ÁA]RIO\s*:\s*([^\s\r\n]+)/i)?.[1]?.trim() || undefined;
+    src.match(/USU[ÁA]RIO[^\S\r\n]*:[^\S\r\n]*([^\s\r\n]+)/i)?.[1]?.trim() || undefined;
   const password =
-    src.match(/SENHA\s*:\s*([^\s\r\n]+)/i)?.[1]?.trim() || undefined;
+    src.match(/SENHA[^\S\r\n]*:[^\S\r\n]*([^\s\r\n]+)/i)?.[1]?.trim() || undefined;
 
   // Preferir o LINK (M3U8) completo (não o encurtado)
   const m3u =
@@ -233,6 +260,7 @@ export function parseWelcomeAccessMessage(text: string): {
   return {
     username,
     password,
+    webPlayer: src.match(/Web\s*Player\s*:\s*(https?:\/\/[^\s]+)/i)?.[1],
     m3u: m3u && isM3uLink(m3u) ? m3u : undefined,
     dnsSmarters:
       dnsSmarters && isDnsHost(dnsSmarters) ? dnsSmarters : undefined,
@@ -308,6 +336,8 @@ export function enrichCreateTestResult(result: CreateTestResult): CreateTestResu
 
     if (!m3u) {
       const candidate = pickNestedString(nested, [
+        "M3U8_2",
+        "M3U8",
         "m3u",
         "m3u_url",
         "url_m3u",
@@ -2271,7 +2301,81 @@ export async function createIptvTest(
   };
 }
 
-/** Busca senha/dados de um usuário IPTV pelo login. */
+/** Consulta os links pelo mesmo comando de leitura usado pelo modal da Uniplay. */
+export async function fetchIptvUserAccess(
+  creds: IptvPanelCreds,
+  username: string,
+): Promise<{ password: string; m3u: string; dnsSmarters: string; webPlayer: string }> {
+  const users = await listIptvUsers(creds, { fresh: true });
+  const remote = users.find((row) => row.username?.trim().toLowerCase() === username.trim().toLowerCase());
+  if (!remote || remote.id == null) {
+    throw new Error("Cliente não encontrado na Uniplay para consultar os dados de acesso.");
+  }
+  // O painel usa PUT action=8 (getLinks), não GET /users-iptv/{id}.
+  const detail = await panelFetch(
+    creds,
+    `/users-iptv/${encodeURIComponent(String(remote.id))}`,
+    {
+      method: "PUT",
+      cache: "no-store",
+      body: JSON.stringify({
+        action: 8,
+        ...(creds.regPassword?.trim() ? { reg_password: creds.regPassword.trim() } : {}),
+      }),
+    },
+  );
+  const access = extractIptvClientAccess(detail);
+  const listed = enrichCreateTestResult({ raw: remote });
+  return {
+    password: access.password || deepFindPassword(detail) || listed.password || remote.password || "",
+    m3u: access.m3u || listed.m3u || "",
+    dnsSmarters: access.dnsSmarters || listed.dnsSmarters || "",
+    webPlayer: access.webPlayer,
+  };
+}
+
+/** Lê os campos do modal inclusive quando a API os aninha em data/infos. */
+export function extractIptvClientAccess(raw: unknown) {
+  const access = { password: "", m3u: "", dnsSmarters: "", webPlayer: "" };
+  const visit = (value: unknown, depth = 0) => {
+    if (value == null || depth > 8) return;
+    if (typeof value === "string") {
+      const parsed = parseWelcomeAccessMessage(value);
+      access.password ||= parsed.password || "";
+      access.m3u ||= parsed.m3u || "";
+      access.dnsSmarters ||= parsed.dnsSmarters || "";
+      access.webPlayer ||= parsed.webPlayer || "";
+      return;
+    }
+    if (typeof value !== "object") return;
+    const row = value as Record<string, unknown>;
+    const cleanUrl = (candidate: unknown) => typeof candidate === "string"
+      ? candidate.replace(/&amp;/gi, "&").replace(/&nbsp;|&#160;/gi, " ").trim() : "";
+    for (const key of ["M3U8_2", "M3U8", "m3u", "m3u_url", "url_m3u", "link_m3u", "playlist_url"]) {
+      const url = cleanUrl(row[key]);
+      if (!access.m3u && isM3uLink(url)) access.m3u = url;
+    }
+    for (const key of ["dns_smarters", "dnsSmarters", "dns_url", "dns"]) {
+      const url = cleanUrl(row[key]);
+      if (!access.dnsSmarters && isDnsHost(url)) access.dnsSmarters = url;
+    }
+    for (const key of ["web_player", "webPlayer", "webplayer"]) {
+      const url = cleanUrl(row[key]);
+      if (!access.webPlayer && isHttpUrl(url)) access.webPlayer = url;
+    }
+    if (typeof row.password === "string") access.password ||= row.password;
+    for (const child of Object.values(row)) visit(child, depth + 1);
+  };
+  visit(raw);
+  // O link retornado pelo painel contém a credencial efetiva desta lista.
+  // O texto de aplicativos também tem rótulos "Senha:" vazios.
+  if (access.m3u) {
+    const playlistPassword = new URL(access.m3u).searchParams.get("password");
+    if (playlistPassword) access.password = playlistPassword;
+  }
+  return access;
+}
+
 export async function fetchIptvUserPassword(
   creds: IptvPanelCreds,
   username: string,

@@ -48,11 +48,11 @@ import {
   updateFolder,
 } from "@/lib/storage";
 import {
-  annualPaymentBalance,
   getRecordedPayments,
-  sumPaymentsByMonth,
-  sumRecordedPaymentsByMonth,
 } from "@/lib/payments";
+import { lookupUniplayRenewals } from "@/lib/uniplayRenewalLookup";
+import { brazilDay } from "@/lib/renewalSummary";
+import { receivedOperationsByMonth, type ReceivedOperationsData } from "@/lib/receivedOperations";
 import { sumResellerCreditsValueByItems } from "@/lib/resellerCredits";
 import {
   annualDebtPaid,
@@ -73,10 +73,6 @@ import {
   ensureIptvToken,
   fetchIptvPanelCredits,
   formatIptvCredits,
-  listIptvResellers,
-  listIptvResellerLogs,
-  resolveIptvResellerPanelId,
-  resellerDisplayAmount,
 } from "@/lib/iptvPanelApi";
 import { loadIptvPlatformConfig } from "@/lib/platformApi";
 import { onUniplayCreditsChanged } from "@/lib/uniplayCreditsSync";
@@ -107,6 +103,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { RenewalSummary } from "@/components/dashboard/RenewalSummary";
 import { toast } from "sonner";
 
 export default function Dashboard() {
@@ -128,10 +125,24 @@ export default function Dashboard() {
   const [loadingCredits, setLoadingCredits] = useState(false);
   const [resellersFolderId, setResellersFolderId] = useState("");
   const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(8.5);
-  const [autoCfg, setAutoCfg] = useState<ReturnType<typeof loadAutomationsConfig> | null>(null);
-  const [resellerLogsMonthly, setResellerLogsMonthly] = useState<
-    { name: string; total: number; itens: number }[]
-  >([]);
+  const [chartRefresh, setChartRefresh] = useState(0);
+  const [chartData, setChartData] = useState<{ userId: string; year: number; data: ReceivedOperationsData } | null>(null);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState("");
+  const chartToday = brazilDay();
+  const chartUserId = user?.id || "";
+  useEffect(() => {
+    if (!chartUserId || isDebtWorkspace) return;
+    let cancelled = false;
+    setChartLoading(true);
+    setChartError("");
+    const end = String(chartYear) === chartToday.slice(0, 4) ? chartToday : `${chartYear}-12-31`;
+    void lookupUniplayRenewals(chartUserId, `${chartYear}-01-01`, end).then((data) => {
+      if (!cancelled) setChartData({ userId: chartUserId, year: chartYear, data });
+    }).catch((error) => { if (!cancelled) setChartError(error instanceof Error ? error.message : "Falha ao consultar as receitas."); })
+      .finally(() => { if (!cancelled) setChartLoading(false); });
+    return () => { cancelled = true; };
+  }, [chartUserId, chartYear, chartToday, chartRefresh, isDebtWorkspace]);
 
   useEffect(() => {
     if (!user) {
@@ -149,7 +160,6 @@ export default function Dashboard() {
         if (!cancelled) {
           setResellersFolderId(cfg.syncResellersFolderId || "");
           setResellerCreditPriceBrl(cfg.resellerCreditPriceBrl || 8.5);
-          setAutoCfg(cfg);
         }
         if (!isUniplayConnected(cfg)) {
           if (!cancelled) {
@@ -240,79 +250,6 @@ export default function Dashboard() {
         };
       });
   }, [data.items, data.folderSettings, folders]);
-
-  const refreshResellerChartData = async () => {
-    if (!user || !autoCfg || !resellersFolderId) return;
-    try {
-      const plat = await loadIptvPlatformConfig();
-      const creds = {
-        apiBaseUrl: plat.apiBaseUrl || autoCfg.iptvApiBaseUrl,
-        bearerToken: autoCfg.iptvBearerToken || "",
-        username: autoCfg.iptvUsername || undefined,
-        password: autoCfg.iptvPassword || undefined,
-        defaultPackage: plat.packageId || "1",
-        regPassword: plat.regPassword || undefined,
-        apiProxyUrl: plat.apiProxyUrl || undefined,
-      };
-      const resellers = await listIptvResellers(creds);
-      const panelIdByUsername = new Map<string, number | string>();
-      for (const r of resellers) {
-        const id = resolveIptvResellerPanelId(r);
-        if (id != null && r.username) {
-          panelIdByUsername.set(String(r.username).toLowerCase(), id);
-        }
-      }
-      const resellerItems = myItems.filter(
-        (i) => i.folderId === resellersFolderId,
-      );
-      const MONTHS = [
-        "Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez",
-      ];
-      const monthlyTotals = MONTHS.map((name) => ({ name, total: 0, itens: 0 }));
-      await Promise.all(
-        resellerItems.map(async (item) => {
-          const username = String(item.itemId || "").toLowerCase();
-          const panelId = panelIdByUsername.get(username);
-          if (panelId == null) return;
-          try {
-            const moves = await listIptvResellerLogs(creds, panelId);
-            for (const m of moves) {
-              const atStr = String(m.at || "");
-              if (!atStr.startsWith(String(chartYear))) continue;
-              const monthIdx = Number(atStr.slice(5, 7)) - 1;
-              if (monthIdx < 0 || monthIdx > 11) continue;
-              const amount = resellerDisplayAmount(
-                Number(m.faturado) || 0,
-                Number(m.credits) || 0,
-              );
-              monthlyTotals[monthIdx].total += amount;
-              monthlyTotals[monthIdx].itens += 1;
-            }
-          } catch {
-            /* movimentações inacessíveis */
-          }
-        }),
-      );
-      setResellerLogsMonthly(monthlyTotals);
-    } catch {
-      /* falha ao buscar dados do painel */
-    }
-  };
-
-  useEffect(() => {
-    if (!user || !autoCfg || !resellersFolderId) {
-      setResellerLogsMonthly([]);
-      return;
-    }
-    const isResellerView =
-      (chartFolderId === "all" && resellersFolderId) ||
-      chartFolderId === resellersFolderId;
-    if (!isResellerView) {
-      setResellerLogsMonthly([]);
-      return;
-    }
-    void refreshResellerChartData();
-  }, [user, autoCfg, resellersFolderId, chartFolderId, chartYear, myItems]);
 
   /** Lucro: só Cliente/Produto e ainda não vencidos */
   const revenueItems = useMemo(
@@ -464,78 +401,12 @@ export default function Dashboard() {
     return [...years].sort((a, b) => b - a);
   }, [myItems]);
 
-  const chartItems = useMemo(() => {
-    if (chartFolderId === "all") {
-      // Lucro: todas as pastas Cliente/Produto (dívidas ficam de fora)
-      return myItems.filter((i) => revenueFolderIds.has(i.folderId));
-    }
-    return myItems.filter((i) => i.folderId === chartFolderId);
-  }, [chartFolderId, myItems, revenueFolderIds]);
-
   const monthlyChart = useMemo(() => {
-    const isResellerFolder =
-      Boolean(resellersFolderId) && chartFolderId === resellersFolderId;
-    if (isResellerFolder) {
-      return resellerLogsMonthly.length > 0
-        ? resellerLogsMonthly
-        : sumRecordedPaymentsByMonth(chartItems, chartYear);
-    }
-    if (chartFolderId === "all" && resellersFolderId) {
-      const clients = chartItems.filter(
-        (i) => i.folderId !== resellersFolderId,
-      );
-      const resellers = chartItems.filter(
-        (i) => i.folderId === resellersFolderId,
-      );
-      const a = sumPaymentsByMonth(clients, chartYear);
-      const b =
-        resellerLogsMonthly.length > 0
-          ? resellerLogsMonthly
-          : sumRecordedPaymentsByMonth(resellers, chartYear);
-      return a.map((row, idx) => ({
-        name: row.name,
-        total: row.total + (b[idx]?.total || 0),
-        itens: row.itens + (b[idx]?.itens || 0),
-      }));
-    }
-    return sumPaymentsByMonth(chartItems, chartYear);
-  }, [
-    chartYear,
-    chartItems,
-    chartFolderId,
-    resellersFolderId,
-    resellerLogsMonthly,
-  ]);
-
-  const annualBalance = useMemo(() => {
-    const isResellerFolder =
-      Boolean(resellersFolderId) && chartFolderId === resellersFolderId;
-    if (isResellerFolder) {
-      return sumResellerCreditsValueByItems(
-        chartItems,
-        resellerCreditPriceBrl,
-      );
-    }
-    if (chartFolderId === "all" && resellersFolderId) {
-      const clients = chartItems.filter(
-        (i) => i.folderId !== resellersFolderId,
-      );
-      const resellers = chartItems.filter(
-        (i) => i.folderId === resellersFolderId,
-      );
-      return (
-        annualPaymentBalance(clients, chartYear) +
-        sumResellerCreditsValueByItems(resellers, resellerCreditPriceBrl)
-      );
-    }
-    return annualPaymentBalance(chartItems, chartYear);
-  }, [
-    chartYear,
-    chartItems,
-    chartFolderId,
-    resellersFolderId,
-    resellerCreditPriceBrl,
-  ]);
+    if (chartData?.userId !== chartUserId || chartData.year !== chartYear) return [];
+    const clientItems = myItems.filter((item) => folders.some((folder) => folder.id === item.folderId && folder.type === "Cliente"));
+    return receivedOperationsByMonth(clientItems, chartYear, chartToday, chartData.data, resellersFolderId, chartFolderId);
+  }, [chartData, chartUserId, chartYear, chartToday, myItems, folders, resellersFolderId, chartFolderId]);
+  const annualBalance = useMemo(() => Math.round(monthlyChart.reduce((sum, row) => sum + Math.round(row.total * 100), 0)) / 100, [monthlyChart]);
 
   const ranking = useMemo(
     () =>
@@ -739,6 +610,7 @@ export default function Dashboard() {
         }
       />
 
+      {!isDebtWorkspace && user ? <RenewalSummary userId={user.id} folders={folders.filter((folder) => folder.type === "Cliente")} items={myItems} resellersFolderId={resellersFolderId} onRefresh={() => setChartRefresh((value) => value + 1)} /> : null}
       <section className="mb-8 overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] via-muted/40 to-background p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -1239,11 +1111,11 @@ export default function Dashboard() {
               delay={0.14}
             />
             <StatCard
-              label={`Saldo anual ${chartYear}`}
-              value={money(annualBalance)}
+              label={`Total registrado em ${chartYear}`}
+              value={chartLoading || chartError ? "—" : money(annualBalance)}
               icon={BarChart3}
               tone="default"
-              hint="Lucro Cliente/Produto · sem dívidas nem vencidos"
+              hint="Renovações e recargas registradas no ano"
               delay={0.18}
             />
           </div>
@@ -1277,11 +1149,10 @@ export default function Dashboard() {
                     Receita por mês
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Cliente/Produto até o vencimento · recargas de revendedor
-                    entram pelo valor pago · sem dívidas
+                    Mesma base de Renovações e créditos recebidos · sem projetar mensalidades
                   </p>
                   <p className="mt-2 text-lg font-bold tracking-tight text-primary">
-                    Saldo anual {chartYear}: {money(annualBalance)}
+                    Total registrado em {chartYear}: {chartLoading || chartError ? "—" : money(annualBalance)}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1293,9 +1164,9 @@ export default function Dashboard() {
                       <SelectValue placeholder="Pasta" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Lucro (sem dívidas)</SelectItem>
+                      <SelectItem value="all">Todas as pastas de clientes</SelectItem>
                       {folders
-                        .filter((f) => isRevenueFolderType(f.type))
+                        .filter((f) => f.type === "Cliente")
                         .map((f) => (
                           <SelectItem key={f.id} value={f.id}>
                             {f.name}
@@ -1320,9 +1191,10 @@ export default function Dashboard() {
                   </Select>
                 </div>
               </div>
+              {chartLoading ? <p role="status" className="py-4 text-sm text-muted-foreground">Consultando os registros do ano…</p> : chartError ? <p role="alert" className="py-4 text-sm text-destructive">{chartError}</p> : monthlyChart.some((row) => row.missingAmounts > 0) ? <p className="mb-2 text-xs text-muted-foreground">Há operações sem preço identificado. O gráfico soma somente os valores conhecidos.</p> : null}
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyChart}>
+                  <BarChart data={chartLoading || chartError ? [] : monthlyChart}>
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="hsl(var(--border))"

@@ -110,6 +110,7 @@ import {
   deleteSmartApp,
   deleteIptvUser,
   fetchIptvUserPassword,
+  fetchIptvUserAccess,
   findIptvUserByUsername,
   formatIptvCredits,
   formatMacInput,
@@ -149,7 +150,7 @@ import {
 } from "@/lib/platformApi";
 import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
-import { readItemIptvAccess, replaceRecreatedItemAccess, replaceRecreatedJobAccess, type RecreatedIptvAccess } from "@/lib/iptvRecreation";
+import { replaceRecreatedItemAccess, replaceRecreatedJobAccess, type RecreatedIptvAccess } from "@/lib/iptvRecreation";
 import { UniplayEditUserDialog } from "@/components/UniplayEditUserDialog";
 import { UniplayUnlinkUtmDialog } from "@/components/UniplayUnlinkUtmDialog";
 import { UniplayTicketsPanel } from "@/components/UniplayTicketsPanel";
@@ -230,10 +231,12 @@ export default function UniPlay() {
   const [jobsQ, setJobsQ] = useState("");
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
+  const clientDetailRequest = useRef(0);
   const [clientDetailAccess, setClientDetailAccess] = useState<{
     password: string;
     m3u: string;
     dnsSmarters: string;
+    webPlayer?: string;
   } | null>(null);
   const [showClientsList, setShowClientsList] = useState(false);
   const [showTestsList, setShowTestsList] = useState(false);
@@ -1281,7 +1284,8 @@ export default function UniPlay() {
     const item = clients.find((c) => c.id === itemId);
     if (!item) return;
     setDetailClientId(item.id);
-    setClientDetailAccess(readItemIptvAccess(item.notes));
+    const request = ++clientDetailRequest.current;
+    setClientDetailAccess(null);
     const username = item.itemId.trim();
     if (
       !username ||
@@ -1294,22 +1298,18 @@ export default function UniPlay() {
         const ensured = await ensureIptvToken(panelCreds());
         if (ensured.renewed) persistToken(ensured.token);
         const creds = { ...panelCreds(), bearerToken: ensured.token };
-        const password =
-          (await fetchIptvUserPassword(creds, username)) || "";
-        if (!password) return;
-        const links = resolveTestAccessLinks({
-          username,
-          password,
-          m3uHost: platform.m3uHost,
-          dnsFallback: platform.dnsSmarters,
-        });
-        setClientDetailAccess({
-          password,
-          m3u: links.m3u,
-          dnsSmarters: links.dnsSmarters,
-        });
-      } catch {
-        /* ignore */
+        const access = await fetchIptvUserAccess(creds, username);
+        if (request !== clientDetailRequest.current) return;
+        setClientDetailAccess(access);
+        if (!access.m3u || !access.dnsSmarters) {
+          toast.warning("A Uniplay não retornou todos os links deste cliente. Os campos ausentes ficaram vazios.");
+        }
+      } catch (error) {
+        if (request !== clientDetailRequest.current) return;
+        const message = error instanceof Error ? error.message : "";
+        toast.error(message && !/<[^>]+>/.test(message)
+          ? message
+          : "Não foi possível consultar os acessos deste cliente na Uniplay.");
       }
     })();
   };
@@ -1413,6 +1413,7 @@ export default function UniPlay() {
       months,
       testHours,
       note: `API · ${isExtend ? "estender" : "renovar"} · ${option.label}`,
+      amount: item.price,
     });
     let nextJobs = [job, ...jobs];
     persistJobs(nextJobs);
@@ -3677,6 +3678,17 @@ export default function UniPlay() {
                     <ClipboardCopy className="h-3.5 w-3.5" />
                     Copiar DNS Smarters
                   </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-9 justify-start"
+                    disabled={!clientDetailAccess?.webPlayer}
+                    onClick={() => void copyField("Web Player", clientDetailAccess?.webPlayer || "")}
+                  >
+                    <ClipboardCopy className="h-3.5 w-3.5" />
+                    Copiar Web Player
+                  </Button>
                 </div>
                 <div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
                   <p>Usuário: {maskUser(detailClient.itemId)}</p>
@@ -3693,10 +3705,18 @@ export default function UniPlay() {
                       : clientDetailAccess?.m3u || "—"}
                   </p>
                   <p>
-                    DNS:{" "}
+                    DNS Smarters:{" "}
                     {hideSensitive
                       ? "••••••••"
                       : clientDetailAccess?.dnsSmarters || "—"}
+                  </p>
+                  <p className="break-all">
+                    Web Player:{" "}
+                    {clientDetailAccess?.webPlayer ? (
+                      <a href={clientDetailAccess.webPlayer} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                        {clientDetailAccess.webPlayer}
+                      </a>
+                    ) : "—"}
                   </p>
                 </div>
               </div>

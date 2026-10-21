@@ -2,7 +2,7 @@
  * Extensões para itens (Clientes UniPlay) com suporte a marcas de ciclo (prorrogações).
  */
 
-import type { Item } from "./storage";
+import type { Item } from "@/types";
 
 export type ProrrogaKind = "48h" | "23:59";
 

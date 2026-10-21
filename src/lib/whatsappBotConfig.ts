@@ -167,8 +167,8 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
       renewPixIntro:
         "✅ PIX de {renewKind}\n\n" +
         "Usuário: *{user}*\n" +
-        "Vencimento atual: *{due}*\n" +
-        "Vencimento após pagamento: *{newDue}*\n\n" +
+        "Vencimento atual: *{due}* {dueTime}\n" +
+        "Vencimento após pagamento: *{newDue}* {newDueTime}\n\n" +
         "Na próxima mensagem envio o código PIX (copia e cola).",
       problemHuman:
         "Certo! Vou te encaminhar para nossos atendentes.\nEm breve alguém responde por aqui.",
@@ -211,8 +211,8 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
       pixAlreadyOpen:
         "Você já tem um PIX em aberto.\n\n" +
         "Usuário: *{user}*\n" +
-        "Vencimento atual: *{due}*\n" +
-        "Vencimento após pagamento: *{newDue}*\n" +
+        "Vencimento atual: *{due}* {dueTime}\n" +
+        "Vencimento após pagamento: *{newDue}* {newDueTime}\n" +
         "Valor: *{amount}*\n\n" +
         "Use o código abaixo (válido por até 24h).\n\n" +
         "Se quiser falar de *outro assunto* ou *mudar a mensalidade*, digite *atendente*.",
@@ -243,6 +243,19 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
     },
     testMonthPriceBrl: 0,
   };
+}
+
+/** Completa modelos salvos sem substituir os textos personalizados da loja. */
+export function includeExpirationTime(template: string): string {
+  return template.split("\n").map((line) => {
+    let next = line;
+    for (const [date, time] of [["due", "dueTime"], ["newDue", "newDueTime"], ["due_date", "dueTime"]]) {
+      if (next.includes(`{${date}}`) && !next.includes(`{${time}}`)) {
+        next = next.replace(new RegExp(`(\\{${date}\\}\\*?)`, "g"), `$1 {${time}}`);
+      }
+    }
+    return next;
+  }).join("\n");
 }
 
 function normalizeBotConfig(
@@ -324,6 +337,9 @@ function normalizeBotConfig(
       if (olds.includes(String(merged[key] || ""))) {
         merged[key] = base.messages[key];
       }
+    }
+    for (const key of Object.keys(merged) as (keyof typeof merged)[]) {
+      merged[key] = includeExpirationTime(merged[key]);
     }
     return merged;
   })();
@@ -546,6 +562,7 @@ export async function loadWaBotStateRemote(
         ? JSON.parse(data.value)
         : data.value;
     return {
+      ...raw,
       sessions: (raw?.sessions || {}) as Record<string, WaBotSession>,
       humanPaused: (raw?.humanPaused || {}) as Record<string, boolean>,
       testConsumed: (raw?.testConsumed || {}) as Record<string, WaTestConsumed>,

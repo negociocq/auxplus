@@ -8,6 +8,7 @@ import { partnerDeviceGuide, partnerDeviceHelp, partnerGuideUrl } from "../_shar
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { acquireBotLease, isPausedConversation, isRepeatedBotReply } from "../_shared/waBotGuard.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;
@@ -271,8 +272,8 @@ const DEFAULT_MESSAGES: Record<string, string> = {
   renewPixIntro:
     "✅ PIX de {renewKind}\n\n" +
     "Usuário: *{user}*\n" +
-    "Vencimento atual: *{due}*\n" +
-    "Vencimento após pagamento: *{newDue}*\n\n" +
+    "Vencimento atual: *{due}* {dueTime}\n" +
+    "Vencimento após pagamento: *{newDue}* {newDueTime}\n\n" +
     "Na próxima mensagem envio o código PIX (copia e cola).",
   problemHuman:
     "Certo! Vou te encaminhar para nossos atendentes.\nEm breve alguém responde por aqui.",
@@ -426,8 +427,8 @@ const DEFAULT_MESSAGES: Record<string, string> = {
   pixAlreadyOpen:
     "Você já tem um PIX em aberto.\n\n" +
     "Usuário: *{user}*\n" +
-    "Vencimento atual: *{due}*\n" +
-    "Vencimento após pagamento: *{newDue}*\n" +
+    "Vencimento atual: *{due}* {dueTime}\n" +
+    "Vencimento após pagamento: *{newDue}* {newDueTime}\n" +
     "Valor: *{amount}*\n\n" +
     "Use o código abaixo (válido por até 24h).\n\n" +
     "Se quiser falar de *outro assunto* ou *mudar a mensalidade*, digite *atendente*.",
@@ -532,14 +533,14 @@ function formatDue(value?: string | null) {
 
 /**
  * Extrai hora do vencimento. Aceita "2026-09-11 22:58:05" (com espaço) e
- * "2026-09-11T22:58:05" (ISO do Supabase/PostgREST). Sem hora → 23:59:59.
+ * "2026-09-11T22:58:05" (ISO do Supabase/PostgREST). Sem hora → informa ausência.
  */
 function formatDueTime(value?: string | null) {
   const m = /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(String(value || "").trim());
-  if (!m) return "23:59:59";
+  if (!m) return "horário não informado";
   const h = String(m[4]).padStart(2, "0");
   const min = String(m[5]).padStart(2, "0");
-  const s = String(m[6] || "59").padStart(2, "0");
+  const s = String(m[6] || "00").padStart(2, "0");
   return `${h}:${min}:${s}`;
 }
 
@@ -595,9 +596,22 @@ function isClientStillActive(dueDate?: string | null) {
   return due >= todayYmdBrazil();
 }
 
-/** "DD/MM/YYYY HH:MM:SS" — data + hora (padrão 23:59:59). */
+/** "DD/MM/YYYY HH:MM:SS" — data + hora registrada no cadastro. */
 function formatDueWithTime(value?: string | null) {
   return `${formatDue(value)} ${formatDueTime(value)}`;
+}
+
+/** Compatível com textos antigos com apenas {due}, sem duplicar {dueTime}. */
+function fillDueTemplate(
+  template: string,
+  vars: Record<string, string | number | undefined | null>,
+  dueDate?: string | null,
+) {
+  return fill(template, {
+    ...vars,
+    due: template.includes("{dueTime}") ? formatDue(dueDate) : formatDueWithTime(dueDate),
+    dueTime: formatDueTime(dueDate),
+  });
 }
 
 /**
@@ -635,11 +649,10 @@ function fillTestReady(
   hours: number,
 ): string {
   const expiresAt = testExpiresAt(hours);
-  const msg = fill(tpl, { ...vars, expiresAt });
+  const msg = fill(tpl, { ...vars, expiresAt, due: expiresAt, dueTime: expiresAt.split(" às ")[1] || "horário não informado" });
   if (
     !tpl.includes("{expiresAt}") &&
-    !tpl.includes("{due}") &&
-    !/expira/i.test(tpl)
+    !tpl.includes("{due}")
   ) {
     return `${msg}\n\n⏳ *Expira em:* ${expiresAt}`;
   }
@@ -669,13 +682,11 @@ function fillClientAskIntent(
   opts: { user: unknown; dueDate?: string | null },
 ) {
   const renewLabel = clientRenewLabel(opts.dueDate);
-  let msg = fill(template, {
+  let msg = fillDueTemplate(template, {
     user: opts.user,
-    due: formatDue(opts.dueDate),
-    dueTime: formatDueTime(opts.dueDate),
     renewLabel,
     renewKind: clientRenewKind(opts.dueDate),
-  });
+  }, opts.dueDate);
   if (isClientStillActive(opts.dueDate)) {
     // Textos antigos salvos com "Renovar" fixo → "Renovar vencimento", uma vez só.
     // Por linha (evita re-aplicar e duplicar "vencimento").
@@ -699,14 +710,13 @@ function fillClientRenewPix(
   const active = isClientStillActive(dueDate);
   const months = Math.max(1, Math.floor(Number(vars.months) || 1));
   const newDue = nextDueAfterRenewDisplay(dueDate, months);
-  let msg = fill(template, {
+  let msg = fillDueTemplate(template, {
     ...vars,
-    due: formatDueWithTime(dueDate),
-    newDue,
-    dueTime: formatDueTime(dueDate),
+    newDue: template.includes("{newDueTime}") ? formatDue(nextDueAfterRenewYmd(dueDate, months)) : newDue,
+    newDueTime: formatDueTime(dueDate),
     renewLabel: clientRenewLabel(dueDate),
     renewKind: clientRenewKind(dueDate),
-  });
+  }, dueDate);
   // Textos antigos sem {newDue}: injeta abaixo do vencimento atual
   if (
     !/vencimento após pagamento/i.test(msg) &&
@@ -875,10 +885,11 @@ async function putSetting(
   key: string,
   value: unknown,
 ) {
-  await client.from("platform_settings").upsert(
+  const { error } = await client.from("platform_settings").upsert(
     { key, value, updated_at: new Date().toISOString() },
     { onConflict: "key" },
   );
+  if (error) throw new Error("Não foi possível salvar o estado do atendimento");
 }
 
 /** Grava teste/renovação do WhatsApp no mesmo log das Automações (iptv_jobs). */
@@ -1124,7 +1135,7 @@ async function evoSend(
       if (response.ok) return;
     } catch { /* Keep the instructions available if the image cannot be delivered. */ }
   }
-  await fetch(`${base}/message/sendText/${encodeURIComponent(instance)}`, {
+  const response = await fetch(`${base}/message/sendText/${encodeURIComponent(instance)}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -1138,6 +1149,7 @@ async function evoSend(
       delay: Math.max(800, Math.min(5000, typingDelayMs)),
     }),
   });
+  if (!response.ok) throw new Error(`Falha ao enviar mensagem no WhatsApp (${response.status})`);
 }
 
 /**
@@ -2362,6 +2374,7 @@ Deno.serve(async (req) => {
   }
   if (req.method !== "POST") return json({ error: "Use POST" }, 405);
 
+  let botLease: Awaited<ReturnType<typeof acquireBotLease>> = null;
   try {
     const payload = (await req.json().catch(() => ({}))) as Record<
       string,
@@ -2492,9 +2505,21 @@ Deno.serve(async (req) => {
       /** Cliente pediu para parar o automático */
       optOut?: Record<string, boolean>;
     };
+    botLease = await acquireBotLease(client, userId);
+    if (!botLease) return json({ ok: false, error: "Atendimento ocupado; tentar novamente" }, 503);
     const store =
       (await getSetting<Store>(client, `wa_bot_state_user_${userId}`)) || {};
     const sessions = { ...(store.sessions || {}) };
+    // Evolution pode alternar a representação do mesmo telefone entre eventos.
+    if (!sessions[phone]) {
+      const matched = Object.entries(sessions)
+        .filter(([key]) => phoneMatches(key, phone))
+        .sort((a, b) => Date.parse(b[1].updatedAt || "") - Date.parse(a[1].updatedAt || ""))[0];
+      if (matched) {
+        sessions[phone] = matched[1];
+        delete sessions[matched[0]];
+      }
+    }
     const humanPaused = { ...(store.humanPaused || {}) };
     const testConsumed = { ...(store.testConsumed || {}) };
     const recentMsgIds = { ...(store.recentMsgIds || {}) };
@@ -2502,6 +2527,7 @@ Deno.serve(async (req) => {
       ? [...store.botSendLog]
       : [];
     const lastSendAtByPhone = { ...(store.lastSendAtByPhone || {}) };
+    const recentRepliesByPhone = { ...((store as Store & { recentRepliesByPhone?: Record<string, { body: string; at: number }[]> }).recentRepliesByPhone || {}) };
     const optOut = { ...(store.optOut || {}) };
 
     const phoneStateKey = (p: string) => digitsPhone(p) || String(p || "");
@@ -2558,6 +2584,7 @@ Deno.serve(async (req) => {
     };
 
     const persistState = async () => {
+      botLease?.assertHeld();
       const now = Date.now();
       for (const [id, exp] of Object.entries(recentMsgIds)) {
         if (Number(exp) < now) delete recentMsgIds[id];
@@ -2573,6 +2600,7 @@ Deno.serve(async (req) => {
         recentMsgIds,
         botSendLog,
         lastSendAtByPhone,
+        recentRepliesByPhone,
         optOut,
       });
     };
@@ -2610,6 +2638,7 @@ Deno.serve(async (req) => {
 
     let lastSendInRequest = 0;
     const send = async (msg: string, imageUrl?: string) => {
+      botLease?.assertHeld();
       const body = String(msg || "").trim();
       if (!body) return;
       const gate = canBotSendToPhone();
@@ -2619,6 +2648,9 @@ Deno.serve(async (req) => {
       }
       const key = phoneKeyForCaps();
       const now = Date.now();
+      const previousReplies = Object.entries(recentRepliesByPhone)
+        .filter(([p]) => phoneMatches(p, key)).flatMap(([, replies]) => replies);
+      if (isRepeatedBotReply(previousReplies, body, now)) return;
       const lastPhone = Number(lastSendAtByPhone[key] || 0);
       const wait = Math.max(
         0,
@@ -2626,11 +2658,14 @@ Deno.serve(async (req) => {
         BOT_MSG_GAP_MS - (now - lastPhone),
       );
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      botLease?.assertHeld();
       await evoSend(apiBaseUrl, apiKey, instance, phone, body, BOT_TYPING_DELAY_MS, imageUrl);
       const sentAt = Date.now();
       lastSendInRequest = sentAt;
       lastSendAtByPhone[key] = sentAt;
       botSendLog.push({ at: new Date(sentAt).toISOString(), phone: key });
+      recentRepliesByPhone[key] = [...previousReplies.filter((reply) => sentAt - reply.at < 60_000), { body, at: sentAt }].slice(-30);
+      await persistState();
     };
 
     const setHumanPaused = (p: string, paused: boolean) => {
@@ -2686,7 +2721,7 @@ Deno.serve(async (req) => {
       sessions[phone] = {
         ...(sessions[phone] || {}),
         state: "human",
-        humanBusySent: false,
+        humanBusySent: true,
         updatedAt: new Date().toISOString(),
       };
       await persistState();
@@ -2720,6 +2755,11 @@ Deno.serve(async (req) => {
     }
 
     if (fromMe) return json({ ok: true, skipped: "fromMe" });
+
+    // Depois do aviso de transferência, silêncio absoluto até o dono encerrar.
+    if (isPausedConversation(phone, sessions, humanPaused, phoneMatches)) {
+      return json({ ok: true, skipped: "human_paused" });
+    }
 
     const { data: recoveryContact } = await client.from("wa_recovery_contacts").select("*").eq("user_id", String(userId)).eq("phone", recoveryPhone(phone)).maybeSingle();
     if (recoveryContact?.status === "invited" && (cmdNorm === "2" || ["parar","stop","sair"].includes(cmdNorm))) {
@@ -2783,28 +2823,6 @@ Deno.serve(async (req) => {
     }
     if (isOptedOut) {
       return json({ ok: true, skipped: "opt_out" });
-    }
-
-    if (isHumanPaused(phone)) {
-      // Avisa o cliente UMA vez por atendimento humano (não repete a cada
-      // mensagem que ele mandar enquanto o atendente estiver assumido).
-      const prev = sessions[phone] || {
-        state: "human",
-        updatedAt: new Date().toISOString(),
-      };
-      if (!prev.humanBusySent) {
-        sessions[phone] = {
-          ...prev,
-          state: "human",
-          humanBusySent: true,
-          updatedAt: new Date().toISOString(),
-        };
-        await persistState();
-        await send(
-          messages.humanBusy || DEFAULT_MESSAGES.humanBusy,
-        );
-      }
-      return json({ ok: true, skipped: "human_paused" });
     }
 
     // Free local OCR only. Never fall back to a paid provider.
@@ -3018,7 +3036,7 @@ Deno.serve(async (req) => {
       t === "atendentes" ||
       (menuAllowsTwoAsAttendant && t === "2") ||
       // Menus customizados com 3ª opção ("3 — Falar com atendentes")
-      (session.state === "ask_intent" && t === "3") ||
+      (["ask_intent", "idle"].includes(session.state || "idle") && t === "3") ||
       // Quem está no menu de problema escolheu 1/2/3 → sempre quer atendente
       session.state === "ask_problem_kind" ||
       problemKeys.some(
@@ -3088,8 +3106,11 @@ Deno.serve(async (req) => {
         String(tfTexts.macCheckIn || "").trim() ||
         DEFAULT_MESSAGES.testMacCheckIn;
       const task = (async () => {
+        let checkInLease: Awaited<ReturnType<typeof acquireBotLease>> = null;
         try {
           await new Promise((r) => setTimeout(r, delayMs));
+          checkInLease = await acquireBotLease(client, userId);
+          if (!checkInLease) return;
           const fresh =
             (await getSetting<Store>(
               client,
@@ -3107,11 +3128,8 @@ Deno.serve(async (req) => {
             sess = hit[1];
           }
           if (!sess || sess.macCheckInId !== checkInId) return;
-          const paused = fresh.humanPaused || {};
-          const isPaused = Object.entries(paused).some(
-            ([k, v]) => Boolean(v) && phoneMatches(k, phone),
-          );
-          if (isPaused) return;
+          if (isPausedConversation(phone, sessMap, fresh.humanPaused || {}, phoneMatches)) return;
+          checkInLease.assertHeld();
           await evoSend(apiBaseUrl, apiKey, instance, phone, msg);
           sessMap[key] = {
             ...sess,
@@ -3126,6 +3144,8 @@ Deno.serve(async (req) => {
           });
         } catch (e) {
           console.error("macCheckIn failed", e);
+        } finally {
+          if (checkInLease) await checkInLease.release().catch(() => {});
         }
       })();
       try {
@@ -3669,7 +3689,7 @@ Deno.serve(async (req) => {
         sessions[phone] = {
           ...sess,
           state: "human",
-          humanBusySent: false,
+          humanBusySent: true,
           updatedAt: new Date().toISOString(),
         };
         await persistState();
@@ -3933,7 +3953,7 @@ Deno.serve(async (req) => {
           ...session,
           state: "human",
           role: "unknown",
-          humanBusySent: false,
+          humanBusySent: true,
           updatedAt: new Date().toISOString(),
         };
         await persistState();
@@ -4283,7 +4303,7 @@ Deno.serve(async (req) => {
         sessions[phone] = {
           state: "human",
           role: "reseller",
-          humanBusySent: false,
+          humanBusySent: true,
           updatedAt: new Date().toISOString(),
         };
         await persistState();
@@ -4416,7 +4436,7 @@ Deno.serve(async (req) => {
       // NÃO resetam — senão a resposta do menu de problema volta pro início.
       const isFreshClientSession =
         !session.state || session.state === "idle";
-      if (isFreshClientSession) {
+      if (isFreshClientSession && !wantsAttendant) {
         sessions[phone] = {
           state: "ask_intent",
           role: "client",
@@ -4509,7 +4529,7 @@ Deno.serve(async (req) => {
               state: "human",
               role: "client",
               itemRefId: String(clientItem.id),
-              humanBusySent: false,
+              humanBusySent: true,
               updatedAt: new Date().toISOString(),
             };
             await persistState();
@@ -4543,7 +4563,7 @@ Deno.serve(async (req) => {
               state: "human",
               role: "client",
               itemRefId: String(clientItem.id),
-              humanBusySent: false,
+              humanBusySent: true,
               updatedAt: new Date().toISOString(),
             };
             await persistState();
@@ -4581,7 +4601,7 @@ Deno.serve(async (req) => {
               state: "human",
               role: "client",
               itemRefId: String(clientItem.id),
-              humanBusySent: false,
+              humanBusySent: true,
               updatedAt: new Date().toISOString(),
             };
             await persistState();
@@ -4628,7 +4648,7 @@ Deno.serve(async (req) => {
           state: "human",
           role: "client",
           itemRefId: String(clientItem.id),
-          humanBusySent: false,
+          humanBusySent: true,
           updatedAt: new Date().toISOString(),
         };
         await persistState();
@@ -4782,7 +4802,10 @@ Deno.serve(async (req) => {
         }
       }
 
-      // resposta inválida na pergunta de intenção → reenvia menu
+      // Conversas em texto livre não recebem o mesmo menu a cada mensagem.
+      if (!["menu", "0", "inicio"].includes(t)) {
+        return json({ ok: true, skipped: "awaiting_menu_choice" });
+      }
       await send(
         fillClientAskIntent(
           messages.askIntent || DEFAULT_MESSAGES.askIntent,
@@ -4803,6 +4826,8 @@ Deno.serve(async (req) => {
       { error: e instanceof Error ? e.message : "webhook falhou" },
       500,
     );
+  } finally {
+    if (botLease) await botLease.release().catch(() => {});
   }
 });
 

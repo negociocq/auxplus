@@ -15,11 +15,31 @@ import { startAdminSession } from "@/lib/adminSession";
 import { startRecoverySession } from "@/lib/whatsappRecovery";
 import { extractDebtFromNotes } from "@/lib/debts";
 import { extractPaymentsFromNotes } from "@/lib/payments";
+import type { MpRenewOrder } from "@/lib/mercadoPagoOrders";
+import type { IptvJob } from "@/lib/iptvAutomation";
 import { extractPlanMonths, getPlanSegments } from "@/lib/planMonths";
 import { extractScreens } from "@/lib/itemScreens";
 import { extractResellerCreditsBought } from "@/lib/resellerCredits";
 import { computeItemStatus, refreshItemStatuses } from "@/lib/storage";
 
+/** Consulta do relatório sem regravar/mesclar pedidos de pagamento. */
+export async function fetchRenewalOrders(userId: string): Promise<MpRenewOrder[]> {
+  if (!supabase || !userId) return [];
+  const { data, error } = await supabase.from("platform_settings").select("value")
+    .eq("key", `mp_orders_user_${userId}`).maybeSingle();
+  if (error) throw new Error("Não foi possível consultar os pagamentos Pix.");
+  const value = typeof data?.value === "string" ? JSON.parse(data.value) : data?.value;
+  return Array.isArray(value?.orders) ? value.orders.filter((order: MpRenewOrder) => order && typeof order === "object" && !order.blocked) : [];
+}
+
+export async function fetchConfirmedRenewalJobs(userId: string): Promise<IptvJob[]> {
+  if (!supabase || !userId) return [];
+  const { data, error } = await supabase.from("platform_settings").select("value")
+    .eq("key", `iptv_jobs_user_${userId}`).maybeSingle();
+  if (error) throw new Error("Não foi possível consultar as renovações confirmadas.");
+  const value = typeof data?.value === "string" ? JSON.parse(data.value) : data?.value;
+  return Array.isArray(value?.jobs) ? value.jobs.filter((job: IptvJob) => job?.kind === "renew" && job.status === "done") : [];
+}
 const VALID_STATUS: ItemStatus[] = [
   "Longe de Vencer",
   "Perto de Vencer",

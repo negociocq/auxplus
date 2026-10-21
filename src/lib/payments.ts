@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import type { Item, ItemPayment } from "@/types";
 import { planMonthlyInMonth } from "@/lib/planMonths";
+import { extractProrrogaUsage } from "@/lib/itemExtensions";
 
 export type { ItemPayment };
 
@@ -24,6 +25,7 @@ export function extractPaymentsFromNotes(
     return parsed
       .filter((p) => p && typeof p.paidAt === "string")
       .map((p) => ({
+        ...p,
         paidAt: String(p.paidAt).slice(0, 10),
         amount: Number(p.amount) || 0,
       }));
@@ -40,6 +42,7 @@ export function embedPaymentsInNotes(
   if (!payments.length) return clean;
   const payload = JSON.stringify(
     payments.map((p) => ({
+      ...p,
       paidAt: p.paidAt.slice(0, 10),
       amount: Number(p.amount) || 0,
     })),
@@ -53,6 +56,7 @@ export function embedPaymentsInNotes(
 export function getRecordedPayments(item: Item): ItemPayment[] {
   if (item.payments?.length) {
     return item.payments.map((p) => ({
+      ...p,
       paidAt: String(p.paidAt).slice(0, 10),
       amount: Number(p.amount) || 0,
     }));
@@ -68,7 +72,7 @@ export function getItemPayments(item: Item): ItemPayment[] {
   // Sem histórico: conta só o ciclo atual (vencimento), não espalha nos meses intermediários
   const paidAt = String(item.dueDate || item.createdAt || "").slice(0, 10);
   if (!paidAt) return [];
-  return [{ paidAt, amount: item.price || 0 }];
+  return [{ paidAt, amount: item.price || 0, kind: "estimated" }];
 }
 
 /** Acrescenta um pagamento ao histórico do item (ex.: recarga de revendedor). */
@@ -107,6 +111,8 @@ export function paymentsAfterDueChange(
   next: Item,
 ): ItemPayment[] {
   const payments = [...getItemPayments(previous)];
+  const extension = extractProrrogaUsage(next);
+  if (extension?.oldDue === previous.dueDate && extension?.newDue === next.dueDate) return payments;
   const oldDue = previous.dueDate ? previous.dueDate.slice(0, 10) : null;
   const newDue = next.dueDate ? next.dueDate.slice(0, 10) : null;
   const amount = next.price || previous.price || 0;
@@ -114,12 +120,12 @@ export function paymentsAfterDueChange(
   if (oldDue && newDue && newDue > oldDue) {
     const oldMonth = oldDue.slice(0, 7);
     if (!payments.some((p) => p.paidAt.slice(0, 7) === oldMonth)) {
-      payments.push({ paidAt: oldDue, amount: previous.price || amount });
+      payments.push({ paidAt: oldDue, amount: previous.price || amount, kind: "estimated" });
     }
     const today = format(new Date(), "yyyy-MM-dd");
-    const sameDay = payments.findIndex((p) => p.paidAt === today);
-    if (sameDay >= 0) payments[sameDay] = { paidAt: today, amount };
-    else payments.push({ paidAt: today, amount });
+    const sameDay = payments.findIndex((p) => p.paidAt === today && !p.paymentId);
+    if (sameDay >= 0) payments[sameDay] = { paidAt: today, amount, kind: "renewal" };
+    else payments.push({ paidAt: today, amount, kind: "renewal" });
   }
 
   return payments;
@@ -130,7 +136,7 @@ export function paymentsForNewItem(item: Omit<Item, "id" | "status"> | Item): It
     0,
     10,
   );
-  return [{ paidAt, amount: item.price || 0 }];
+  return [{ paidAt, amount: item.price || 0, kind: "initial" }];
 }
 
 function parseLocalYmd(value: string): Date {

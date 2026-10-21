@@ -1,4 +1,5 @@
 import seed from "@/data/seed.json";
+import { preserveHistoricalIptvUsernames } from "@/lib/iptvUserAliases";
 import type {
   AppData,
   Folder,
@@ -376,7 +377,7 @@ export function createItem(
 export function updateItem(data: AppData, item: Item): AppData {
   const { near, far } = folderThresholds(data, item.folderId);
   const previous = data.items.find((i) => i.id === item.id);
-  item = { ...item, notes: preserveItemIptvAccess(item.notes, previous?.notes) };
+  item = { ...item, notes: preserveHistoricalIptvUsernames(preserveItemIptvAccess(item.notes, previous?.notes), previous?.notes, previous?.itemId !== item.itemId ? previous?.itemId : undefined) };
   const oldDue = previous?.dueDate?.slice(0, 10) ?? null;
   const newDue = item.dueDate?.slice(0, 10) ?? null;
   const renewed = Boolean(oldDue && newDue && newDue > oldDue);

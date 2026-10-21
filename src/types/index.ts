@@ -58,6 +58,8 @@ export interface WhatsappMessage {
 export interface ItemPayment {
   paidAt: string;
   amount: number;
+  kind?: "renewal" | "initial" | "estimated";
+  paymentId?: string;
 }
 
 export interface DebtInstallment {

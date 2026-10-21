@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import type { AppData, Item, User } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBrDate } from "@/lib/format";
+import { getRecordedPayments, withEmbeddedPayments } from "@/lib/payments";
+import { brazilDay } from "@/lib/renewalSummary";
 import {
   loadAutomationsConfig,
   saveAutomationsConfig,
@@ -588,6 +590,21 @@ export async function releasePaidMpOrder(
       ]);
     }
 
+    const paymentId = order.mpPaymentId || order.id;
+    const paidAt = brazilDay(new Date(latest.paidAt || new Date().toISOString()));
+    const generatedDay = brazilDay();
+    const previousPayments = getRecordedPayments(item);
+    const history = getRecordedPayments(updated).filter((payment) =>
+      !(payment.kind === "renewal" && !payment.paymentId && payment.paidAt === generatedDay),
+    );
+    // Preservar recebimentos anteriores, inclusive outra renovação no mesmo dia.
+    for (const payment of previousPayments) {
+      if (!history.some((row) => JSON.stringify(row) === JSON.stringify(payment))) history.push(payment);
+    }
+    if (!history.some((payment) => payment.paymentId === paymentId)) {
+      history.push({ paidAt, amount: Math.round(Number(order.amount) * 100) / 100, kind: "renewal", paymentId });
+    }
+    updated = withEmbeddedPayments({ ...updated, payments: history });
     setData((prev) => ({
       ...prev,
       items: prev.items.map((i) => (i.id === item.id ? updated : i)),

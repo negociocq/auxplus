@@ -174,14 +174,14 @@ export function resolvePlanSegmentsOnSave(
     return [{ from: created, price: nextPrice, planMonths: nextMonths }];
   }
 
-  const persisted = hasPersistedSegments(previous.notes);
+  const persisted = hasPersistedSegments(previous.notes) || Boolean(previous.planHistory?.length);
   const prevPrice = roundMoney(previous.price);
   const prevMonths = getPlanMonths(previous, 1);
 
   // Ainda sem histórico de segmentos gravado
   if (!persisted) {
     // 1ª vez no pacote multi-mês → aplica desde a criação
-    if (nextMonths > 1 && prevMonths <= 1) {
+    if (nextMonths > 1 && prevMonths <= 1 && nextPrice === prevPrice) {
       return [{ from: created, price: nextPrice, planMonths: nextMonths }];
     }
     // Já era multi-mês (só campo months) e mantém → congela desde a criação
@@ -324,6 +324,21 @@ export function planMonthlyInMonth(
     if (s.from.slice(0, 7) <= key) active = s;
   }
   return planMonthlyAmount(active?.price ?? 0, active?.planMonths ?? 1);
+}
+
+/** Preço do pacote na data da renovação; não divide pelos meses do plano. */
+export function planPriceOnDate(item: Pick<Item, "price" | "planMonths" | "notes" | "createdAt" | "planHistory">, date: string): number | null {
+  const key = toDateKey(date);
+  if (!key) return null;
+  const hasHistory = Boolean(item.planHistory?.length) || hasPersistedSegments(item.notes);
+  if (!hasHistory && (item.price == null || !Number.isFinite(Number(item.price)))) return null;
+  const segments = getPlanSegments(item);
+  let active = segments[0];
+  for (const segment of segments) {
+    if (segment.from <= key) active = segment;
+  }
+  const price = active?.price;
+  return Number.isFinite(price) && price >= 0 ? roundMoney(price) : null;
 }
 
 /**

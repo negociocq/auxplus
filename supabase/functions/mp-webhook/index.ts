@@ -15,6 +15,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { recordPixPayment } from "../_shared/renewalPayments.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -114,10 +115,11 @@ function moneyBrl(n: number) {
 
 function formatBrDate(raw?: string | null) {
   if (!raw) return "—";
-  const s = String(raw).slice(0, 10);
+  const s = String(raw).trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (!m) return s;
-  return `${m[3]}/${m[2]}/${m[1]}`;
+  const time = s.match(/[T\s](\d{2}:\d{2})(?::(\d{2}))?/);
+  return `${m[3]}/${m[2]}/${m[1]} ${time ? `${time[1]}:${time[2] || "00"}` : "(horário não informado)"}`;
 }
 
 function ymdOnly(raw?: string | null) {
@@ -762,24 +764,28 @@ async function updateItemDue(
   dueDate: string,
   notesExtra?: string,
   price?: number,
+  payment?: { id: string; paidAt: string; kind: "renewal" | "initial" },
 ) {
   if (!itemId) return;
   const patch: Record<string, unknown> = {
     due_date: dueDate.length === 10 ? `${dueDate}T12:00:00` : dueDate,
   };
-  if (notesExtra) {
-    const { data } = await client
+  if (notesExtra || payment) {
+    const { data, error } = await client
       .from("items")
       .select("notes")
       .eq("id", itemId)
       .maybeSingle();
+    if (error) throw new Error("Falha ao consultar o histórico do cliente");
     const prev = String(data?.notes || "").trim();
-    patch.notes = prev ? `${prev}\n${notesExtra}` : notesExtra;
+    const notes = notesExtra ? (prev ? `${prev}\n${notesExtra}` : notesExtra) : prev;
+    patch.notes = payment ? recordPixPayment(notes, { ...payment, amount: Number(price) }) : notes;
   }
   if (typeof price === "number" && Number.isFinite(price) && price > 0) {
     patch.price = Math.round(price * 100) / 100;
   }
-  await client.from("items").update(patch).eq("id", itemId);
+  const { error } = await client.from("items").update(patch).eq("id", itemId);
+  if (error) throw new Error("Falha ao registrar a renovação do cliente");
 }
 
 async function releaseOrder(
@@ -843,7 +849,7 @@ async function releaseOrder(
     });
     const newDue = nextDueAfterRenew(order.dueDate, months);
     if (order.itemRefId) {
-      await updateItemDue(client, order.itemRefId, newDue, undefined, planAmount);
+      await updateItemDue(client, order.itemRefId, newDue, undefined, planAmount, { id: order.mpPaymentId || order.id, paidAt: order.paidAt || new Date().toISOString(), kind: "initial" });
     }
 
     if (isManual) {
@@ -992,7 +998,7 @@ async function releaseOrder(
       /* usa cálculo local */
     }
     if (order.itemRefId) {
-      await updateItemDue(client, order.itemRefId, newDue, undefined, Number(order.amount));
+      await updateItemDue(client, order.itemRefId, newDue, undefined, Number(order.amount), { id: order.mpPaymentId || order.id, paidAt: order.paidAt || new Date().toISOString(), kind: "renewal" });
     }
     await appendIptvJob(client, userId, {
       kind: "renew",
@@ -1004,6 +1010,7 @@ async function releaseOrder(
       dueDate: newDue,
       months,
       note: `Webhook MP · renovação · ${months}m · vence ${formatBrDate(newDue)} · ${order.mpPaymentId}`,
+      amount: Number(order.amount),
     });
     waText =
       `✅ *Pagamento confirmado!*\n\n` +

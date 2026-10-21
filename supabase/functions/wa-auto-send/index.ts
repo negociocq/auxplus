@@ -223,7 +223,7 @@ function formatDueForMessage(value: unknown): string {
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (!m) return "—";
   const date = `${m[3]}/${m[2]}/${m[1]}`;
-  const time = m[4] != null ? `${m[4]}:${m[5]}:${m[6] ?? "00"}` : "00:00:00";
+  const time = m[4] != null ? `${m[4]}:${m[5]}:${m[6] ?? "00"}` : "(horário não informado)";
   return `${date} ${time}`;
 }
 
@@ -232,7 +232,9 @@ function fillWhatsappTemplate(
   item: { name?: string; itemId?: string; dueDate?: unknown; price?: unknown; phone?: string },
   kind: "before" | "onday",
 ): string {
-  const due = formatDueForMessage(item.dueDate);
+  const fullDue = formatDueForMessage(item.dueDate);
+  const dueTime = fullDue.split(" ").slice(1).join(" ") || "horário não informado";
+  const due = template.includes("{dueTime}") ? fullDue.split(" ")[0] : fullDue;
   const dateText = kind === "onday" ? "Vence hoje:" : "Vai vencer em:";
   // Usa o itemId se for um número "longo" (> 5 caracteres, tipo username do painel)
   // Caso contrário, usa o phone como fallback
@@ -245,6 +247,8 @@ function fillWhatsappTemplate(
     .replace(/\{name\}/g, String(item.name || ""))
     .replace(/\{dateText\}/g, dateText)
     .replace(/\{due_date\}/g, due)
+    .replace(/\{due\}/g, due)
+    .replace(/\{dueTime\}/g, dueTime)
     .replace(/\{valor\}/g, String(item.price ?? ""))
     .replace(/\{price\}/g, String(item.price ?? ""));
 }

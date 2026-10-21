@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   Select,
   SelectContent,
@@ -295,7 +297,20 @@ export function TestFlowEditor({ value, onChange }: Props) {
     set({ texts: { ...flow.texts, [key]: v } });
 
   return (
-    <div className="space-y-4">
+    <Tabs defaultValue="inicio" className="space-y-4">
+      <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+        <div>
+          <h3 className="font-semibold">Configurar testes e planos</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Escolha o assunto que deseja editar. Ao terminar, clique em Salvar ajustes.</p>
+        </div>
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
+          <TabsTrigger value="inicio">1. Configuração inicial</TabsTrigger>
+          <TabsTrigger value="aparelhos">2. Aparelhos e apps</TabsTrigger>
+          <TabsTrigger value="mensagens">3. Mensagens</TabsTrigger>
+          <TabsTrigger value="planos">4. Planos e Pix</TabsTrigger>
+        </TabsList>
+      </div>
+      <TabsContent value="inicio" className="mt-0 space-y-4">
       <section className="ax-surface space-y-3 p-4">
         <div><h3 className="text-sm font-semibold">Apps por aparelho</h3><p className="text-xs text-muted-foreground">Opções disponíveis no atendimento automático de testes.</p></div>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -346,7 +361,7 @@ export function TestFlowEditor({ value, onChange }: Props) {
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Preço 1 mês (R$)</Label>
+            <Label className="text-xs">Valor padrão do Pix mensal (R$)</Label>
             <Input
               type="number"
               min={0}
@@ -359,6 +374,7 @@ export function TestFlowEditor({ value, onChange }: Props) {
               }
               placeholder="30"
             />
+            <p className="text-xs text-muted-foreground">Usado quando o plano não tem um Valor PIX próprio. Configure cada oferta em Planos e Pix.</p>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Link login (computador)</Label>
@@ -386,7 +402,9 @@ export function TestFlowEditor({ value, onChange }: Props) {
           </div>
         </div>
       </section>
-
+      </TabsContent>
+      <TabsContent value="aparelhos" className="mt-0 space-y-4">
+      <p className="text-sm text-muted-foreground">Configure as perguntas que o cliente recebe para escolher o aparelho e o aplicativo.</p>
       <MenuBlock
         title="1) Qual aparelho?"
         hint="Ação Celular: “Perguntar Android / iPhone”."
@@ -533,6 +551,8 @@ export function TestFlowEditor({ value, onChange }: Props) {
         )}
       </section>
 
+      </TabsContent>
+      <TabsContent value="mensagens" className="mt-0 space-y-4">
       <section className="ax-surface space-y-3 p-4">
         <h3 className="text-sm font-semibold">4) Mensagens de resultado</h3>
         <p className="text-[11px] text-muted-foreground">
@@ -540,6 +560,8 @@ export function TestFlowEditor({ value, onChange }: Props) {
           {"{apk}"} {"{iosApp}"} {"{dns}"} {"{name}"} {"{mac}"} {"{app}"}{" "}
           {"{amount}"}
         </p>
+        <p className="text-sm text-muted-foreground">Abra somente a mensagem que deseja alterar. Os campos entre chaves são preenchidos com os dados do cliente.</p>
+        <Accordion type="single" collapsible>
         {(
           [
             ["askName", "Pedir nome (antes do teste → nota no painel)"],
@@ -564,20 +586,31 @@ export function TestFlowEditor({ value, onChange }: Props) {
             ["alreadyUsed", "Já usou o teste e pediu outro"],
           ] as const
         ).map(([key, label]) => (
-          <div key={key} className="space-y-1">
-            <Label className="text-xs">{label}</Label>
+          <AccordionItem key={key} value={key}>
+            <AccordionTrigger className="text-left text-sm">{label}</AccordionTrigger>
+            <AccordionContent>
+            <Label htmlFor={`test-message-${key}`} className="sr-only">{label}</Label>
             <Textarea
+              id={`test-message-${key}`}
               rows={4}
               value={flow.texts[key]}
               onChange={(e) => setText(key, e.target.value)}
             />
-          </div>
+            </AccordionContent>
+          </AccordionItem>
         ))}
+        </Accordion>
       </section>
-
+      </TabsContent>
+      <TabsContent value="planos" className="mt-0 space-y-4">
+      <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+        <h3 className="text-sm font-semibold">Como alterar o preço de um plano</h3>
+        <p className="mt-1 text-sm text-muted-foreground">Altere o campo <strong>Valor PIX (R$)</strong> na opção do plano e salve os ajustes. Os próximos Pix usarão esse valor. Atualize também o preço escrito na mensagem e no nome da opção para que o cliente veja o mesmo valor.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Editar somente o texto não altera a cobrança. Pix já emitidos mantêm o valor anterior. Estes ajustes valem apenas para sua conta.</p>
+      </div>
       <MenuBlock
-        title="5) Voltou após o teste (ativar plano)"
-        hint="Opções típicas: ativar 1 mês + PIX, ou atendentes."
+        title="Planos oferecidos após o teste"
+        hint="Em cada opção, escolha a ação de ativar plano para configurar o valor cobrado e a quantidade de telas."
         menu={
           flow.offerMenu.message || flow.offerMenu.options.length
             ? flow.offerMenu
@@ -589,6 +622,7 @@ export function TestFlowEditor({ value, onChange }: Props) {
         appMenuIds={appMenuIds}
         onChange={(offerMenu) => set({ offerMenu })}
       />
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }
