@@ -777,7 +777,7 @@ export default function Dashboard() {
 
       {isDebtWorkspace ? (
         <>
-          <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3 xl:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
+          <div className="mb-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-3 xl:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
             <StatCard
               compact
               label="Pastas de dívida"
@@ -1075,7 +1075,7 @@ export default function Dashboard() {
         </>
       ) : (
         <>
-          <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3 xl:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
+          <div className="mb-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-3 xl:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
             <StatCard
               compact
               label="Pastas"
