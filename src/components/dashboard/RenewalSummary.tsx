@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarClock, ChevronDown, RefreshCw, Users, Wallet } from "lucide-react";
+import { CalendarClock, RefreshCw, Users, Wallet } from "lucide-react";
 import type { Folder, Item } from "@/types";
 import type { UniplayRenewalEvent, UniplayRecreatedLine, UniplayCreditEvent } from "@/lib/uniplayRenewalLogs";
 import { lookupUniplayRenewals } from "@/lib/uniplayRenewalLookup";
@@ -81,14 +81,9 @@ export function RenewalSummary({ userId, folders, items, resellersFolderId = "",
   const showEstimate = range.start === (minimumDate > `${today.slice(0, 7)}-01` ? minimumDate : `${today.slice(0, 7)}-01`) && range.end === today;
   const estimate = useMemo(() => estimateMonthEnd(filteredItems, today, summary, resellersFolderId), [filteredItems, today, summary, resellersFolderId]);
 
-  return <details className="group mb-3 rounded-xl border bg-card" aria-label="Resumo de renovações">
-    <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm [&::-webkit-details-marker]:hidden">
-      <span className="flex min-w-0 items-center gap-2 font-medium"><CalendarClock className="h-4 w-4 shrink-0 text-primary" />Renovações e créditos recebidos</span>
-      <span className="flex items-center gap-2"><span className="text-xs text-muted-foreground">{scopeError || panelError ? "Indisponível" : panelLoading || !scopeReady ? "Carregando…" : panel?.userId === userId && panel.start === range.start && panel.end === range.end ? money(summary.total) : "Consultar"}</span><ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /></span>
-    </summary>
-    <div className="space-y-3 border-t p-3 sm:p-4">
+  return <section className="mb-3 space-y-3 rounded-xl border bg-card p-3 sm:p-4" aria-label="Renovações e créditos recebidos">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="flex items-center gap-2 text-lg font-semibold"><CalendarClock className="h-5 w-5 text-primary" />Renovações e créditos recebidos</h2><p className="mt-1 text-sm text-muted-foreground">{localSource ? "Pagamentos de renovações e recargas registrados nas suas pastas." : "Renovações e créditos pelos logs da Uniplay, com os preços das pastas."}</p></div>
+      <div><h2 className="flex items-center gap-2 text-base font-semibold"><CalendarClock className="h-5 w-5 text-primary" />Renovações e créditos recebidos</h2><p className="mt-1 text-xs text-muted-foreground">{localSource ? "Pagamentos de renovações e recargas registrados nas suas pastas." : "Renovações e créditos pelos logs da Uniplay, com os preços das pastas."}</p></div>
       <Button type="button" size="sm" variant="outline" disabled={!scopeError && (panelLoading || !scopeReady)} onClick={() => { setRefresh((value) => value + 1); onRefresh?.(); }}><RefreshCw className={`h-4 w-4 ${!scopeError && (panelLoading || !scopeReady) ? "animate-spin" : ""}`} />Atualizar</Button>
     </div>
     <div className="flex flex-wrap gap-2" role="group" aria-label="Período das renovações">
@@ -103,15 +98,15 @@ export function RenewalSummary({ userId, folders, items, resellersFolderId = "",
       {panelError ? <p role="alert" className="text-sm text-destructive">{panelError} Não foi possível atualizar a consulta. Tente novamente.</p> : null}
       {panelLoading ? <p role="status" className="text-sm text-muted-foreground">Consultando o período e identificando a origem dos registros…</p> : null}
       {scopeReady && !scopeError && !panelLoading && !panelError && panel?.userId === userId && panel.start === range.start && panel.end === range.end ? <>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border bg-primary/5 p-4"><p className="flex items-center gap-2 text-sm text-muted-foreground"><Users className="h-4 w-4" />{localSource ? "Renovações nas pastas" : "Renovações de IPTV"}</p><p className="mt-2 text-3xl font-semibold">{num(summary.renewalCount)}</p><p className="mt-1 text-xs text-muted-foreground">{money(summary.renewalTotal)} {localSource ? "em pagamentos registrados" : "pelos preços vigentes nas datas das renovações"}</p></div>
-        <div className="rounded-xl border bg-primary/5 p-4"><p className="flex items-center gap-2 text-sm text-muted-foreground"><Wallet className="h-4 w-4" />Créditos para revendedores</p><p className="mt-2 text-3xl font-semibold">{num(localSource ? summary.creditOperations : summary.credits)} <span className="text-base font-normal">{localSource ? "recargas" : "créditos"}</span></p><p className="mt-1 text-xs text-muted-foreground">{num(summary.creditOperations)} recarga(s) · {money(summary.creditTotal)}</p><p className="mt-1 text-xs text-muted-foreground">{localSource ? "Usa os valores gravados nos pagamentos da pasta." : `${money(panel.creditUnitPrice)} por crédito, configurado em Uniplay → Conta.`}</p></div>
-        <div className="rounded-xl border bg-primary/5 p-4"><p className="flex items-center gap-2 text-sm text-muted-foreground"><Wallet className="h-4 w-4" />{summary.missingAmounts > 0 ? "Subtotal conhecido" : "Total no período"}</p><p className="mt-2 text-3xl font-semibold">{money(summary.total)}</p><p className="mt-1 text-xs text-muted-foreground">{localSource ? "Pagamentos de clientes + recargas dos revendedores" : "IPTV + créditos dos revendedores"}</p></div>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+        <div className="rounded-lg border bg-primary/5 p-3"><p className="flex items-center gap-2 text-sm text-muted-foreground"><Users className="h-4 w-4" />{localSource ? "Renovações nas pastas" : "Renovações de IPTV"}</p><p className="mt-1 text-2xl font-semibold">{num(summary.renewalCount)}</p><p className="mt-1 text-xs text-muted-foreground">{money(summary.renewalTotal)} {localSource ? "em pagamentos registrados" : "pelos preços vigentes nas datas das renovações"}</p></div>
+        <div className="rounded-lg border bg-primary/5 p-3"><p className="flex items-center gap-2 text-sm text-muted-foreground"><Wallet className="h-4 w-4" />Créditos para revendedores</p><p className="mt-1 text-2xl font-semibold">{num(localSource ? summary.creditOperations : summary.credits)} <span className="text-base font-normal">{localSource ? "recargas" : "créditos"}</span></p><p className="mt-1 text-xs text-muted-foreground">{num(summary.creditOperations)} recarga(s) · {money(summary.creditTotal)}</p><p className="mt-1 text-xs text-muted-foreground">{localSource ? "Usa os valores gravados nos pagamentos da pasta." : `${money(panel.creditUnitPrice)} por crédito, configurado em Uniplay → Conta.`}</p></div>
+        <div className="order-first col-span-2 rounded-lg border border-primary/20 bg-primary/10 p-3 lg:order-none lg:col-span-1"><p className="flex items-center gap-2 text-sm font-medium"><Wallet className="h-4 w-4" />{`${summary.missingAmounts > 0 ? "Subtotal registrado" : "Total registrado"} ${periodLabel}`}</p><p className="mt-1 text-2xl font-semibold">{money(summary.total)}</p><p className="mt-1 text-xs text-muted-foreground">{localSource ? "Pagamentos de clientes + recargas dos revendedores" : "IPTV + créditos dos revendedores"}</p></div>
       </div>
       <p aria-live="polite" className="text-sm font-medium">{num(summary.renewalCount)} renovação(ões) e {num(summary.creditOperations)} recarga(s) de revendedores {periodLabel}, {summary.missingAmounts > 0 ? "com valores conhecidos de" : "totalizando"} {money(summary.total)}.</p>
       {showEstimate ? <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
         <p className="text-sm font-medium">Estimativa de fechamento do mês</p>
-        <p className="mt-2 text-3xl font-semibold">{money(estimate.total)}</p>
+        <p className="mt-1 text-2xl font-semibold">{money(estimate.total)}</p>
         <p className="mt-2 text-sm text-muted-foreground">{money(summary.total)} registrados + {money(estimate.pendingTotal)} previstos de {num(estimate.pendingCount)} cliente(s) que ainda não renovaram e vencem neste mês.</p>
         <p className="mt-1 text-xs text-muted-foreground">Considera que todos os pendentes renovarão até {estimate.end.split("-").reverse().join("/")}, pelo preço do pacote. Inclui vencidos neste mês e mantém somente os créditos de revendedores já registrados.</p>
         {estimate.missingAmounts > 0 ? <p className="mt-2 text-xs text-muted-foreground">Estimativa parcial: {num(estimate.missingAmounts)} registro(s) sem preço identificado.</p> : null}
@@ -128,6 +123,5 @@ export function RenewalSummary({ userId, folders, items, resellersFolderId = "",
       </> : null}
     </>}
     <p className="text-xs text-muted-foreground">{localSource ? "Sem Uniplay conectada: usa somente os pagamentos de renovações e recargas registrados nas pastas, na data e no valor gravados. Cadastros iniciais e estimativas por vencimento ficam fora." : <>Cada ID de log entra uma vez. IPTV usa o histórico de preços da pasta na data de cada renovação e segue as recriações de linha. Sem histórico anterior, usa o primeiro preço disponível. Revendedores usam a quantidade enviada pela sua conta × o preço atual por crédito (Uniplay → Conta). Compras de créditos para sua própria conta ficam fora. Pix não é somado novamente. Ao filtrar uma pasta, entram somente os usuários identificados nela.</>}</p>
-    </div>
-  </details>;
+  </section>;
 }

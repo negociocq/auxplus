@@ -621,7 +621,7 @@ export default function Dashboard() {
                 {isDebtWorkspace ? "Pastas de dívidas" : "Minhas pastas"}
               </h2>
             </div>
-            <p className="hidden text-xs text-muted-foreground sm:block">
+            <p className="text-xs text-muted-foreground">
               {isDebtWorkspace
                 ? "Abra para lançar gastos e marcar parcelas"
                 : "Abra uma pasta para gerenciar itens"}
@@ -1107,11 +1107,11 @@ export default function Dashboard() {
             />
             <StatCard
               compact
-              label="Carteira"
+              label="Carteira ativa"
               value={money(kpis.revenue)}
               icon={TrendingUp}
               tone="success"
-              hint={text(`Saúde ${kpis.healthy}% em dia`)}
+              hint={text(`Cadastros não vencidos · ${kpis.healthy}% longe de vencer`)}
               delay={0.14}
             />
             <StatCard

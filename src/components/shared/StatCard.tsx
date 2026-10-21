@@ -36,11 +36,11 @@ export function StatCard({
       title={compact && hint ? `${label}: ${value} · ${hint}` : undefined}
     >
       {compact ? <>
-        <div className={cn("hidden h-6 w-6 shrink-0 items-center justify-center rounded-md sm:flex", toneClass[tone])}><Icon className="h-3.5 w-3.5" /></div>
+        <div className={cn("flex h-6 w-6 shrink-0 items-center justify-center self-start rounded-md", toneClass[tone])}><Icon className="h-3.5 w-3.5" /></div>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="mt-0.5 break-words text-base font-bold leading-tight tracking-tight tabular-nums sm:text-lg">{value}</p>
-          {hint ? <p className="sr-only sm:not-sr-only sm:mt-0.5 sm:truncate sm:text-[10px] sm:leading-tight sm:text-muted-foreground">{hint}</p> : null}
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className="mt-0.5 break-words text-lg font-bold leading-tight tracking-tight tabular-nums sm:text-lg">{value}</p>
+          {hint ? <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p> : null}
         </div>
       </> : <>
       <div className="flex items-start justify-between gap-3">
