@@ -21,6 +21,7 @@ import { extractPlanMonths, getPlanSegments } from "@/lib/planMonths";
 import { extractScreens } from "@/lib/itemScreens";
 import { extractResellerCreditsBought } from "@/lib/resellerCredits";
 import { computeItemStatus, refreshItemStatuses } from "@/lib/storage";
+import { dueTime, mergeItemDue } from "../../supabase/functions/_shared/itemDue";
 
 /** Consulta do relatório sem regravar/mesclar pedidos de pagamento. */
 export async function fetchRenewalOrders(userId: string): Promise<MpRenewOrder[]> {
@@ -137,7 +138,7 @@ function mapItem(row: Record<string, unknown>): Item {
     folderId: String(row.folder_id),
     itemId: String(row.item_id ?? ""),
     name: String(row.name ?? ""),
-    dueDate: normalizeDueDate(row.due_date),
+    dueDate: normalizeDueDate(mergeItemDue(row.due_date, row.due_time)),
     phone: String(row.phone ?? ""),
     price: Number(row.price) || 0,
     status: VALID_STATUS.includes(statusRaw as ItemStatus)
@@ -342,7 +343,8 @@ export async function persistAppDataToSupabase(data: AppData): Promise<void> {
         folder_id: Number(i.folderId),
         item_id: i.itemId,
         name: i.name,
-        due_date: i.dueDate,
+        due_date: i.dueDate ? String(i.dueDate).slice(0, 10) : null,
+        due_time: dueTime(i.dueDate),
         phone: i.phone || null,
         status,
         price: i.price || 0,

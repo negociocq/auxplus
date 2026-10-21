@@ -22,6 +22,13 @@ const bot = functionsFrom("supabase/functions/evolution-webhook/index.ts", [
   "addMonthsYmd", "nextDueAfterRenewDisplay",
 ]);
 const due = "2026-11-19 19:54:31";
+const dueModule = {};
+vm.runInNewContext(ts.transpile(readFileSync(new URL("../supabase/functions/_shared/itemDue.ts", import.meta.url), "utf8")), { exports: dueModule, Intl, Date });
+assert.equal(dueModule.mergeItemDue("2026-11-19", "19:54:31"), due);
+assert.equal(dueModule.mergeItemDue("2026-11-19", null), "2026-11-19");
+assert.equal(dueModule.normalizePanelDue("19/11/2026 19:54:31"), due);
+assert.equal(dueModule.normalizePanelDue("2026-11-19T22:54:31Z"), due);
+assert.equal(dueModule.dueTime("2026-11-19"), null, "date-only records must not invent midnight");
 const models = functionsFrom("src/lib/whatsappBotConfig.ts", ["includeExpirationTime"]);
 const oldIntro = "Vencimento atual: *{due}*\nVencimento após pagamento: *{newDue}*";
 const updatedIntro = models.includeExpirationTime(oldIntro);

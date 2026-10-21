@@ -16,6 +16,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { recordPixPayment } from "../_shared/renewalPayments.ts";
+import { dueTime } from "../_shared/itemDue.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -768,7 +769,8 @@ async function updateItemDue(
 ) {
   if (!itemId) return;
   const patch: Record<string, unknown> = {
-    due_date: dueDate.length === 10 ? `${dueDate}T12:00:00` : dueDate,
+    due_date: dueDate.slice(0, 10),
+    due_time: dueTime(dueDate),
   };
   if (notesExtra || payment) {
     const { data, error } = await client
@@ -934,7 +936,7 @@ async function releaseOrder(
           : "Última recarga: 0 dias";
         await client
           .from("items")
-          .update({ price, notes, due_date: null })
+          .update({ price, notes, due_date: null, due_time: null })
           .eq("id", order.itemRefId);
       }
     }

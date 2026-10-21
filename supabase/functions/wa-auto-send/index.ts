@@ -16,6 +16,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { runRecoveryQueue } from "../_shared/waRecovery.ts";
+import { mergeItemDue } from "../_shared/itemDue.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -338,7 +339,7 @@ function buildTodayQueue(
     const row = {
       name,
       itemId,
-      dueDate: item.due_date as unknown,
+      dueDate: mergeItemDue(item.due_date, item.due_time),
       price: item.price as unknown,
       phone: String(item.phone || ""),
     };
@@ -658,7 +659,7 @@ Deno.serve(async (req) => {
 
     const [foldersRes, itemsRes, usersRes] = await Promise.all([
       client.from("folders").select("id,user_id,type"),
-      client.from("items").select("id,folder_id,item_id,name,due_date,phone,price,is_active"),
+      client.from("items").select("id,folder_id,item_id,name,due_date,due_time,phone,price,is_active"),
       client.from("users").select("id,username"),
     ]);
     const folders = (foldersRes.data || []) as Array<Record<string, unknown>>;

@@ -11,6 +11,8 @@ const guardExports = {};
 vm.runInNewContext(compile("supabase/functions/_shared/waBotGuard.ts"), {
   exports: guardExports, crypto: webcrypto, setTimeout, setInterval, clearInterval,
 });
+const dueExports = {};
+vm.runInNewContext(compile("supabase/functions/_shared/itemDue.ts"), { exports: dueExports, Intl, Date });
 
 class Database {
   constructor() { this.tables = { platform_settings: [], platform_private_secrets: [], folders: [], items: [], wa_recovery_contacts: [] }; }
@@ -58,7 +60,7 @@ db.setting("wa_bot_user_1", { enabled: true, endHumanPhrase: "encerrar" });
 db.setting("evolution_api", { apiBaseUrl: "https://evolution.invalid", apiKey: "fixture" });
 db.setting("notif_settings_user_1", { enabled: false });
 db.tables.folders.push({ id: "folder", user_id: 1, type: "Cliente" });
-db.tables.items.push({ id: "customer", folder_id: "folder", item_id: "sample", phone, is_active: true, due_date: "2026-11-19 19:54:31" });
+db.tables.items.push({ id: "customer", folder_id: "folder", item_id: "sample", phone, is_active: true, due_date: "2026-11-19", due_time: "19:54:31" });
 const sent = [];
 let handler;
 const context = {
@@ -67,6 +69,7 @@ const context = {
   Deno: { env: { get: () => "fixture" }, serve: (fn) => { handler = fn; } },
   require: (path) => {
     if (path.includes("waBotGuard")) return guardExports;
+    if (path.includes("itemDue")) return dueExports;
     if (path.includes("supabase-js")) return { createClient: () => db };
     if (path.includes("waRecovery")) return { recoveryPhone: (p) => p, recoveryPanel: async () => ({}) };
     if (path.includes("partnerTestFlow")) return { upgradePartnerTestFlow: (flow) => flow };
@@ -94,6 +97,7 @@ async function receive(text, { fromMe = false, id = String(++nextId), media = fa
 }
 assert.equal((await receive("oi")).action, "ask_intent");
 assert.equal(sent.length, 1);
+assert.match(sent[0], /19:54:31/, "menu combines persisted date and actual expiration time");
 await Promise.all([receive("olá"), receive("mensagem seguinte"), receive("bom dia"), receive("oi novamente")]);
 assert.equal(sent.length, 1, "four free-text messages must not repeat the menu");
 const state = () => db.tables.platform_settings.find((row) => row.key === "wa_bot_state_user_1").value;
@@ -109,8 +113,10 @@ for (const text of ["3", "oi", "voltar", "1"]) assert.equal((await receive(text)
 assert.equal((await receive("", { media: true })).skipped, "human_paused");
 assert.equal((await receive("3", { id: "handoff" })).skipped, "dup_message");
 assert.equal(sent.length, before + 1);
+state().sessions[phone.replace("55119", "5511")] = { state: "human", updatedAt: new Date().toISOString() };
 await receive("encerrar", { fromMe: true });
 assert.equal(Object.keys(state().humanPaused).length, 0);
+assert.equal(Object.values(state().sessions).some((session) => session.state === "human"), false, "owner resume removes obsolete phone aliases too");
 assert.equal((await receive("olá")).action, "ask_intent");
 assert.equal(db.tables.platform_private_secrets.length, 0, "request leases must be released");
 

@@ -9,6 +9,7 @@ import { partnerDeviceGuide, partnerDeviceHelp, partnerGuideUrl } from "../_shar
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { acquireBotLease, isPausedConversation, isRepeatedBotReply } from "../_shared/waBotGuard.ts";
+import { dueTime, mergeItemDue, normalizePanelDue } from "../_shared/itemDue.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;
@@ -1670,7 +1671,7 @@ async function createUniplayTestUser(
   return { username, password: pass || password, remoteId };
 }
 
-async function findUniplayUserId(bearer: string, username: string) {
+async function findUniplayUser(bearer: string, username: string): Promise<Record<string, unknown> | null> {
   const want = username.trim().toLowerCase();
   if (!want) return null;
   const listed = (await uniplayFetch("/users-iptv", bearer)) as unknown;
@@ -1683,9 +1684,14 @@ async function findUniplayUserId(bearer: string, username: string) {
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
     const u = String(r.username || r.user || "").trim().toLowerCase();
-    if (u === want) return r.id ?? r.user_id ?? r.uid ?? null;
+    if (u === want) return r;
   }
   return null;
+}
+
+async function findUniplayUserId(bearer: string, username: string) {
+  const row = await findUniplayUser(bearer, username);
+  return row?.id ?? row?.user_id ?? row?.uid ?? null;
 }
 
 async function activatePartnerAppWa(
@@ -2677,6 +2683,10 @@ Deno.serve(async (req) => {
       else {
         delete humanPaused[key];
         delete humanPaused[p];
+        // Encerrar também remove estados humanos antigos salvos sem/com o nono dígito.
+        for (const alias of Object.keys(sessions)) {
+          if (alias !== p && phoneMatches(alias, p)) delete sessions[alias];
+        }
       }
     };
 
@@ -2966,6 +2976,7 @@ Deno.serve(async (req) => {
       phone?: string;
       price?: number;
       due_date?: string | null;
+      due_time?: string | null;
       notes?: string | null;
       is_active?: boolean;
     };
@@ -2982,6 +2993,26 @@ Deno.serve(async (req) => {
     let clientItem =
       byPhone.find((i) => String(i.folder_id) !== syncResellersFolderId) ||
       byPhone[0];
+    if (clientItem) {
+      clientItem.due_date = mergeItemDue(clientItem.due_date, clientItem.due_time);
+      if (!dueTime(clientItem.due_date) && (automations.iptvBearerToken || automations.iptvUsername)) {
+        try {
+          const username = String(clientItem.item_id || "");
+          const fullDue = await withTimeout((async () => {
+            const bearer = await ensurePanelBearer(client, userId, automations);
+            const remote = await findUniplayUser(bearer, username);
+            return remote && normalizePanelDue(remote.exp_date ?? remote.expDate ?? remote.expira ?? remote.expiration);
+          })(), 8000);
+          if (fullDue && dueTime(fullDue)) {
+            const updated = await client.from("items").update({ due_date: fullDue.slice(0, 10), due_time: dueTime(fullDue) }).eq("id", clientItem.id).eq("folder_id", clientItem.folder_id);
+            if (updated.error) throw new Error("Falha ao salvar horário do vencimento");
+            clientItem.due_date = fullDue;
+          }
+        } catch {
+          console.warn("client_expiration_time_lookup_failed");
+        }
+      }
+    }
     if (recoveryContact && ["accepted","creating","trial","activated"].includes(recoveryContact.status) && clientItem?.due_date && Date.parse(clientItem.due_date) < Date.now()) clientItem = undefined;
 
     let session = sessions[phone] || {
