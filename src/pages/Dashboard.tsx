@@ -52,8 +52,7 @@ import {
 } from "@/lib/payments";
 import { lookupUniplayRenewals } from "@/lib/uniplayRenewalLookup";
 import { brazilDay } from "@/lib/renewalSummary";
-import { receivedOperationsByMonth, type ReceivedOperationsData } from "@/lib/receivedOperations";
-import { sumResellerCreditsValueByItems } from "@/lib/resellerCredits";
+import { receivedOperationsByMonth, summarizeReceivedOperations, type ReceivedOperationsData } from "@/lib/receivedOperations";
 import {
   annualDebtPaid,
   debtSummary,
@@ -124,13 +123,24 @@ export default function Dashboard() {
   const [uniplayConnected, setUniplayConnected] = useState(false);
   const [loadingCredits, setLoadingCredits] = useState(false);
   const [resellersFolderId, setResellersFolderId] = useState("");
-  const [resellerCreditPriceBrl, setResellerCreditPriceBrl] = useState(8.5);
+  const [resellerMonthData, setResellerMonthData] = useState<{ userId: string; day: string; data: ReceivedOperationsData } | null>(null);
+  const [resellerMonthError, setResellerMonthError] = useState("");
   const [chartRefresh, setChartRefresh] = useState(0);
   const [chartData, setChartData] = useState<{ userId: string; year: number; data: ReceivedOperationsData } | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState("");
   const chartToday = brazilDay();
   const chartUserId = user?.id || "";
+  useEffect(() => {
+    if (!chartUserId || !resellersFolderId || isDebtWorkspace) return;
+    let cancelled = false;
+    setResellerMonthData(null);
+    setResellerMonthError("");
+    void lookupUniplayRenewals(chartUserId, `${chartToday.slice(0, 7)}-01`, chartToday)
+      .then((data) => { if (!cancelled) setResellerMonthData({ userId: chartUserId, day: chartToday, data }); })
+      .catch((error) => { if (!cancelled) setResellerMonthError(error instanceof Error ? error.message : "Falha ao consultar as recargas."); });
+    return () => { cancelled = true; };
+  }, [chartUserId, chartToday, chartRefresh, resellersFolderId, isDebtWorkspace]);
   useEffect(() => {
     if (!chartUserId || isDebtWorkspace) return;
     let cancelled = false;
@@ -159,7 +169,6 @@ export default function Dashboard() {
         // Sem UniPlay conectada → não busca nem mostra créditos
         if (!cancelled) {
           setResellersFolderId(cfg.syncResellersFolderId || "");
-          setResellerCreditPriceBrl(cfg.resellerCreditPriceBrl || 8.5);
         }
         if (!isUniplayConnected(cfg)) {
           if (!cancelled) {
@@ -276,10 +285,9 @@ export default function Dashboard() {
             activeCount: activeItems.length,
             total:
               folder.id === resellersFolderId
-                ? sumResellerCreditsValueByItems(
-                    activeItems,
-                    resellerCreditPriceBrl,
-                  )
+                ? resellerMonthData?.userId === chartUserId && resellerMonthData.day === chartToday
+                  ? summarizeReceivedOperations(items, `${chartToday.slice(0, 7)}-01`, chartToday, resellerMonthData.data, resellersFolderId, folder.id).creditTotal
+                  : 0
                 : activeItems.reduce((s, i) => s + (i.price || 0), 0),
             overdue,
           },
@@ -289,7 +297,7 @@ export default function Dashboard() {
       string,
       { count: number; activeCount: number; total: number; overdue: number }
     >;
-  }, [folders, myItems, resellersFolderId, resellerCreditPriceBrl]);
+  }, [folders, myItems, resellersFolderId, resellerMonthData, chartUserId, chartToday]);
 
   const kpis = useMemo(() => {
     const today = startOfDay(new Date());
@@ -706,7 +714,9 @@ export default function Dashboard() {
                             {text(
                               `${stats[folder.id]?.activeCount || 0} ativos`,
                             )}{" "}
-                            · {money(stats[folder.id]?.total || 0)}
+                            · {folder.id === resellersFolderId && (!resellerMonthData || resellerMonthData.userId !== chartUserId || resellerMonthData.day !== chartToday)
+                              ? text(resellerMonthError ? "Recargas indisponíveis" : "Consultando recargas…")
+                              : <>{money(stats[folder.id]?.total || 0)}{folder.id === resellersFolderId ? " em recargas no mês" : ""}</>}
                           </p>
                         </div>
                       </Link>
@@ -1043,8 +1053,10 @@ export default function Dashboard() {
                         >
                           {row.folder.name}
                         </Link>
-                        <span className="shrink-0 text-sm font-semibold">
-                          {money(row.total)}
+                        <span className="max-w-[55%] shrink-0 text-right text-sm font-semibold">
+                          {row.folder.id === resellersFolderId && (!resellerMonthData || resellerMonthData.userId !== chartUserId || resellerMonthData.day !== chartToday)
+                            ? text(resellerMonthError ? "Indisponível" : "Consultando…")
+                            : <>{money(row.total)}{row.folder.id === resellersFolderId ? " em recargas no mês" : ""}</>}
                         </span>
                       </div>
                       <Progress
