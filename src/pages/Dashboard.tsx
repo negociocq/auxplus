@@ -610,8 +610,7 @@ export default function Dashboard() {
         }
       />
 
-      {!isDebtWorkspace && user ? <RenewalSummary userId={user.id} folders={folders.filter((folder) => folder.type === "Cliente")} items={myItems} resellersFolderId={resellersFolderId} onRefresh={() => setChartRefresh((value) => value + 1)} /> : null}
-      <section className="mb-8 overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] via-muted/40 to-background p-4 sm:p-5">
+      <section className="mb-4 overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] via-muted/40 to-background p-3 sm:p-4">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
             <div className="mb-1 flex items-center gap-2">
@@ -755,6 +754,8 @@ export default function Dashboard() {
         </Tabs>
       </section>
 
+      {!isDebtWorkspace && user ? <RenewalSummary userId={user.id} folders={folders.filter((folder) => folder.type === "Cliente")} items={myItems} resellersFolderId={resellersFolderId} onRefresh={() => setChartRefresh((value) => value + 1)} /> : null}
+
       {uniplayConnected || loadingCredits ? (
         <div
           className={
@@ -782,8 +783,9 @@ export default function Dashboard() {
 
       {isDebtWorkspace ? (
         <>
-          <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
             <StatCard
+              compact
               label="Pastas de dívida"
               value={num(byType.Dívida.length)}
               icon={FolderKanban}
@@ -791,6 +793,7 @@ export default function Dashboard() {
               delay={0.02}
             />
             <StatCard
+              compact
               label="Em aberto"
               value={money(debtKpis.aberto)}
               icon={CircleDollarSign}
@@ -798,6 +801,7 @@ export default function Dashboard() {
               delay={0.06}
             />
             <StatCard
+              compact
               label="Em atraso"
               value={num(debtKpis.atrasadas)}
               icon={AlertTriangle}
@@ -806,6 +810,7 @@ export default function Dashboard() {
               delay={0.1}
             />
             <StatCard
+              compact
               label="Em dia"
               value={num(debtKpis.emDia)}
               icon={Clock3}
@@ -814,6 +819,7 @@ export default function Dashboard() {
               delay={0.14}
             />
             <StatCard
+              compact
               label={`Pago em ${chartYear}`}
               value={money(debtAnnualPaid)}
               icon={TrendingDown}
@@ -823,7 +829,7 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="mb-6 grid gap-3 sm:grid-cols-3">
+          <div className="mb-4 grid grid-cols-3 gap-2">
             {[
               {
                 label: "Em dia",
@@ -843,13 +849,13 @@ export default function Dashboard() {
             ].map((item) => (
               <div
                 key={item.label}
-                className="ax-surface flex items-center justify-between p-4"
+                className="ax-surface flex items-center justify-between gap-2 p-2.5 sm:p-3"
               >
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Dívidas · {item.label}
                   </p>
-                  <p className="mt-1 text-2xl font-bold">{num(item.value)}</p>
+                  <p className="mt-0.5 text-lg font-bold sm:text-xl">{num(item.value)}</p>
                 </div>
                 <item.icon className="h-5 w-5 text-primary/70" />
               </div>
@@ -1075,8 +1081,9 @@ export default function Dashboard() {
         </>
       ) : (
         <>
-          <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
             <StatCard
+              compact
               label="Pastas"
               value={num(byType.Cliente.length + byType.Produto.length)}
               icon={FolderKanban}
@@ -1086,6 +1093,7 @@ export default function Dashboard() {
               delay={0.02}
             />
             <StatCard
+              compact
               label="Itens ativos"
               value={num(revenueItems.length)}
               icon={CalendarClock}
@@ -1095,6 +1103,7 @@ export default function Dashboard() {
               delay={0.06}
             />
             <StatCard
+              compact
               label="Em atraso"
               value={num(kpis.vencido)}
               icon={AlertTriangle}
@@ -1103,6 +1112,7 @@ export default function Dashboard() {
               delay={0.1}
             />
             <StatCard
+              compact
               label="Carteira"
               value={money(kpis.revenue)}
               icon={TrendingUp}
@@ -1111,6 +1121,7 @@ export default function Dashboard() {
               delay={0.14}
             />
             <StatCard
+              compact
               label={`Total registrado em ${chartYear}`}
               value={chartLoading || chartError ? "—" : money(annualBalance)}
               icon={BarChart3}
@@ -1120,7 +1131,7 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="mb-6 grid gap-3 sm:grid-cols-3">
+          <div className="mb-4 grid grid-cols-3 gap-2">
             {[
               { label: "Hoje", value: kpis.day },
               { label: "Esta semana", value: kpis.week },
@@ -1128,13 +1139,13 @@ export default function Dashboard() {
             ].map((item) => (
               <div
                 key={item.label}
-                className="ax-surface flex items-center justify-between p-4"
+                className="ax-surface flex items-center justify-between gap-2 p-2.5 sm:p-3"
               >
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Vencimentos · {item.label}
                   </p>
-                  <p className="mt-1 text-2xl font-bold">{num(item.value)}</p>
+                  <p className="mt-0.5 text-lg font-bold sm:text-xl">{num(item.value)}</p>
                 </div>
                 <BarChart3 className="h-5 w-5 text-primary/70" />
               </div>
