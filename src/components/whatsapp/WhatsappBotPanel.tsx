@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   Loader2,
   Save,
@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { normalizeBrPhone } from "@/lib/whatsappAutomation";
+import { humanConversationPhones } from "@/lib/waHumanConversations";
 import {
   defaultWhatsappBotConfig,
   loadWaBotStateRemote,
@@ -103,6 +104,33 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
     user ? isUniplayConnected(loadAutomationsConfig(user.id)) : false,
   );
   const [botTab, setBotTab] = useState("atendimento");
+  const [stateError, setStateError] = useState("");
+  const [refreshingState, setRefreshingState] = useState(false);
+  const currentUserIdRef = useRef(userId);
+  currentUserIdRef.current = userId;
+  const humanPhones = humanConversationPhones(state, normalizeBrPhone);
+  const refreshHumanState = useCallback(async () => {
+    if (!userId) return;
+    setRefreshingState(true);
+    try {
+      const next = await loadWaBotStateRemote(userId, { strict: true });
+      if (currentUserIdRef.current !== userId) return;
+      setState(next);
+      setStateError("");
+    } catch (error) {
+      if (currentUserIdRef.current === userId) setStateError(error instanceof Error ? error.message : "Falha ao atualizar conversas");
+    } finally {
+      if (currentUserIdRef.current === userId) setRefreshingState(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const refresh = () => { if (!document.hidden) void refreshHumanState(); };
+    const timer = window.setInterval(refresh, 10_000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [userId, refreshHumanState]);
 
   useEffect(() => {
     if (!userId) return;
@@ -110,18 +138,19 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
     setLoading(true);
     void Promise.all([
       loadWhatsappBotConfigRemote(userId),
-      loadWaBotStateRemote(userId),
+      loadWaBotStateRemote(userId, { strict: true }),
       loadAutomationsConfigRemote(userId),
     ])
       .then(([c, s, auto]) => {
         if (cancelled) return;
         setCfg(c);
         setState(s);
+        setStateError("");
         setUniplayOn(isUniplayConnected(auto));
         onEnabledChangeRef.current?.(c.enabled);
       })
       .catch((error) => {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "Falha ao carregar atendimento");
+        if (!cancelled) { setStateError("Não foi possível carregar as conversas. Atualize a lista."); toast.error(error instanceof Error ? error.message : "Falha ao carregar atendimento"); }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -190,7 +219,7 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
   const removePaused = async (phone: string) => {
     if (!user) return;
     try {
-      const next = await loadWaBotStateRemote(user.id);
+      const next = await loadWaBotStateRemote(user.id, { strict: true });
       for (const key of Object.keys(next.humanPaused)) {
         if (normalizeBrPhone(key) === normalizeBrPhone(phone)) delete next.humanPaused[key];
       }
@@ -201,6 +230,7 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
       }
       await saveWaBotStateRemote(user.id, next);
       setState(next);
+      setStateError("");
       toast.success(`Bot reativado para ${phone}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao reativar");
@@ -210,14 +240,16 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
   const removeAllPaused = async () => {
     if (!user) return;
     try {
-      const next = await loadWaBotStateRemote(user.id);
+      const next = await loadWaBotStateRemote(user.id, { strict: true });
+      const count = humanConversationPhones(next, normalizeBrPhone).length;
       next.humanPaused = {};
       for (const [key, session] of Object.entries(next.sessions)) {
         if (session.state === "human") next.sessions[key] = { ...session, state: "idle", updatedAt: new Date().toISOString() };
       }
       await saveWaBotStateRemote(user.id, next);
       setState(next);
-      toast.success(`Todos os bots reativados (${Object.keys(state.humanPaused).length} telefone(s))`);
+      setStateError("");
+      toast.success(`Todos os bots reativados (${count} telefone(s))`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao reativar");
     }
@@ -391,9 +423,10 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
           </Accordion>
 
           <section className="ax-surface space-y-3 p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Conversas com atendimento humano</h3>
-              {Object.keys(state.humanPaused).length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">Conversas com atendimento humano <span className="text-muted-foreground">({humanPhones.length})</span></h3>
+              <Button type="button" variant="outline" size="sm" disabled={refreshingState} onClick={() => void refreshHumanState()}><RotateCcw className={`h-3.5 w-3.5 ${refreshingState ? "animate-spin" : ""}`} />Atualizar lista</Button>
+              {humanPhones.length > 0 && (
                 <Button
                   type="button"
                   variant="destructive"
@@ -404,20 +437,20 @@ export function WhatsappBotPanel({ onEnabledChange }: Props) {
                 </Button>
               )}
             </div>
-            {Object.keys(state.humanPaused).length === 0 ? (
+            {stateError ? <p role="alert" className="text-sm text-destructive">{stateError}</p> : humanPhones.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Nenhum telefone em atendimento humano.
               </p>
             ) : (
               <ul className="space-y-2">
-                {Object.entries(state.humanPaused).map(([phone]) => (
+                {humanPhones.map((phone) => (
                   <li
                     key={phone}
                     className="flex items-center justify-between rounded-lg border border-warning/30 bg-warning/5 px-3 py-2"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <Phone className="h-3.5 w-3.5 text-warning shrink-0" />
-                      <span className="text-sm truncate">{phone}</span>
+                      <div className="min-w-0"><span className="block truncate text-sm">{phone}</span><span className="text-xs text-muted-foreground">Bot pausado até retornar ao automático</span></div>
                     </div>
                     <Button
                       type="button"

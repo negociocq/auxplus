@@ -548,14 +548,16 @@ export function defaultWaBotState(): WaBotStateStore {
 
 export async function loadWaBotStateRemote(
   userId: string,
+  options?: { strict?: boolean },
 ): Promise<WaBotStateStore> {
   if (!supabase || !userId) return defaultWaBotState();
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("platform_settings")
       .select("value")
       .eq("key", stateDbKey(userId))
       .maybeSingle();
+    if (error) throw error;
     if (!data?.value) return defaultWaBotState();
     const raw =
       typeof data.value === "string"
@@ -567,7 +569,8 @@ export async function loadWaBotStateRemote(
       humanPaused: (raw?.humanPaused || {}) as Record<string, boolean>,
       testConsumed: (raw?.testConsumed || {}) as Record<string, WaTestConsumed>,
     };
-  } catch {
+  } catch (error) {
+    if (options?.strict) throw new Error("Não foi possível atualizar as conversas de atendimento humano.");
     return defaultWaBotState();
   }
 }
@@ -577,7 +580,7 @@ export async function saveWaBotStateRemote(
   state: WaBotStateStore,
 ) {
   if (!supabase || !userId) return;
-  await supabase.from("platform_settings").upsert(
+  const { error } = await supabase.from("platform_settings").upsert(
     {
       key: stateDbKey(userId),
       value: state,
@@ -585,6 +588,7 @@ export async function saveWaBotStateRemote(
     },
     { onConflict: "key" },
   );
+  if (error) throw new Error("Não foi possível atualizar o estado do atendimento.");
 }
 
 export function fillBotTemplate(

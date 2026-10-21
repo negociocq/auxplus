@@ -123,4 +123,17 @@ assert.equal(db.tables.platform_private_secrets.length, 0, "request leases must 
 const history = [{ body: "menu", at: Date.now() }, { body: "outro", at: Date.now() }];
 assert.equal(guardExports.isRepeatedBotReply(history, "menu"), true);
 assert.equal(guardExports.isRepeatedBotReply(history, "novo"), false);
+const humanExports = {};
+vm.runInNewContext(compile("src/lib/waHumanConversations.ts"), { exports: humanExports });
+const phoneSource = ts.createSourceFile("phone.ts", fs.readFileSync("src/lib/whatsappAutomation.ts", "utf8"), ts.ScriptTarget.Latest, true);
+const phoneFunctions = phoneSource.statements.filter((node) => ts.isFunctionDeclaration(node) && ["phoneDigits", "normalizeBrPhone"].includes(node.name?.text)).map((node) => node.getText(phoneSource).replace(/^export\s+/, "")).join("\n");
+const phoneContext = {};
+vm.runInNewContext(ts.transpile(phoneFunctions), phoneContext);
+const normalize = phoneContext.normalizeBrPhone;
+const legacyPhone = phone.replace("55119", "5511");
+const humanState = { sessions: { [legacyPhone]: { state: "human" }, [phone]: { state: "human" }, "5511988888888": { state: "idle" } }, humanPaused: { [phone]: true, "5511977777777": false } };
+const visibleHumans = humanExports.humanConversationPhones(humanState, normalize);
+assert.equal(visibleHumans.length, 1, "panel unifies paused flags and human sessions without duplicate phone aliases");
+assert.equal(visibleHumans[0], normalize(phone));
+assert.equal(humanExports.humanConversationPhones({ sessions: { [legacyPhone]: { state: "human" } }, humanPaused: {} }, normalize).length, 1, "legacy human session must be visible even when the pause flag is absent");
 console.log("PASS: concurrent messages, option 3 from idle, silent human mode, media, dedup and owner resume.");
