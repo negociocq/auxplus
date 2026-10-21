@@ -610,18 +610,18 @@ export default function Dashboard() {
         }
       />
 
-      <section className="mb-4 overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] via-muted/40 to-background p-3 sm:p-4">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <section className="mb-3 overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] via-muted/40 to-background p-2.5 sm:p-3">
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
           <div>
             <div className="mb-1 flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
                 <FolderKanban className="h-4 w-4" />
               </span>
-              <h2 className="text-lg font-semibold tracking-tight">
+              <h2 className="text-base font-semibold tracking-tight">
                 {isDebtWorkspace ? "Pastas de dívidas" : "Minhas pastas"}
               </h2>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="hidden text-xs text-muted-foreground sm:block">
               {isDebtWorkspace
                 ? "Abra para lançar gastos e marcar parcelas"
                 : "Abra uma pasta para gerenciar itens"}
@@ -638,7 +638,7 @@ export default function Dashboard() {
             <TabsTrigger value="Dívida">Dívidas</TabsTrigger>
           </TabsList>
           {(["Cliente", "Produto", "Dívida"] as FolderType[]).map((t) => (
-            <TabsContent key={t} value={t} className="mt-4">
+            <TabsContent key={t} value={t} className="mt-2">
               {byType[t].length === 0 ? (
                 <EmptyState
                   icon={t === "Dívida" ? CircleDollarSign : FolderKanban}
@@ -668,21 +668,21 @@ export default function Dashboard() {
                   }
                 />
               ) : (
-                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {byType[t].map((folder, idx) => (
                     <motion.li
                       key={folder.id}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.03 }}
-                      className="group flex items-center gap-3 rounded-xl border border-primary/10 bg-background/90 p-3.5 shadow-sm ring-1 ring-primary/5 transition hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-md"
+                      className="group flex items-center gap-3 rounded-xl border border-primary/10 bg-background/90 p-2.5 sm:p-3 shadow-sm ring-1 ring-primary/5 transition hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-md"
                     >
                       <Link
                         to={`/folders/${folder.id}`}
                         className="flex min-w-0 flex-1 items-start gap-3"
                       >
                         <span
-                          className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+                          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
                           aria-hidden
                         >
                           {t === "Dívida" ? (
@@ -693,12 +693,6 @@ export default function Dashboard() {
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="mb-1 flex flex-wrap items-center gap-2">
-                            <Badge
-                              variant="secondary"
-                              className="border-transparent bg-primary/10 text-primary"
-                            >
-                              {folder.type}
-                            </Badge>
                             {(stats[folder.id]?.overdue || 0) > 0 ? (
                               <Badge variant="destructive">
                                 {text(`${stats[folder.id].overdue} atrasados`)}
@@ -783,7 +777,7 @@ export default function Dashboard() {
 
       {isDebtWorkspace ? (
         <>
-          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+          <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3 xl:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
             <StatCard
               compact
               label="Pastas de dívida"
@@ -1081,7 +1075,7 @@ export default function Dashboard() {
         </>
       ) : (
         <>
-          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+          <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3 xl:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
             <StatCard
               compact
               label="Pastas"

@@ -32,14 +32,15 @@ export function StatCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay, ease: [0.22, 1, 0.36, 1] }}
-      className={compact ? "ax-surface flex min-w-0 items-center gap-2.5 p-3" : "ax-surface p-4 sm:p-5"}
+      className={compact ? "ax-surface flex min-w-0 items-center gap-2 p-2 sm:p-2.5" : "ax-surface p-4 sm:p-5"}
+      title={compact && hint ? `${label}: ${value} · ${hint}` : undefined}
     >
       {compact ? <>
-        <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", toneClass[tone])}><Icon className="h-4 w-4" /></div>
+        <div className={cn("hidden h-6 w-6 shrink-0 items-center justify-center rounded-md sm:flex", toneClass[tone])}><Icon className="h-3.5 w-3.5" /></div>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-[11px]">{label}</p>
-          <p className="mt-0.5 break-words text-lg font-bold leading-tight tracking-tight tabular-nums sm:text-xl">{value}</p>
-          {hint ? <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">{hint}</p> : null}
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className="mt-0.5 break-words text-base font-bold leading-tight tracking-tight tabular-nums sm:text-lg">{value}</p>
+          {hint ? <p className="sr-only sm:not-sr-only sm:mt-0.5 sm:truncate sm:text-[10px] sm:leading-tight sm:text-muted-foreground">{hint}</p> : null}
         </div>
       </> : <>
       <div className="flex items-start justify-between gap-3">

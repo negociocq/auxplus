@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarClock, RefreshCw, Users, Wallet } from "lucide-react";
+import { CalendarClock, ChevronDown, RefreshCw, Users, Wallet } from "lucide-react";
 import type { Folder, Item } from "@/types";
 import type { UniplayRenewalEvent, UniplayRecreatedLine, UniplayCreditEvent } from "@/lib/uniplayRenewalLogs";
 import { lookupUniplayRenewals } from "@/lib/uniplayRenewalLookup";
@@ -81,7 +81,12 @@ export function RenewalSummary({ userId, folders, items, resellersFolderId = "",
   const showEstimate = range.start === (minimumDate > `${today.slice(0, 7)}-01` ? minimumDate : `${today.slice(0, 7)}-01`) && range.end === today;
   const estimate = useMemo(() => estimateMonthEnd(filteredItems, today, summary, resellersFolderId), [filteredItems, today, summary, resellersFolderId]);
 
-  return <section className="mb-6 space-y-4 rounded-2xl border bg-card p-4 sm:p-5" aria-label="Resumo de renovações">
+  return <details className="group mb-3 rounded-xl border bg-card" aria-label="Resumo de renovações">
+    <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm [&::-webkit-details-marker]:hidden">
+      <span className="flex min-w-0 items-center gap-2 font-medium"><CalendarClock className="h-4 w-4 shrink-0 text-primary" />Renovações e créditos recebidos</span>
+      <span className="flex items-center gap-2"><span className="text-xs text-muted-foreground">{scopeError || panelError ? "Indisponível" : panelLoading || !scopeReady ? "Carregando…" : panel?.userId === userId && panel.start === range.start && panel.end === range.end ? money(summary.total) : "Consultar"}</span><ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /></span>
+    </summary>
+    <div className="space-y-3 border-t p-3 sm:p-4">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="flex items-center gap-2 text-lg font-semibold"><CalendarClock className="h-5 w-5 text-primary" />Renovações e créditos recebidos</h2><p className="mt-1 text-sm text-muted-foreground">{localSource ? "Pagamentos de renovações e recargas registrados nas suas pastas." : "Renovações e créditos pelos logs da Uniplay, com os preços das pastas."}</p></div>
       <Button type="button" size="sm" variant="outline" disabled={!scopeError && (panelLoading || !scopeReady)} onClick={() => { setRefresh((value) => value + 1); onRefresh?.(); }}><RefreshCw className={`h-4 w-4 ${!scopeError && (panelLoading || !scopeReady) ? "animate-spin" : ""}`} />Atualizar</Button>
@@ -123,5 +128,6 @@ export function RenewalSummary({ userId, folders, items, resellersFolderId = "",
       </> : null}
     </>}
     <p className="text-xs text-muted-foreground">{localSource ? "Sem Uniplay conectada: usa somente os pagamentos de renovações e recargas registrados nas pastas, na data e no valor gravados. Cadastros iniciais e estimativas por vencimento ficam fora." : <>Cada ID de log entra uma vez. IPTV usa o histórico de preços da pasta na data de cada renovação e segue as recriações de linha. Sem histórico anterior, usa o primeiro preço disponível. Revendedores usam a quantidade enviada pela sua conta × o preço atual por crédito (Uniplay → Conta). Compras de créditos para sua própria conta ficam fora. Pix não é somado novamente. Ao filtrar uma pasta, entram somente os usuários identificados nela.</>}</p>
-  </section>;
+    </div>
+  </details>;
 }
