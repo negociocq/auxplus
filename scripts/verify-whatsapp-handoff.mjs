@@ -99,7 +99,8 @@ assert.equal((await receive("oi")).action, "ask_intent");
 assert.equal(sent.length, 1);
 assert.match(sent[0], /19:54:31/, "menu combines persisted date and actual expiration time");
 await Promise.all([receive("olá"), receive("mensagem seguinte"), receive("bom dia"), receive("oi novamente")]);
-assert.equal(sent.length, 1, "four free-text messages must not repeat the menu");
+assert.equal(sent.length, 5, "each free-text reply must repeat the menu");
+assert.ok(sent.every((message) => message === sent[0]));
 const state = () => db.tables.platform_settings.find((row) => row.key === "wa_bot_state_user_1").value;
 state().humanPaused = {};
 state().sessions = { [phone.replace("55119", "5511")]: { state: "idle", role: "client" } };
@@ -119,6 +120,32 @@ assert.equal(Object.keys(state().humanPaused).length, 0);
 assert.equal(Object.values(state().sessions).some((session) => session.state === "human"), false, "owner resume removes obsolete phone aliases too");
 assert.equal((await receive("olá")).action, "ask_intent");
 assert.equal(db.tables.platform_private_secrets.length, 0, "request leases must be released");
+
+// A reply to a renewal reminder must not infer a human request from prose.
+state().sessions = {};
+state().recentRepliesByPhone = {};
+const reminderReply = "Desculpa o atraso no pagamento tive problema com a conta";
+assert.equal((await receive(reminderReply)).action, "ask_intent");
+assert.match(sent.at(-1), /1[\s\S]*2/);
+const beforeRepeat = sent.length;
+assert.equal((await receive(reminderReply)).action, "ask_intent_repeat");
+assert.equal(sent.length, beforeRepeat + 1);
+assert.equal(sent.at(-1), sent.at(-2));
+assert.equal(Object.keys(state().humanPaused).length, 0);
+assert.equal((await receive("2")).action, "ask_problem_kind");
+assert.equal((await receive("0")).action, "ask_intent");
+assert.equal((await receive("atendente")).action, "human");
+await receive("encerrar", { fromMe: true });
+state().sessions = {};
+assert.equal((await receive("problema")).action, "ask_intent", "first reply opens menu before interpreting a problem keyword");
+db.setting("automations_user_1", { mpAccessToken: "fixture", mpPayerEmail: "fixture@example.invalid" });
+db.tables.items[0].price = 38;
+db.setting("mp_orders_user_1", { orders: [{
+  status: "pending", itemRefId: "customer", pixCopyPaste: "fixture-pix-code",
+  expiresAt: new Date(Date.now() + 3600000).toISOString(), amount: 38, months: 1,
+}] });
+assert.equal((await receive("1")).action, "pix_exists");
+assert.equal(sent.at(-1), "fixture-pix-code", "renewal option still delivers the PIX after the reminder reply");
 
 const history = [{ body: "menu", at: Date.now() }, { body: "outro", at: Date.now() }];
 assert.equal(guardExports.isRepeatedBotReply(history, "menu"), true);

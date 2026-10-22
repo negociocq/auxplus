@@ -2643,7 +2643,7 @@ Deno.serve(async (req) => {
     };
 
     let lastSendInRequest = 0;
-    const send = async (msg: string, imageUrl?: string) => {
+    const send = async (msg: string, imageUrl?: string, repeatMenu = false) => {
       botLease?.assertHeld();
       const body = String(msg || "").trim();
       if (!body) return;
@@ -2656,7 +2656,7 @@ Deno.serve(async (req) => {
       const now = Date.now();
       const previousReplies = Object.entries(recentRepliesByPhone)
         .filter(([p]) => phoneMatches(p, key)).flatMap(([, replies]) => replies);
-      if (isRepeatedBotReply(previousReplies, body, now)) return;
+      if (!repeatMenu && isRepeatedBotReply(previousReplies, body, now)) return;
       const lastPhone = Number(lastSendAtByPhone[key] || 0);
       const wait = Math.max(
         0,
@@ -3072,7 +3072,7 @@ Deno.serve(async (req) => {
       session.state === "ask_problem_kind" ||
       problemKeys.some(
         (k) =>
-          k !== "2" && (t === k || (k.length >= 5 && t.includes(k))),
+          k !== "2" && (t === k || (!clientItem && k.length >= 5 && t.includes(k))),
       );
 
     const testMonthPrice = (() => {
@@ -4467,7 +4467,10 @@ Deno.serve(async (req) => {
       // NÃO resetam — senão a resposta do menu de problema volta pro início.
       const isFreshClientSession =
         !session.state || session.state === "idle";
-      if (isFreshClientSession && !wantsAttendant) {
+      // Texto livre após um lembrete deve abrir o menu, mesmo contendo
+      // palavras como "problema". Só um pedido explícito pula essa etapa.
+      const explicitHumanRequest = ["atendente", "atendentes", "3"].includes(t);
+      if (isFreshClientSession && !explicitHumanRequest) {
         sessions[phone] = {
           state: "ask_intent",
           role: "client",
@@ -4833,10 +4836,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Conversas em texto livre não recebem o mesmo menu a cada mensagem.
-      if (!["menu", "0", "inicio"].includes(t)) {
-        return json({ ok: true, skipped: "awaiting_menu_choice" });
-      }
+      // Cada resposta sem uma escolha reconhecida recebe o menu novamente.
       await send(
         fillClientAskIntent(
           messages.askIntent || DEFAULT_MESSAGES.askIntent,
@@ -4845,6 +4845,8 @@ Deno.serve(async (req) => {
             dueDate: clientItem.due_date,
           },
         ),
+        undefined,
+        true,
       );
       return json({ ok: true, action: "ask_intent_repeat" });
     }
