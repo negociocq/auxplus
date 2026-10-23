@@ -1,3 +1,4 @@
+import { isPaidReminderCycle } from "../../supabase/functions/_shared/reminderRenewal";
 import { addDays, differenceInCalendarDays, format } from "date-fns";
 import type { Folder, Item } from "@/types";
 import { isRevenueFolderType } from "@/types";
@@ -587,7 +588,32 @@ export function requeWhatsappItem(
   }
 }
 
-/** Monta fila do dia (lembretes elegíveis pela regra de dias). */
+/** Rebuild from persisted items so an open tab cannot send an old expiration. */
+export async function loadCurrentReminderQueue(
+  userId: string,
+  settings: WhatsappAutomationSettings,
+  folders: Folder[],
+  logs: WaSendLog[],
+): Promise<WaQueueItem[]> {
+  const folderIds = folders.map((folder) => Number(folder.id));
+  if (!folderIds.length) return [];
+  const [itemsResult, ordersResult] = await Promise.all([
+    supabase.from("items").select("*").in("folder_id", folderIds),
+    supabase.from("platform_settings").select("value").eq("key", `mp_orders_user_${userId}`).maybeSingle(),
+  ]);
+  if (itemsResult.error || ordersResult.error) throw new Error("Não foi possível conferir os vencimentos antes do envio");
+  const rawOrders = ordersResult.data?.value;
+  const bag = (typeof rawOrders === "string" ? JSON.parse(rawOrders) : rawOrders) as { orders?: Record<string, unknown>[] } | null;
+  const orders = bag?.orders || [];
+  const items = (itemsResult.data || []).filter((row) => !isPaidReminderCycle(row, orders)).map((row) => ({
+    id: String(row.id), folderId: String(row.folder_id), itemId: String(row.item_id || ""),
+    name: String(row.name || ""), phone: String(row.phone || ""), price: Number(row.price),
+    isActive: row.is_active !== false,
+    dueDate: row.due_date ? `${String(row.due_date).slice(0, 10)}${row.due_time ? ` ${row.due_time}` : ""}` : null,
+  } as Item));
+  return buildTodayQueue(settings, items, folders, logs);
+}
+
 export function buildTodayQueue(
   settings: WhatsappAutomationSettings,
   items: Item[],
@@ -637,10 +663,11 @@ export function buildTodayQueue(
     // DEPOIS de hoje, o item atual é considerado obsoleto → ignora.
     const currentPhoneDigits = phoneDigits(item.phone || "");
     const hasNewerItem = items.some((other) => {
+      if (other.id === item.id) return false;
       if (!other.isActive) return false;
       const otherDue = ymdOnly(other.dueDate);
       if (!otherDue) return false;
-      if (otherDue <= todayKey) return false;
+      if (otherDue <= dueKey) return false;
       const sameItemId = String(other.itemId || "") === String(item.itemId || "");
       const samePhone = phoneDigits(other.phone || "") === currentPhoneDigits;
       return sameItemId || samePhone;

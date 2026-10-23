@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import type { AppData, User } from "@/types";
 import {
   acquireWhatsappSendLock,
-  buildTodayQueue,
+  loadCurrentReminderQueue,
   canSendMore,
   fetchEvolutionStatus,
   isPastSendTime,
@@ -88,7 +88,7 @@ export function useWhatsappAutoSend(user: User | null, data: AppData) {
       if (!isPastSendTime(settings.sendTime)) return;
 
       const logs = loadSendLog(user.id);
-      const queue = buildTodayQueue(settings, myItems, myFolders, logs);
+      const queue = await loadCurrentReminderQueue(user.id, settings, myFolders, logs);
       if (queue.length === 0) return;
 
       const platform = await loadEvolutionPlatformConfig();
@@ -119,10 +119,14 @@ export function useWhatsappAutoSend(user: User | null, data: AppData) {
 
       let sent = 0;
       try {
-        for (const item of queue) {
+        for (let item of queue) {
           if (cancelled) break;
           const liveSettings = loadWhatsappSettings(user.id);
           if (!liveSettings.enabled) break;
+          const current = (await loadCurrentReminderQueue(user.id, liveSettings, myFolders, loadSendLog(user.id)))
+            .find((entry) => entry.id === item.id && entry.phone === item.phone && entry.dueDate === item.dueDate);
+          if (!current) continue;
+          item = current;
           // Dedup na hora: se já foi enviado hoje, pula (fila pode estar velha).
           // Por telefone também: cliente duplicado em várias pastas não reenvia.
           if (wasItemSentToday(user.id, item.itemId, item.kind, item.phone))
@@ -175,8 +179,9 @@ export function useWhatsappAutoSend(user: User | null, data: AppData) {
       }
     };
 
-    void tick();
-    const id = window.setInterval(() => void tick(), 45000);
+    const runTick = () => { void tick().catch((error) => console.warn("Falha ao conferir lembretes", error)); };
+    runTick();
+    const id = window.setInterval(runTick, 45000);
     return () => {
       cancelled = true;
       window.clearInterval(id);

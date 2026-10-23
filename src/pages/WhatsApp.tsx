@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   acquireWhatsappSendLock,
-  buildTodayQueue,
+  loadCurrentReminderQueue,
   canSendMore,
   defaultWhatsappAutomation,
   loadSendLog,
@@ -133,10 +133,18 @@ export default function WhatsAppPage() {
     [data.items, myFolders],
   );
 
-  const queue = useMemo(
-    () => buildTodayQueue(settings, myItems, myFolders, logs),
-    [settings, myItems, myFolders, logs],
-  );
+  const [queue, setQueue] = useState<WaQueueItem[]>([]);
+  useEffect(() => {
+    if (!user) { setQueue([]); return; }
+    let cancelled = false;
+    void loadCurrentReminderQueue(user.id, settings, myFolders, logs)
+      .then((current) => { if (!cancelled) setQueue(current); })
+      .catch((error) => {
+        if (!cancelled) setQueue([]);
+        console.warn("Falha ao atualizar a fila de lembretes", error);
+      });
+    return () => { cancelled = true; };
+  }, [user, settings, myFolders, myItems, logs]);
 
   const sentTodayCount = useMemo(() => {
     const day = format(new Date(), "yyyy-MM-dd");
@@ -183,6 +191,13 @@ export default function WhatsAppPage() {
 
   const sendOne = async (item: WaQueueItem) => {
     const currentLogs = loadSendLog(user.id);
+    const current = (await loadCurrentReminderQueue(user.id, settings, myFolders, currentLogs))
+      .find((entry) => entry.id === item.id && entry.phone === item.phone && entry.dueDate === item.dueDate);
+    if (!current) {
+      toast.message("Lembrete cancelado: o vencimento ou pagamento foi atualizado.");
+      return false;
+    }
+    item = current;
     const gate = canSendMore(settings, currentLogs);
     if (!gate.ok) {
       toast.message(gate.reason || "Limite atingido");

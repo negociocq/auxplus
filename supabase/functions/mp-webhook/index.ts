@@ -16,7 +16,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { recordPixPayment } from "../_shared/renewalPayments.ts";
-import { dueTime } from "../_shared/itemDue.ts";
+import { dueTime, mergeItemDue, normalizePanelDue } from "../_shared/itemDue.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -140,7 +140,7 @@ function nextDueAfterRenew(currentDue: string | null | undefined, months: number
   const yy = base.getFullYear();
   const mm = String(base.getMonth() + 1).padStart(2, "0");
   const dd = String(base.getDate()).padStart(2, "0");
-  return `${yy}-${mm}-${dd}`;
+  return mergeItemDue(`${yy}-${mm}-${dd}`, dueTime(currentDue))!;
 }
 
 function mapMpStatus(status: string): "pending" | "approved" | "cancelled" | "rejected" | "expired" {
@@ -993,9 +993,11 @@ async function releaseOrder(
           actualUsername.toLowerCase()
         );
       }) as Record<string, unknown> | undefined;
-      const exp = String(hit?.exp_date || hit?.expDate || "").trim();
-      const m = /^(\d{4}-\d{2}-\d{2})/.exec(exp.replace(" ", "T"));
-      if (m) newDue = m[1]!;
+      const exp = normalizePanelDue(hit?.exp_date || hit?.expDate);
+      // A list response can still contain the pre-renewal expiration.
+      if (exp && exp.slice(0, 10) >= newDue.slice(0, 10)) {
+        newDue = mergeItemDue(exp, dueTime(newDue))!;
+      }
     } catch {
       /* usa cálculo local */
     }

@@ -15,6 +15,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { isPaidReminderCycle } from "../_shared/reminderRenewal.ts";
 import { runRecoveryQueue } from "../_shared/waRecovery.ts";
 import { mergeItemDue } from "../_shared/itemDue.ts";
 
@@ -304,13 +305,6 @@ function buildTodayQueue(
       .map((l) => `${l.phone}:${l.kind}`),
   );
 
-  // Rastreia quais telefones já foram notificados como "onday" em qualquer dia anterior
-  const alreadyNotifiedOnday = new Set(
-    alreadySent
-      .filter((l) => l.kind === "onday")
-      .map((l) => l.phone),
-  );
-
   const queue: QueueItem[] = [];
   const queuedKeys = new Set<string>();
 
@@ -348,10 +342,11 @@ function buildTodayQueue(
     // Se algum item com o mesmo item_id OU mesmo telefone tem vencimento
     // DEPOIS de hoje, o item atual é considerado obsoleto → ignora.
     const hasNewerItem = items.some((other) => {
+      if (String(other.id) === String(item.id)) return false;
       if (other.is_active === false) return false;
       const otherDue = ymdOnly(other.due_date);
       if (!otherDue) return false;
-      if (otherDue <= todayKey) return false;
+      if (otherDue <= dueKey) return false;
       // Match by item_id (username do painel) or by phone digit
       const sameItemId = String(other.item_id ?? "") === itemId;
       const samePhone = phoneDigits(String(other.phone || "")) === phoneDigits(phone);
@@ -361,7 +356,7 @@ function buildTodayQueue(
     if (settings.sendOnDay && dueKey === todayKey) {
       const key = `${phone}:onday`;
       // Não enviar se já foi notificado como "onday" em qualquer dia anterior
-      if (!sentKeys.has(key) && !queuedKeys.has(key) && !alreadyNotifiedOnday.has(phone)) {
+      if (!sentKeys.has(key) && !queuedKeys.has(key)) {
         // Pula se este cliente já renovou hoje (evita lembrete após pagamento)
         if (renewedTodayPhones && renewedTodayPhones.has(String(phoneDigitsToday(phone)))) {
           continue;
@@ -517,11 +512,12 @@ async function getSetting<T>(
   client: ReturnType<typeof createClient>,
   key: string,
 ): Promise<T | null> {
-  const { data } = await client
+  const { data, error } = await client
     .from("platform_settings")
     .select("value")
     .eq("key", key)
     .maybeSingle();
+  if (error) throw new Error(`Falha ao consultar configuração: ${key}`);
   if (!data?.value) return null;
   if (typeof data.value === "string") {
     try {
@@ -705,7 +701,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      const queue = buildTodayQueue(settings, myItems, myFolders, logs, todayKey, renewedTodayPhones);
+      const unpaidItems = myItems.filter((row) => !isPaidReminderCycle(row as { id: unknown; item_id: unknown; due_date: unknown }, mpBag?.orders || []));
+      const queue = buildTodayQueue(settings, unpaidItems, myFolders, logs, todayKey, renewedTodayPhones);
       if (!queue.length) continue;
 
       const instance = instanceNameForUser(prefix, userId, u.username);
@@ -720,7 +717,18 @@ Deno.serve(async (req) => {
       let sent = 0;
       let consecutiveFailures = 0;
       for (let idx = 0; idx < queue.length; idx++) {
-        const item = queue[idx];
+        let item = queue[idx];
+        // A payment can arrive while earlier messages wait in this batch.
+        const [freshItems, freshOrders] = await Promise.all([
+          client.from("items").select("id,folder_id,item_id,name,due_date,due_time,phone,price,is_active").in("folder_id", [...folderIds]),
+          getSetting<{ orders?: Array<Record<string, unknown>> }>(client, `mp_orders_user_${userId}`),
+        ]);
+        if (freshItems.error) throw freshItems.error;
+        const eligible = (freshItems.data || []).filter((row) => !isPaidReminderCycle(row, freshOrders?.orders || []));
+        const current = buildTodayQueue(settings, eligible, myFolders, logs, todayKey)
+          .find((entry) => entry.itemId === item.itemId && entry.folderId === item.folderId && entry.kind === item.kind && entry.phone === item.phone && entry.dueDate === item.dueDate);
+        if (!current) { summary.skipped += 1; continue; }
+        item = current;
         const sentAt = new Date().toISOString();
         const gate = canSendMore(settings, logs, sentAt);
         if (!gate.ok) {
