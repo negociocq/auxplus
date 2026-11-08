@@ -9,42 +9,24 @@ async function load(path) {
 const { upgradePartnerTestFlow: upgrade } = await load("supabase/functions/_shared/partnerTestFlow.ts");
 const { partnerDeviceGuide, partnerDeviceHelp } = await load("supabase/functions/_shared/partnerDeviceGuide.ts");
 const base = upgrade({ texts: { askName: "Custom name", macOk: "Custom success" }, monthPriceBrl: 29, deviceMenu: { options: [] }, offerMenu: { options: [{ key: "1", action: "activate_month" }] } });
-for (const version of [2, 3, 4, 5, 6, 7, 8]) {
-  const input = { ...base, appCatalogVersion: version };
-  const flow = upgrade(input);
-  assert.equal(flow.appCatalogVersion, 8);
-  assert.equal(flow.texts.askName, "Custom name");
-  assert.equal(flow.texts.macOk, "Custom success");
-  assert.equal(flow.monthPriceBrl, 29);
-  assert.equal(flow.offerMenu, base.offerMenu);
-  assert.equal(upgrade(flow), flow);
-  const menus = new Map(flow.appMenus.map(menu => [menu.id, menu.menu]));
-  assert.equal(menus.size, flow.appMenus.length);
-  for (const brand of ["samsung", "lg", "roku"]) {
-    const choice = flow.tvMenu.options.find(option => option.nextMenuId === brand);
-    assert.equal(choice.action, "ask_app");
-    const menu = menus.get(choice.nextMenuId);
-    assert.ok(menu.message.length < 120);
-    assert.equal(menu.options.find(option => option.key === "1").action, "app_prime");
-    assert.equal(menu.options.find(option => option.key === "2").action, "app_pixel");
-    assert.equal(menu.options.some(option => option.action === "app_utm"), false);
-    const help = menu.options.find(option => option.key === "4");
-    assert.equal(help.action, "ask_app");
-    assert.equal(help.label, "Não sei instalar");
-    const guide = menus.get(help.nextMenuId);
-    assert.ok(guide.message.includes("casinha"));
-    assert.ok(guide.message.includes("4."));
-    assert.ok(guide.message.length < 280);
-    assert.deepEqual(guide.options.filter(option => option.action.startsWith("app_")).map(option => option.action), ["app_prime", "app_pixel"]);
-    assert.equal(guide.options.find(option => option.key === "9").action, "human");
-  }
-  assert.equal(flow.tvMenu.options.find(option => option.key === "4").action, "app_pixel");
-  for (const menu of [flow.tvMenu, ...menus.values()]) for (const option of menu.options) {
-    if (option.action === "ask_app") assert.ok(menus.has(option.nextMenuId), option.nextMenuId);
-  }
-  for (const menu of menus.values()) assert.equal(new Set(menu.options.map(option => option.key)).size, menu.options.length);
+
+for (const version of [2,3,4,5,6,7,8,9,10,12]) {
+ const flow=upgrade({...base,appCatalogVersion:version});
+ assert.equal(flow.appCatalogVersion,13);
+ assert.equal(flow.texts.askName,'Custom name');assert.equal(flow.texts.macOk,'Custom success');
+ assert.equal(flow.monthPriceBrl,29);assert.deepEqual(flow.offerMenu,base.offerMenu);assert.deepEqual(upgrade(flow),flow);
+ const menus=new Map(flow.appMenus.map(m=>[m.id,m.menu]));assert.equal(menus.size,flow.appMenus.length);
+ for(const brand of ['samsung','lg','roku','android']) {
+  assert.equal(flow.tvMenu.options.find(o=>o.nextMenuId===brand).action,'ask_app');
+  const menu=menus.get(brand);
+  assert.deepEqual(menu.options.filter(o=>o.action.startsWith('app_')).map(o=>o.action),['app_zuxo']);
+  assert(menu.options.some(o=>o.action==='human'));
+  assert.equal(new Set(menu.options.map(o=>o.key)).size,menu.options.length);
+  assert.match(menu.message,brand==='samsung'?/manual/:/MAC/);
+ }
+ assert.match(flow.phoneApkUrl,/com.zuxoplayer.app/);assert.match(flow.phoneIosUrl,/id6782688104/);
 }
-for (const app of ["prime", "utm", "pixel"]) {
+for (const app of ["zuxo", "utm", "pixel"]) {
   const prompt = partnerDeviceGuide(app, true);
   assert.ok(prompt.includes("Mande uma foto"));
   assert.ok(prompt.includes("ou digite"));

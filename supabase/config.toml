@@ -17,6 +17,21 @@ verify_jwt = false
 [functions.wa-recovery]
 verify_jwt = false
 
+# Custom account session and private cron token are validated inside the function.
+[functions.wa-football-status]
+verify_jwt = false
+
+[functions.wa-content-status]
+verify_jwt = false
+
+[functions.buffer-instagram]
+verify_jwt = false
+
+# Public read-only renderer; no WhatsApp or account credentials are exposed here.
+[functions.wa-football-banner]
+verify_jwt = false
+static_files = []
+
 [functions.mp-pix]
 verify_jwt = false
 

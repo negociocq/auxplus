@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import { normalizeCatalog, observeCatalog, catalogNews, catalogDate } from '../src/lib/uniplayDiscover.ts';
+const now = Date.parse('2026-10-28T12:00:00Z');
+const titles = normalizeCatalog({
+  movies: [{ id: 1, name: 'Filme atual (2026)' }, { id: 2, name: 'Filme antigo (1990)' }, { id: 3, name: 'Sem data' }, { id: 4, name: 'Estreia', info: { releaseDate: '20/10/2026' } }, { id: 5, name: '1917' }],
+  series: [{ id: 8, name: 'Série antiga', year: 2020, episodes: { 1: [{}, {}] } }],
+});
+assert.equal(titles[0].releaseYear, 2026);
+assert.equal(titles[0].releasedAt, undefined, 'year is never fabricated as an exact premiere date');
+assert.match(catalogNews(titles[0], now).label, /2026/);
+assert.equal(catalogNews(titles[1], now), undefined);
+assert.equal(catalogNews(titles[2], now), undefined, 'unknown dates must not become fake releases');
+assert.equal(titles[4].releaseYear, undefined, 'a numeric movie title is not a release year');
+assert.equal(catalogDate('31/02/2026'), undefined);
+assert.equal(titles[3].releasedAt, Date.parse('2026-10-20T12:00:00Z'));
+const first = observeCatalog(titles, null, now);
+assert.equal(catalogNews(first.items.at(-1), now), undefined, 'initial season data is only a baseline');
+const changed = normalizeCatalog({ movies: [], series: [{ id: 8, name: 'Série antiga', year: 2020, episodes: { 1: [{}, {}], 2: [{}] } }] });
+const next = observeCatalog(changed, first.snapshot, now + 1000);
+assert.equal(catalogNews(next.items[0], now + 1000), undefined, 'adding an old season does not establish its premiere');
+assert.match(catalogNews({ ...next.items[0], seasonReleasedAt: Date.parse('2026-10-20T12:00:00Z') }, now + 1000).label, /Nova temporada/);
+assert.equal(next.items[0].latestSeason, 2);
+assert.equal(next.items[0].episodeCount, 3);
+const again = observeCatalog(changed, next.snapshot, now + 2000);
+assert.equal(again.items[0].seasonAddedAt, now + 1000, 'refresh must not reset the news time');
+const reduced = observeCatalog([titles.at(-1)], next.snapshot, now + 2000);
+assert.equal(reduced.items[0].seasonAddedAt, undefined, 'a removed season must not make an older season look new');
+const restored = observeCatalog(changed, reduced.snapshot, now + 3000);
+assert.equal(restored.items[0].seasonAddedAt, now + 1000, 'restoring an already-seen season must not reset novelty');
+const upgradedOldSnapshot = observeCatalog(changed, { version: 1, baselineAt: now, seen: { 'series:8': now } }, now + 1000);
+assert.equal(upgradedOldSnapshot.items[0].seasonAddedAt, undefined, 'upgrade from old browser storage must not invent new seasons');
+const added = observeCatalog(normalizeCatalog({ movies: [{ id: 99, name: 'Antigo mas adicionado agora', year: 1990 }], series: [] }), first.snapshot, now + 1000);
+assert.equal(catalogNews(added.items[0], now + 1000), undefined, 'old films newly added must remain out of latest releases');
+for (const title of normalizeCatalog({ movies: [{ id: 10, name: 'Viúva Negra (2021)', added: String(Math.floor(now / 1000)) }, { id: 11, name: 'Filme (2025)' }], series: [{ id: 12, name: 'Mickey Mouse 2013', updated_at: '2026-10-28', category_name: 'Lançamentos' }] })) assert.equal(catalogNews(title, now), undefined);
+assert.equal(catalogNews({ key: 'movie:old', name: 'Estreia de janeiro', kind: 'movie', releaseYear: 2026, releasedAt: Date.parse('2026-01-01T12:00:00Z') }, now), undefined);
+assert.equal(catalogNews({ key: 'movie:later', name: 'Estreia futura', kind: 'movie', releaseYear: 2026, releasedAt: Date.parse('2026-12-01T12:00:00Z') }, now), undefined);
+assert.match(catalogNews({ key: 'series:new-season', name: 'Série de 2020', kind: 'series', releaseYear: 2020, latestSeason: 3, seasonReleaseYear: 2026 }, now).label, /Nova temporada/);
+const seasons = normalizeCatalog({ movies: [], series: [{ id: 55, name: 'Série antiga (2020)', seasons: [{ season_number: 1, air_date: '2020-10-01' }, { season_number: 2, air_date: '2026-10-10' }] }] });
+assert.equal(seasons[0].seasonReleasedAt, Date.parse('2026-10-10T12:00:00Z'));
+assert.match(catalogNews(seasons[0], now).label, /Nova temporada/);
+assert.equal(catalogNews({ key: 'movie:future', name: 'Futuro', kind: 'movie', releaseYear: 2027 }, now), undefined);
+console.log('PASS: catalog-only news, year/date fallback, nested metadata, season/episode growth, browser baseline, truthful labels and future exclusion');

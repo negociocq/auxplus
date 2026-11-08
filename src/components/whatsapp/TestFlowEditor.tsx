@@ -142,7 +142,7 @@ function OptionRows({
                     <SelectContent>
                       {(
                         Object.keys(WA_TEST_ACTION_LABELS) as WaTestOptionAction[]
-                      ).map((a) => (
+                      ).filter(a => a !== "app_pixel" && a !== "app_utm").map((a) => (
                         <SelectItem key={a} value={a}>
                           {WA_TEST_ACTION_LABELS[a]}
                         </SelectItem>
@@ -314,7 +314,7 @@ export function TestFlowEditor({ value, onChange }: Props) {
       <section className="ax-surface space-y-3 p-4">
         <div><h3 className="text-sm font-semibold">Apps por aparelho</h3><p className="text-xs text-muted-foreground">Opções disponíveis no atendimento automático de testes.</p></div>
         <div className="grid gap-2 sm:grid-cols-2">
-          {["Samsung", "LG", "Roku", "Android"].map((device) => <div key={device} className="rounded-md border p-3"><p className="text-sm font-medium">{device}</p><p className="mt-1 text-xs text-muted-foreground">{device === "Android" ? "Pixel Player · Device ID ou MAC" : "Prime IPTV · Pixel Player · UTM Play"}</p></div>)}
+          {["Samsung", "LG", "Roku", "Android"].map((device) => <div key={device} className="rounded-md border p-3"><p className="text-sm font-medium">{device}</p><p className="mt-1 text-xs text-muted-foreground">{device === "Android" ? "Pixel Player · Device ID ou MAC" : "Zuxo Player · Pixel Player · UTM Play"}</p></div>)}
         </div>
         <p className="text-xs text-muted-foreground">UTM Play pede MAC e Device Key de 6 números. As opções e mensagens podem ser ajustadas abaixo.</p>
       </section>
@@ -385,15 +385,15 @@ export function TestFlowEditor({ value, onChange }: Props) {
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">APK Android (celular)</Label>
+            <Label className="text-xs">Zuxo Android / tablet (Play Store)</Label>
             <Input
               value={flow.phoneApkUrl}
               onChange={(e) => set({ phoneApkUrl: e.target.value })}
-              placeholder="http://tie-tv.com.br/uni.apk"
+              placeholder="https://play.google.com/store/apps/details?id=com.zuxoplayer.app"
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">App iPhone (App Store)</Label>
+            <Label className="text-xs">Zuxo iPhone / iPad (App Store)</Label>
             <Input
               value={flow.phoneIosUrl}
               onChange={(e) => set({ phoneIosUrl: e.target.value })}
@@ -415,7 +415,7 @@ export function TestFlowEditor({ value, onChange }: Props) {
 
       <MenuBlock
         title="2) Tipo de TV"
-        hint="Pode ir direto ao app (Pixel Player/Prime/UTM Play) ou abrir um submenu."
+        hint="Pode ir direto ao app (Zuxo Player) ou abrir um submenu."
         menu={flow.tvMenu}
         appMenuIds={appMenuIds}
         onChange={(tvMenu) => set({ tvMenu })}
@@ -566,13 +566,13 @@ export function TestFlowEditor({ value, onChange }: Props) {
           [
             ["askName", "Pedir nome (antes do teste → nota no painel)"],
             ["pixelReady", "Pixel Player — pedir Device ID ou MAC"],
-            ["primeReady", "Prime — pedir MAC"],
+            ["zuxoReady", "Zuxo — pedir MAC"],
             ["utmReady", "UTM Play — pedir MAC e Device Key"],
             ["macOk", "MAC ativado — TV Box / Android / Samsung / LG"],
             ["macOkRoku", "MAC ativado — Roku (sair do app)"],
             ["macCheckIn", "Check-in se não responder após o MAC"],
             ["macInvalid", "MAC inválido"],
-            ["macPrompt", "Após instalar — pedir o MAC (Pixel Player/Prime)"],
+            ["macPrompt", "Após instalar — pedir o MAC (Zuxo Player)"],
             ["checkInOk", "Check-in “conseguiu assistir?” — resposta sim"],
             ["checkInNo", "Check-in “conseguiu assistir?” — resposta não"],
             ["pcReady", "Computador — link + login"],

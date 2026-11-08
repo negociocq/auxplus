@@ -1,5 +1,5 @@
 /** Catálogo compartilhado entre o editor AuxPlus e o webhook WhatsApp. */
-export function parsePartnerDeviceText(app: "pixel" | "prime" | "utm", text: string) {
+export function parsePartnerDeviceText(app: "pixel" | "zuxo" | "utm", text: string) {
   const macMatch = text.match(/\b(?:[a-f0-9]{2}[:-]){5}[a-f0-9]{2}\b|\b[a-f0-9]{12}\b/i);
   if (app === "pixel") {
     const fullId = text.trim().replace(/^(device\s*id|id|mac)\s*[:=]\s*/i, "").replace(/\r?\n\s*/g, "");
@@ -7,7 +7,7 @@ export function parsePartnerDeviceText(app: "pixel" | "prime" | "utm", text: str
     if (device.length < 10 || /\s/.test(device)) throw new Error("Envie o Device ID ou MAC exatamente como aparece no Pixel Player.");
     return { device, deviceKey: undefined };
   }
-  if (!macMatch) throw new Error(app === "utm" ? "Envie o MAC e o Device Key de 6 números do UTM na mesma mensagem." : "Envie o MAC exibido no Prime IPTV.");
+  if (!macMatch) throw new Error(app === "utm" ? "Envie o MAC e o Device Key de 6 números do UTM na mesma mensagem." : "Envie o MAC exibido no Zuxo Player.");
   const device = macMatch[0].replace(/[:-]/g, "").match(/.{2}/g)!.join(":");
   const deviceKey = text.replace(macMatch[0], " ").match(/\b\d{6}\b/)?.[0];
   if (app === "utm" && !deviceKey) throw new Error("Faltou o Device Key UTM. Envie novamente o MAC e a chave de 6 números juntos.");
@@ -28,7 +28,7 @@ function upgradeAppCatalog<T>(input: T): T {
     }) : [] };
   };
   const appOptions = () => [
-    { key: "1", label: "Prime IPTV", keywords: "prime,prime iptv", action: "app_prime" },
+    { key: "1", label: "Zuxo Player", keywords: "zuxo,zuxo player", action: "app_zuxo" },
     { key: "2", label: "Pixel Player", keywords: "pixel,pixel player", action: "app_pixel" },
     { key: "3", label: "UTM Play", keywords: "utm,utm play", action: "app_utm" },
     { key: "0", label: "Voltar", keywords: "voltar,menu", action: "back" },
@@ -50,11 +50,10 @@ function upgradeAppCatalog<T>(input: T): T {
     })),
     texts: { ...texts,
       pixelReady: "✅ Teste de *{hours}h* — *Pixel Player*\n\nInstale o Pixel Player, abra o aplicativo e localize o *Device ID* ou MAC exibido na tela. Vamos usá-lo para ativar sua lista.",
-      primeReady: "✅ Teste de *{hours}h* — *Prime IPTV*\n\nInstale o Prime IPTV, abra o aplicativo e localize o *MAC* exibido na tela.",
+      zuxoReady: "✅ Teste de *{hours}h* — *Zuxo Player*\n\nInstale o Zuxo Player, abra o aplicativo e localize o *MAC* exibido na tela.",
       utmReady: "✅ Teste de *{hours}h* — *UTM Play*\n\nInstale o UTM Play e abra o aplicativo. Para ativar, vamos precisar do *MAC* e do *Device Key de 6 números* exibidos na TV.",
-      macPrompt: "Envie o identificador exibido no app: *MAC* no Prime, *Device ID ou MAC* no Pixel, ou *MAC e Device Key* no UTM. No UTM, envie os dois na mesma mensagem.",
+      macPrompt: "Envie o identificador exibido no app: *MAC* no Zuxo, *Device ID ou MAC* no Pixel, ou *MAC e Device Key* no UTM. No UTM, envie os dois na mesma mensagem.",
       macInvalid: "Não consegui reconhecer o identificador. Confira os dados exibidos no aplicativo e envie novamente.",
-      phoneReady: "Instale o *Pixel Player* no Android e abra o aplicativo para localizar seu *Device ID*.",
     },
   } as T;
 }
@@ -75,7 +74,7 @@ function clarifyAppSelection<T>(input: T): T {
       const id = String(menu.id);
       if (id.startsWith("guide_")) {
         const [, brand, app] = id.split("_");
-        const appName = ({ prime: "Prime IPTV", pixel: "Pixel Player", utm: "UTM Play" } as Record<string, string>)[app];
+        const appName = ({ zuxo: "Zuxo Player", pixel: "Pixel Player", utm: "UTM Play" } as Record<string, string>)[app];
         if (!tvStoreSteps[brand] || !appName) return menu;
         const steps = [...tvStoreSteps[brand],
           `Vai aparecer um teclado na tela. Use as setas para escolher cada letra e aperte OK. Escreva *${appName}*.`,
@@ -119,7 +118,7 @@ function compactPartnerFlow<T>(input: T): T {
       const current = menu.menu as { message: string; options: Array<Record<string, unknown>> };
       if (id.startsWith("guide_")) {
         const [, brand, app] = id.split("_");
-        const name = ({ prime: "Prime IPTV", pixel: "Pixel Player", utm: "UTM Play" } as Record<string, string>)[app];
+        const name = ({ zuxo: "Zuxo Player", pixel: "Pixel Player", utm: "UTM Play" } as Record<string, string>)[app];
         if (!name || !stores[brand]) return menu;
         return { ...menu, menu: { ...current,
           message: `*Instalar ${name}*\n\n1. Aperte a casinha 🏠 no controle.\n2. Abra *${stores[brand]}* e procure a lupa 🔎.\n3. Busque *${name}*, ${brand === "roku" ? "adicione" : "instale"} e abra.`,
@@ -162,7 +161,7 @@ function upgradeLegacyPartnerTestFlow<T>(input: T): T {
     { id: "android", name: "Android / Google TV / TV Box", store: "a loja de aplicativos (Google Play Store)" },
   ];
   const apps = [
-    { id: "prime", name: "Prime IPTV" },
+    { id: "zuxo", name: "Zuxo Player" },
     { id: "pixel", name: "Pixel Player" },
     { id: "utm", name: "UTM Play" },
   ];
@@ -207,7 +206,7 @@ function upgradeLegacyPartnerTestFlow<T>(input: T): T {
 }
 
 /** UTM is available for paid clients, never for the WhatsApp trial flow. */
-export function upgradePartnerTestFlow<T>(input: T): T {
+function upgradeTvCatalogFlow<T>(input: T): T {
   if (!input || typeof input !== "object") return input;
   if (Number((input as Record<string, unknown>).appCatalogVersion) >= 8) return input;
   const flow = upgradeLegacyPartnerTestFlow(input) as Record<string, unknown>;
@@ -219,6 +218,106 @@ export function upgradePartnerTestFlow<T>(input: T): T {
   return { ...flow, appCatalogVersion: 8,
     deviceMenu: cleanMenu(flow.deviceMenu), phoneMenu: cleanMenu(flow.phoneMenu), tvMenu: cleanMenu(flow.tvMenu),
     appMenus: ((flow.appMenus || []) as Array<Record<string, unknown>>).filter(menu => !String(menu.id).endsWith("_utm")).map(menu => ({ ...menu, menu: cleanMenu(menu.menu) })),
-    texts: { ...(flow.texts as object), utmReady: "", macPrompt: "Envie o MAC do Prime IPTV ou o Device ID completo do Pixel Player." },
+    texts: { ...(flow.texts as object), utmReady: "", macPrompt: "Envie o MAC do Zuxo Player ou o Device ID completo do Pixel Player." },
   } as T;
+}
+
+export const ANDROID_PHONE_READY = "✅ Teste de *{hours}h* no *celular Android*\n\n1) Baixe o app:\n{apk}\n\n2) Abra o *uni.apk*, instale e escolha a opção *UniPlay*\n\n3) Conecte com:\nUsuário: *{user}*\nSenha: *{password}*";
+
+/** Partner app migrations concern TVs; personal devices keep their credential-based flow. */
+function upgradeZuxoCatalog<T>(input: T): T {
+  if (!input || typeof input !== "object" || Number((input as Record<string, unknown>).appCatalogVersion) >= 10) return input;
+  const migrate = (value: unknown): unknown => {
+    if (typeof value === "string") return value.replace(/prime iptv/gi, "Zuxo Player").replace(/\bPrime\b/g, "Zuxo")
+      .replace(/\bprime\b/g, "zuxo").replace(/_prime\b/g, "_zuxo");
+    if (Array.isArray(value)) return value.map(migrate);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key === "primeReady" ? "zuxoReady" : key, migrate(child)]));
+    return value;
+  };
+  const flow = migrate(input) as Record<string, unknown>;
+  return { ...flow, appCatalogVersion: 10, texts: { ...(flow.texts as object),
+    zuxoReady: "Instale e abra o *Zuxo Player*. Envie o *MAC* exibido na tela de ativação.",
+  } } as T;
+}
+
+export const ZUXO_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.zuxoplayer.app";
+export const ZUXO_IOS_URL = "https://apps.apple.com/br/app/zuxo-player/id6782688104";
+export const ZUXO_SAMSUNG_CODE = "jung777";
+
+export function zuxoActivatedInstructions(device?: string): string {
+  const next = "Aguarde alguns segundos com o aplicativo aberto nessa tela: a lista aparecerá automaticamente.";
+  return "✅ *Ativado!* MAC *{mac}* no *{app}*.\n\nSeu teste dura *{hours} horas* — expira em *{expiresAt}*.\n\n" + next + "\n\nQuando quiser assinar, mande mensagem aqui.";
+}
+
+export function zuxoRemoteInstructions(device: string): string {
+  const install = device === "ios" ? `No iPhone ou iPad, instale o *Zuxo Player* pela App Store:\n${ZUXO_IOS_URL}`
+    : device === "android" || device === "box" ? `No celular/tablet Android ou Android TV / TV Box, instale o *Zuxo Player* pela Play Store:\n${ZUXO_ANDROID_URL}`
+    : device === "lg" ? "Na LG, procure *Zuxo Player* na LG Content Store, instale e abra."
+    : device === "roku" ? "No Roku, procure *Zuxo Player* na loja de canais, adicione e abra."
+    : "Instale e abra o *Zuxo Player* no seu aparelho.";
+  const locate = device === "ios"
+    ? "Toque na *engrenagem ⚙️* para abrir as *Configurações*. O *MAC* fica nessa tela. Envie um *print das configurações mostrando o MAC* (se precisar, role a tela para baixo)."
+    : "O *MAC* aparece logo na *tela inicial* do Zuxo Player, como *ID do aparelho*. Pode *digitar o MAC* ou *mandar uma foto nítida dessa tela*.";
+  return `${install}\n\n${locate}\n\nVou adicionar sua lista remotamente.\n\nSe precisar de ajuda, escreva *atendente*.`;
+}
+
+export function zuxoSamsungInstructions(user: string, password: string, hours: number): string {
+  return `✅ Teste de *${hours}h* no *Zuxo Player — Samsung*\n\n1. Instale e abra o *Zuxo Player* na loja de aplicativos da Samsung.\n2. Entre em *Listas* e abra *Adicionar lista* ou *Trocar lista*.\n3. Preencha:\n\n*URL ou código:* ${ZUXO_SAMSUNG_CODE}\n*Usuário:* ${user}\n*Senha:* ${password}\n\n4. Selecione *Entrar*.\n\nConseguiu entrar e assistir? Responda *sim* ou *não*.`;
+}
+
+function upgradeUniversalZuxoFlow<T>(input: T): T {
+  const flow = input as Record<string, unknown>;
+  if (Number(flow.appCatalogVersion) >= 13) return input;
+  const back = { key: "0", label: "Voltar", keywords: "voltar,menu", action: "back" };
+  const human = { key: "9", label: "Falar com atendente", keywords: "atendente,ajuda", action: "human" };
+  const brands = ["samsung", "lg", "roku", "android"];
+  const menus = brands.flatMap(id => [{ id, title: `Zuxo Player — ${id}`, menu: {
+    message: id === "samsung" ? "Na Samsung, instale e abra o Zuxo Player. A configuração será manual em Listas, usando código, usuário e senha."
+      : zuxoRemoteInstructions(id),
+    options: [{ key: "1", label: "Instalei e abri o Zuxo Player", keywords: "sim,instalei,abri,pronto,zuxo", action: "app_zuxo" }, human, back],
+  } }, { id: `help_${id}`, title: `Instalar Zuxo — ${id}`, menu: {
+    message: id === "samsung" ? "Na sua Samsung, abra a loja de aplicativos, procure Zuxo Player, instale e abra. Depois entre em Listas."
+      : zuxoRemoteInstructions(id),
+    options: [{ key: "1", label: "Instalei e abri", keywords: "sim,instalei,abri,pronto", action: "app_zuxo" }, human, back],
+  } }]);
+  const oldDeviceMenu = flow.deviceMenu as { options?: Array<Record<string, unknown>> } | undefined;
+  const pc = oldDeviceMenu?.options?.find(o => o.action === "pc");
+  return { ...flow, appCatalogVersion: 13, phoneApkUrl: ZUXO_ANDROID_URL, phoneIosUrl: ZUXO_IOS_URL,
+    deviceMenu: { message: "Em qual aparelho você vai usar o teste?", options: [
+      { key: "1", label: "TV / TV Box", keywords: "tv,televisao,box,smart tv", action: "ask_tv" },
+      { key: "2", label: "Celular / Tablet", keywords: "celular,tablet,telefone,iphone,ipad", action: "phone" },
+      ...(pc ? [{ ...pc, key: "3" }] : []),
+    ] },
+    phoneMenu: { message: "Seu celular/tablet é Android ou iPhone/iPad?", options: [
+      { key: "1", label: "Android — celular ou tablet", keywords: "android,tablet android", action: "phone_android" },
+      { key: "2", label: "iPhone / iPad", keywords: "iphone,ipad,ios,apple", action: "phone_ios" },
+    ] },
+    tvMenu: { message: "Qual é a sua TV? Todos usam o Zuxo Player.", options: [
+      ...brands.map((id,index)=>({key:String(index+1),label:({samsung:"Samsung",lg:"LG",roku:"Roku",android:"Android TV / Google TV / TV Box"} as Record<string,string>)[id],keywords:id,action:"ask_app",nextMenuId:id})),back,
+    ] }, appMenus: menus,
+    texts: { ...(flow.texts as object), phoneReady: zuxoRemoteInstructions("android"), phoneIosReady: zuxoRemoteInstructions("ios"),
+      zuxoReady: "Instale e abra o Zuxo Player. Envie o MAC ou uma foto nítida da tela de ativação.",
+      macPrompt: "Envie o MAC do Zuxo Player ou uma foto da tela de ativação.", pixelReady: "", utmReady: "" },
+  } as T;
+}
+
+export function upgradePartnerTestFlow<T>(input: T): T {
+  if (!input || typeof input !== "object") return input;
+  if (Number((input as Record<string, unknown>).appCatalogVersion) >= 13) return input;
+  const flow = upgradeZuxoCatalog(upgradeTvCatalogFlow(input)) as Record<string, unknown>;
+  const texts = { ...(flow.texts as Record<string, unknown> || {}) };
+  if (/pixel/i.test(String(texts.phoneReady || ""))) texts.phoneReady = ANDROID_PHONE_READY;
+  const phoneMenu = flow.phoneMenu as Record<string, unknown> | undefined;
+  const repairedPhoneMenu = phoneMenu ? { ...phoneMenu, options: ((phoneMenu.options || []) as Array<Record<string, unknown>>).map(option => {
+    const label = `${option.label || ""} ${option.keywords || ""}`;
+    if (/iphone|\bios\b/i.test(label)) return { ...option, action: "phone_ios", nextMenuId: undefined };
+    if (/android|pixel/i.test(label) || option.action === "app_pixel") return { ...option, action: "phone_android", nextMenuId: undefined, label: /pixel/i.test(String(option.label || "")) ? "Android" : option.label };
+    return option;
+  }) } : phoneMenu;
+  return upgradeUniversalZuxoFlow({ ...flow, appCatalogVersion: Math.max(9, Number(flow.appCatalogVersion) || 0), phoneMenu: repairedPhoneMenu, texts } as T);
+}
+
+export function isMisroutedAndroidPhoneSession(session: { testDevice?: string; testApp?: string; state?: string; testUsername?: string; testPassword?: string }): boolean {
+  return session.testDevice === "phone" && session.testApp === "pixel" &&
+    ["test_await_mac", "test_confirm_install"].includes(session.state || "") && Boolean(session.testUsername && session.testPassword);
 }

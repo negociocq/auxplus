@@ -39,6 +39,7 @@ export interface MpRenewOrder {
   /** test_activate: telas do plano (extras de MAC após o pagamento) */
   screens?: number;
   testApp?: string;
+  testActivationMode?: "remote_mac" | "manual_samsung";
   testPassword?: string;
   testRemoteId?: string | number;
   createdAt: string;

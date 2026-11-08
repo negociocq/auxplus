@@ -18,6 +18,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { isPaidReminderCycle } from "../_shared/reminderRenewal.ts";
 import { runRecoveryQueue } from "../_shared/waRecovery.ts";
 import { mergeItemDue } from "../_shared/itemDue.ts";
+import { upgradeReminderReplyText } from "../_shared/waReminderReply.ts";
+import { sweepHumanConversations } from "../_shared/waBotGuard.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -125,7 +127,7 @@ const DEFAULT_MESSAGE_BEFORE = `{getGreeting}
 
 Renove antecipadamente para continuar assistindo *sem interrupções*. 📺✨
 
-💬 *Responda esta mensagem* para receber as opções de renovação automática.
+💬 Digite *1* para renovar e receber o PIX.
 
 Obrigado pela preferência! 💙`;
 
@@ -139,7 +141,7 @@ const DEFAULT_MESSAGE_ONDAY = `{getGreeting}
 
 Para evitar a interrupção do serviço, faça sua renovação agora. 📺✨
 
-💬 *Responda esta mensagem* para renovar automaticamente.
+💬 Digite *1* para renovar e receber o PIX.
 
 Obrigado pela preferência! 💙`;
 
@@ -169,8 +171,8 @@ function normalizeSettings(raw: unknown): WaSettings {
       r.sendBefore !== undefined ? Boolean(r.sendBefore) : base.sendBefore,
     sendOnDay: r.sendOnDay !== undefined ? Boolean(r.sendOnDay) : base.sendOnDay,
     sendTime: String(r.sendTime || base.sendTime).trim() || base.sendTime,
-    messageBefore: String(r.messageBefore ?? base.messageBefore),
-    messageOnDay: String(r.messageOnDay ?? base.messageOnDay),
+    messageBefore: upgradeReminderReplyText(String(r.messageBefore ?? base.messageBefore)),
+    messageOnDay: upgradeReminderReplyText(String(r.messageOnDay ?? base.messageOnDay)),
     minIntervalSec: Math.max(30, Number(r.minIntervalSec) || base.minIntervalSec),
     jitterSec: Math.max(
       0,
@@ -640,6 +642,7 @@ Deno.serve(async (req) => {
 
   try {
     const client = await sb();
+    await sweepHumanConversations(client);
     await runRecoveryQueue(client);
 
     const evo = await getSetting<{ apiBaseUrl?: string; apiKey?: string; instancePrefix?: string }>(

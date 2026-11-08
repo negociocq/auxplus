@@ -3,6 +3,10 @@ import dyadComponentTagger from "@dyad-sh/react-vite-component-tagger";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { readFileSync, existsSync } from "fs";
+import { footballTvHandler } from "./scripts/lib/football-tv.mjs";
+import { catalogGenresHandler } from "./scripts/lib/catalog-genres.mjs";
+import { recentSeasonsHandler } from "./scripts/lib/recent-seasons.mjs";
+import { catalogGenreGuideHandler } from "./scripts/lib/catalog-genre-guide.mjs";
 
 // Load environment variables for Evolution API configuration
 function loadEnvConfig() {
@@ -63,7 +67,21 @@ export default defineConfig(() => ({
       },
     },
   },
-  plugins: [dyadComponentTagger(), react()],
+  plugins: [dyadComponentTagger(), react(), {
+    name: "football-tv-guide",
+    configureServer(server) {
+      server.middlewares.use("/api/football-tv", footballTvHandler);
+      server.middlewares.use("/api/catalog-genres", catalogGenresHandler);
+      server.middlewares.use("/api/recent-seasons", recentSeasonsHandler);
+      server.middlewares.use("/api/catalog-genre-guide", catalogGenreGuideHandler);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use("/api/football-tv", footballTvHandler);
+      server.middlewares.use("/api/catalog-genres", catalogGenresHandler);
+      server.middlewares.use("/api/recent-seasons", recentSeasonsHandler);
+      server.middlewares.use("/api/catalog-genre-guide", catalogGenreGuideHandler);
+    },
+  }],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

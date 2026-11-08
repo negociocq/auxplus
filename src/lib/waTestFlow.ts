@@ -1,4 +1,4 @@
-import { upgradePartnerTestFlow } from "../../supabase/functions/_shared/partnerTestFlow";
+import { upgradePartnerTestFlow, zuxoActivatedInstructions } from "../../supabase/functions/_shared/partnerTestFlow";
 /** Fluxo de teste WhatsApp — 100% editável por conta. */
 
 export type WaTestOptionAction =
@@ -9,7 +9,7 @@ export type WaTestOptionAction =
   | "phone_ios"
   | "ask_app"
   | "app_pixel"
-  | "app_prime"
+  | "app_zuxo"
   | "app_utm"
   | "activate_month"
   | "human"
@@ -19,20 +19,20 @@ export const WA_TEST_ACTION_LABELS: Record<WaTestOptionAction, string> = {
   ask_tv: "Perguntar tipo de TV",
   pc: "Computador (link + login)",
   phone: "Perguntar Android / iPhone",
-  phone_android: "Celular Android (APK + UniPlay)",
-  phone_ios: "Celular iPhone (Smarters / Xtream)",
+  phone_android: "Android / tablet ? Zuxo (MAC ou foto)",
+  phone_ios: "iPhone / iPad ? Zuxo (MAC ou foto)",
   ask_app: "Perguntar app (submenu)",
   app_pixel: "Pixel Player (Device ID ou MAC)",
-  app_prime: "App Prime IPTV (pedir MAC)",
+  app_zuxo: "App Zuxo Player (pedir MAC)",
   app_utm: "UTM Play (MAC e Device Key)",
   activate_month: "Ativar plano + PIX (auto)",
   human: "Passar para atendente",
   back: "Voltar ao menu anterior",
 };
 
-export const DEFAULT_PHONE_APK_URL = "http://tie-tv.com.br/uni.apk";
+export const DEFAULT_PHONE_APK_URL = "https://play.google.com/store/apps/details?id=com.zuxoplayer.app";
 export const DEFAULT_PHONE_IOS_URL =
-  "https://apps.apple.com/br/app/smarters-player-lite/id1628995509";
+  "https://apps.apple.com/br/app/zuxo-player/id6782688104";
 
 export interface WaTestMenuOption {
   /** Número mostrado (*1*, *2*…) */
@@ -83,7 +83,7 @@ export interface WaTestFlowConfig {
     /** Pergunta o nome antes de criar o teste (nota no painel). */
     askName: string;
     pixelReady: string;
-    primeReady: string;
+    zuxoReady: string;
     utmReady: string;
     macOk: string;
     /** Instruções pós-MAC só para Roku (sair do app de verdade). */
@@ -99,7 +99,7 @@ export interface WaTestFlowConfig {
     confirmInstallOk: string;
     /** Resposta não à confirmação de instalação (ajuda). */
     confirmInstallNo: string;
-    /** Após “sim” no Pixel Player/Prime — pedir o MAC. */
+    /** Após “sim” no Pixel Player/Zuxo — pedir o MAC. */
     macPrompt: string;
     /** Check-in “conseguiu assistir?” — resposta sim. */
     checkInOk: string;
@@ -155,10 +155,10 @@ export function emptyWaTestFlow(): WaTestFlowConfig {
     texts: {
       askName: "",
       pixelReady: "",
-      primeReady: "",
+      zuxoReady: "",
       utmReady: "",
-      macOk: "",
-      macOkRoku: "",
+      macOk: zuxoActivatedInstructions("tv"),
+      macOkRoku: zuxoActivatedInstructions("tv"),
       macCheckIn: "",
       macInvalid: "",
       alreadyUsed: "",
@@ -359,9 +359,9 @@ function legacyExampleWaTestFlow(): WaTestFlowConfig {
           options: [
             {
               key: "1",
-              label: "Prime IPTV (ativa com MAC)",
-              keywords: "prime,prime iptv",
-              action: "app_prime",
+              label: "Zuxo Player (ativa com MAC)",
+              keywords: "zuxo,zuxo player",
+              action: "app_zuxo",
             },
             {
               key: "2",
@@ -393,11 +393,11 @@ function legacyExampleWaTestFlow(): WaTestFlowConfig {
         "3) Envie o MAC aqui — aceito nos dois formatos:\n" +
         "   • com dois-pontos: *aa:bb:cc:dd:ee:ff*\n" +
         "   • tudo junto: *aabbccddeeff*",
-      primeReady:
-        "✅ Teste de *{hours}h* liberado — app *Prime IPTV*\n\n" +
+      zuxoReady:
+        "✅ Teste de *{hours}h* liberado — app *Zuxo Player*\n\n" +
         "Usuário: *{user}*\nSenha: *{password}*\n\n" +
         "Agora:\n" +
-        "1) Baixe o *Prime IPTV* na loja do aparelho\n" +
+        "1) Baixe o *Zuxo Player* na loja do aparelho\n" +
         "2) Abra o app — no *canto inferior direito* aparece o *MAC*\n" +
         "3) Envie o MAC aqui — aceito nos dois formatos:\n" +
         "   • com dois-pontos: *aa:bb:cc:dd:ee:ff*\n" +
@@ -408,24 +408,8 @@ function legacyExampleWaTestFlow(): WaTestFlowConfig {
         "Provedor: *uniplay*\n" +
         "Usuário: *{user}*\n" +
         "Senha: *{password}*",
-      macOk:
-        "✅ *Ativado!* MAC *{mac}* no *{app}*.\n\n" +
-        "Seu teste dura *{hours} horas*.\n\n" +
-        "Para a lista atualizar na TV:\n\n" +
-        "1. No app, vá em *Recarregar* / *Reload*\n" +
-        "2. Depois em *Playlist* / *Lista*\n" +
-        "3. Aperte *OK* no controle\n" +
-        "4. Volte — e já pode assistir\n\n" +
-        "Se não carregar, feche o app por completo e abra de novo.\n\n" +
-        "Quando quiser assinar, mande mensagem aqui.",
-      macOkRoku:
-        "✅ *Ativado!* MAC *{mac}* no *{app}*.\n\n" +
-        "Seu teste dura *{hours} horas*.\n\n" +
-        "No *Roku* não existe Recarregar/Reload — faça assim:\n\n" +
-        "1. Saia do app *por completo* (não deixe aberto em segundo plano)\n" +
-        "2. Abra o app de novo\n" +
-        "3. Pronto — já pode assistir\n\n" +
-        "Quando quiser assinar, mande mensagem aqui.",
+      macOk: zuxoActivatedInstructions("tv"),
+      macOkRoku: zuxoActivatedInstructions("tv"),
       macCheckIn:
         "E aí, conseguiu assistir? Deu tudo certo por aí?\n\n" +
         "Se algo travar, me conta que a gente resolve.\n\n" +
@@ -658,7 +642,7 @@ function parseWaTestFlowObject(raw: Record<string, unknown>): WaTestFlowConfig {
     texts: {
       askName: String(textsRaw.askName ?? ""),
       pixelReady: String(textsRaw.pixelReady ?? ""),
-      primeReady: String(textsRaw.primeReady ?? ""),
+      zuxoReady: String(textsRaw.zuxoReady ?? ""),
       utmReady: String(textsRaw.utmReady ?? ""),
       macOk: String(textsRaw.macOk ?? ""),
       macOkRoku: String(textsRaw.macOkRoku ?? ""),
@@ -689,7 +673,7 @@ function testFlowHasContent(flow: WaTestFlowConfig) {
   const t = flow.texts;
   return Boolean(
     t.pixelReady ||
-      t.primeReady ||
+      t.zuxoReady ||
       t.pcReady ||
       t.phoneReady ||
       t.phoneIosReady ||
@@ -796,7 +780,7 @@ function normalizeLegacyWaTestFlow(
     texts: {
       askName: example.texts.askName,
       pixelReady: String(m.testAppPixelReady || example.texts.pixelReady),
-      primeReady: String(m.testAppPrimeReady || example.texts.primeReady),
+      zuxoReady: String(m.testAppZuxoReady || example.texts.zuxoReady),
       utmReady: String(m.testAppUtmReady || example.texts.utmReady),
       macOk: String(m.testMacOk || example.texts.macOk),
       macOkRoku: String(

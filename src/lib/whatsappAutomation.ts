@@ -1,4 +1,5 @@
 import { isPaidReminderCycle } from "../../supabase/functions/_shared/reminderRenewal";
+import { RENEWAL_REPLY_CTA, upgradeReminderReplyText } from "../../supabase/functions/_shared/waReminderReply";
 import { addDays, differenceInCalendarDays, format } from "date-fns";
 import type { Folder, Item } from "@/types";
 import { isRevenueFolderType } from "@/types";
@@ -90,7 +91,7 @@ export const DEFAULT_MESSAGE_BEFORE = `{getGreeting}
 
 Renove antecipadamente para continuar assistindo sem interrupções. 📺✨
 
-💬 Responda esta mensagem para receber as opções de renovação automática.
+💬 ${RENEWAL_REPLY_CTA}
 
 Obrigado pela preferência! 💙`;
 
@@ -103,6 +104,8 @@ export const DEFAULT_MESSAGE_ONDAY = `{getGreeting}
 Vence hoje: {due_date}
 
 Evite bloqueios — renove o quanto antes.
+
+💬 ${RENEWAL_REPLY_CTA}
 
 Obrigado!`;
 
@@ -163,8 +166,8 @@ function normalizeWhatsappSettings(
     sendOnDay:
       rest.sendOnDay !== undefined ? Boolean(rest.sendOnDay) : base.sendOnDay,
     sendTime: String(rest.sendTime || base.sendTime).trim() || base.sendTime,
-    messageBefore: String(rest.messageBefore ?? base.messageBefore),
-    messageOnDay: String(rest.messageOnDay ?? base.messageOnDay),
+    messageBefore: upgradeReminderReplyText(String(rest.messageBefore ?? base.messageBefore)),
+    messageOnDay: upgradeReminderReplyText(String(rest.messageOnDay ?? base.messageOnDay)),
     prorrogaMessage: String(rest.prorrogaMessage ?? base.prorrogaMessage),
     minIntervalSec: Math.max(
       30,

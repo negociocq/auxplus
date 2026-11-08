@@ -38,7 +38,7 @@ async function refineDeviceLines(engine, data, app, isolateCode = false) {
     } else groups.set(key, box);
   }
   const lines = [...groups.values()].sort((a, b) => a.top - b.top);
-  if (app === "prime") {
+  if (app === "zuxo") {
     const candidates = lines.filter(line => /mac/i.test(line.text) && (line.text.match(/:/g) || []).length >= 4);
     if (candidates.length !== 1) return null;
     const line = candidates[0];
@@ -59,7 +59,7 @@ async function refineDeviceLines(engine, data, app, isolateCode = false) {
         let crop = sharp(corrected).extract({ left, top, width: Math.min(metadata.width, box.right + 12) - left, height: Math.min(metadata.height, box.bottom + 10) - top }).resize({ height: 160 });
         if (invert) crop = crop.negate();
         const reading = await engine.recognize(await crop.png().toBuffer());
-        readings.push(extractDeviceFromOcr("prime", reading.data.text));
+        readings.push(extractDeviceFromOcr("zuxo", reading.data.text));
       }
     } finally {
       await engine.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT, tessedit_char_whitelist: "" });
@@ -119,22 +119,22 @@ export async function recognizeDeviceImage(buffer, app, observe) {
       if (refined) return refined;
     }
   }
-  if (app === "utm" || app === "prime") {
+  if (app === "utm" || app === "zuxo") {
     // TV scan patterns can look like scattered characters. Read the dialog as
     // a block, with its light text inverted, without automatic orientation.
     const portrait = height > width;
-    const top = Math.floor(height * (app === "prime" ? .5 : portrait ? .4 : .2));
-    const crop = await sharp(image).extract({ left: 0, top, width, height: Math.min(height - top, Math.floor(height * (app === "prime" ? .3 : portrait ? .25 : .65))) }).png().toBuffer();
+    const top = app === "zuxo" ? 0 : Math.floor(height * (portrait ? .4 : .2));
+    const crop = await sharp(image).extract({ left: 0, top, width, height: app === "zuxo" ? height : Math.min(height - top, Math.floor(height * (portrait ? .25 : .65))) }).png().toBuffer();
     try {
       await engine.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
       for (const angle of [0, 5, -5, 15, -15]) {
         const processed = await sharp(crop).rotate(angle, { background: "white" }).resize({ width: Math.min(Math.round(width * 2.5), 3000) }).grayscale().normalise().negate().png().toBuffer();
-        const { data } = await engine.recognize(processed, { rotateAuto: false }, { text: true, tsv: app === "prime", imageColor: app === "prime" });
+        const { data } = await engine.recognize(processed, { rotateAuto: false }, { text: true, tsv: app === "zuxo", imageColor: app === "zuxo" });
         const result = extractDeviceFromOcr(app, data.text);
         observe?.({ confidence: data.confidence, text: data.text, result });
         if (result.reason === "example_image") return result;
         if (data.confidence >= 70 && result.readable) return result;
-        if (app === "prime" && data.confidence >= 55) {
+        if (app === "zuxo" && data.confidence >= 55) {
           const refined = await refineDeviceLines(engine, data, app, true);
           await engine.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
           if (refined) return refined;
@@ -170,7 +170,7 @@ export async function handleLocalDeviceOcr(req, res) {
       chunks.push(chunk);
     }
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    if (!["prime", "utm", "pixel"].includes(body.app) || typeof body.image !== "string" || !/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=\s]+$/.test(body.image)) { reply(400, { error: "invalid_image" }); return true; }
+    if (!["zuxo", "utm", "pixel"].includes(body.app) || typeof body.image !== "string" || !/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=\s]+$/.test(body.image)) { reply(400, { error: "invalid_image" }); return true; }
     const image = Buffer.from(body.image.slice(body.image.indexOf(",") + 1), "base64");
     if (image.length > 9000000) { reply(413, { error: "invalid_image" }); return true; }
     const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), 40000); });

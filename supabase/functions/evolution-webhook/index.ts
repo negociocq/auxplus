@@ -1,4 +1,4 @@
-import { upgradePartnerTestFlow, parsePartnerDeviceText } from "../_shared/partnerTestFlow.ts";
+import { upgradePartnerTestFlow, parsePartnerDeviceText, zuxoRemoteInstructions, zuxoSamsungInstructions, zuxoActivatedInstructions } from "../_shared/partnerTestFlow.ts";
 import { recoveryPhone, recoveryPanel } from "../_shared/waRecovery.ts";
 import { readPartnerDevicePhoto, photoConfirmation, photoFailureCode, photoFailureMessage, type PhotoDevice } from "../_shared/partnerDevicePhoto.ts";
 import { partnerDeviceGuide, partnerDeviceHelp, partnerGuideUrl } from "../_shared/partnerDeviceGuide.ts";
@@ -8,8 +8,11 @@ import { partnerDeviceGuide, partnerDeviceHelp, partnerGuideUrl } from "../_shar
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { acquireBotLease, isPausedConversation, isRepeatedBotReply } from "../_shared/waBotGuard.ts";
+import { acquireBotLease, expireHumanConversations, isPausedConversation, isRepeatedBotReply } from "../_shared/waBotGuard.ts";
 import { dueTime, mergeItemDue, normalizePanelDue } from "../_shared/itemDue.ts";
+import { skipAttendantEvent } from "../_shared/waInbound.ts";
+import { partnerActivationRequest } from "../_shared/partnerAppContract.ts";
+import { isReminderRenewalReply, quotedReminderUsername } from "../_shared/waReminderReply.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;
@@ -236,7 +239,7 @@ function extractMessageId(data: Record<string, unknown>): string {
 }
 
 /** Intervalo mínimo entre bolhas do bot (anti-spam WhatsApp). */
-const BOT_MSG_GAP_MS = 1400;
+const BOT_MSG_GAP_MS = 250;
 
 /**
  * Janela após o teste em que não ofertamos plano para quem mandou mensagem
@@ -245,7 +248,7 @@ const BOT_MSG_GAP_MS = 1400;
  * assinar continua sendo atendido normalmente.
  */
 const TEST_RETURN_COOLDOWN_MS = 30 * 60 * 1000;
-const BOT_TYPING_DELAY_MS = 1200;
+const BOT_TYPING_DELAY_MS = 0;
 const BOT_MAX_PER_PHONE_HOUR = 30;
 const BOT_MAX_PER_PHONE_DAY = 80;
 const BOT_DEDUP_TTL_MS = 15 * 60 * 1000;
@@ -362,18 +365,18 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "Digite *1* ou *2*.",
   testAskAppRokuLg:
     "Nesse aparelho você pode usar:\n\n" +
-    "*1* — *Prime IPTV* (ativa com o MAC da TV)\n" +
+    "*1* — *Zuxo Player* (ativa com o MAC da TV)\n" +
     "*2* — *UTM Play* (provedor + usuário + senha)\n\n" +
     "Digite *1* ou *2*.",
   testAppPixelReady:
     "✅ Teste de *{hours}h* — *Pixel Player*\n\nInstale o Pixel Player, abra o aplicativo e localize o *Device ID* ou MAC exibido na tela. Vamos usá-lo para ativar sua lista.",
-  testAppPrimeReady:
-    "✅ Teste de *{hours}h* liberado — app *Prime IPTV*\n\n" +
+  testAppZuxoReady:
+    "✅ Teste de *{hours}h* liberado — app *Zuxo Player*\n\n" +
     "Usuário: *{user}*\n" +
     "Senha: *{password}*\n\n" +
     "⏳ Expira em: *{expiresAt}*\n\n" +
     "Agora:\n" +
-    "1) Baixe o *Prime IPTV* na loja do aparelho\n" +
+    "1) Baixe o *Zuxo Player* na loja do aparelho\n" +
     "2) Abra o app — no *canto inferior direito* aparece o *MAC*\n" +
     "3) Envie o MAC aqui — aceito nos dois formatos:\n" +
     "   • com dois-pontos: *aa:bb:cc:dd:ee:ff*\n" +
@@ -381,24 +384,8 @@ const DEFAULT_MESSAGES: Record<string, string> = {
     "_Mande só o MAC nesta mensagem._",
   testAppUtmReady:
     "✅ Teste de *{hours}h* — *UTM Play*\n\nInstale o UTM Play e abra o aplicativo. Para ativar, vamos precisar do *MAC* e do *Device Key de 6 números* exibidos na TV.",
-  testMacOk:
-    "✅ *Ativado!* MAC *{mac}* no *{app}*.\n\n" +
-    "Seu teste dura *{hours} horas* — expira em *{expiresAt}*.\n\n" +
-    "Para a lista atualizar na TV:\n\n" +
-    "1. No app, vá em *Recarregar* / *Reload*\n" +
-    "2. Depois em *Playlist* / *Lista*\n" +
-    "3. Aperte *OK* no controle\n" +
-    "4. Volte — e já pode assistir\n\n" +
-    "Se não carregar, feche o app por completo e abra de novo.\n\n" +
-    "Quando quiser assinar, mande mensagem aqui.",
-  testMacOkRoku:
-    "✅ *Ativado!* MAC *{mac}* no *{app}*.\n\n" +
-    "Seu teste dura *{hours} horas* — expira em *{expiresAt}*.\n\n" +
-    "No *Roku* não existe Recarregar/Reload — faça assim:\n\n" +
-    "1. Saia do app *por completo* (não deixe aberto em segundo plano)\n" +
-    "2. Abra o app de novo\n" +
-    "3. Pronto — já pode assistir\n\n" +
-    "Quando quiser assinar, mande mensagem aqui.",
+  testMacOk: zuxoActivatedInstructions("tv"),
+  testMacOkRoku: zuxoActivatedInstructions("tv"),
   testMacCheckIn:
     "E aí, conseguiu assistir? Deu tudo certo por aí?\n\n" +
     "Se algo travar, me conta que a gente resolve.\n\n" +
@@ -1147,8 +1134,9 @@ async function evoSend(
     body: JSON.stringify({
       number,
       text,
-      delay: Math.max(800, Math.min(5000, typingDelayMs)),
+      delay: Math.max(0, Math.min(5000, typingDelayMs)),
     }),
+    signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error(`Falha ao enviar mensagem no WhatsApp (${response.status})`);
 }
@@ -1219,6 +1207,7 @@ async function uniplayFetch(
           method,
           headers,
           body: method === "GET" || method === "HEAD" ? undefined : body,
+          signal: AbortSignal.timeout(8000),
         });
       } else {
         const headers: Record<string, string> = {
@@ -1234,6 +1223,7 @@ async function uniplayFetch(
           method,
           headers,
           body: method === "GET" || method === "HEAD" ? undefined : body,
+          signal: AbortSignal.timeout(8000),
         });
       }
 
@@ -1695,14 +1685,11 @@ async function findUniplayUserId(bearer: string, username: string) {
 }
 
 async function activatePartnerAppWa(
-  bearer: string, app: "pixel" | "prime" | "utm", username: string, password: string,
+  bearer: string, app: "pixel" | "zuxo" | "utm", username: string, password: string,
   device: string, remoteId?: string | number, deviceKey?: string,
 ) {
-  if (app !== "prime" && remoteId == null) throw new Error("Teste sem ID IPTV. Volte ao menu ou solicite um atendente.");
-  const path = app === "pixel" ? "/activate-pixel" : app === "utm" ? "/activate-utm" : "/activate-prime";
-  const body = app === "pixel" ? { id_usuario: remoteId, device_identifier: device }
-    : app === "utm" ? { id_usuario: remoteId, mac: device, device_key: deviceKey }
-    : { username, password, mac: device };
+  const customerId = remoteId == null || String(remoteId).trim() === "" ? await findUniplayUserId(bearer, username) : remoteId;
+  const { path, body } = partnerActivationRequest(app, customerId, device, deviceKey);
   return await uniplayFetch(path, bearer, { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -1720,12 +1707,18 @@ async function createMpPix(opts: {
   description: string;
 }) {
   const value = (Math.round(opts.amount * 100) / 100).toFixed(2);
+  // Re-delivery of the same inbound event must recover the same payment.
+  const keyBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(opts.externalReference))).slice(0, 16);
+  keyBytes[6] = (keyBytes[6] & 15) | 64;
+  keyBytes[8] = (keyBytes[8] & 63) | 128;
+  const keyHex = [...keyBytes].map(n => n.toString(16).padStart(2, "0")).join("");
+  const requestKey = `${keyHex.slice(0, 8)}-${keyHex.slice(8, 12)}-${keyHex.slice(12, 16)}-${keyHex.slice(16, 20)}-${keyHex.slice(20)}`;
   const res = await fetch("https://api.mercadopago.com/v1/orders", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${opts.accessToken}`,
       "Content-Type": "application/json",
-      "X-Idempotency-Key": crypto.randomUUID(),
+      "X-Idempotency-Key": requestKey,
     },
     body: JSON.stringify({
       type: "online",
@@ -1743,6 +1736,7 @@ async function createMpPix(opts: {
       },
       payer: { email: opts.email },
     }),
+    signal: AbortSignal.timeout(12000),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
@@ -1992,9 +1986,9 @@ function isLegacyTestOffer(offer: unknown) {
   );
 }
 
-const DEFAULT_PHONE_APK = "http://tie-tv.com.br/uni.apk";
+const DEFAULT_PHONE_APK = "https://play.google.com/store/apps/details?id=com.zuxoplayer.app";
 const DEFAULT_PHONE_IOS =
-  "https://apps.apple.com/br/app/smarters-player-lite/id1628995509";
+  "https://apps.apple.com/br/app/zuxo-player/id6782688104";
 
 function defaultPhoneOsMenu() {
   return {
@@ -2189,11 +2183,11 @@ function resolveLegacyTestFlowFromBot(bot: Record<string, unknown>) {
       Number(bot?.testMonthPriceBrl) > 0 ? Number(bot.testMonthPriceBrl) : 29.9,
     pcLoginUrl: String(bot?.testPcLoginUrl || "http://navegauni.top/login").trim(),
     phoneApkUrl: String(
-      bot?.testPhoneApkUrl || "http://tie-tv.com.br/uni.apk",
+      bot?.testPhoneApkUrl || "https://play.google.com/store/apps/details?id=com.zuxoplayer.app",
     ).trim(),
     phoneIosUrl: String(
       bot?.testPhoneIosUrl ||
-        "https://apps.apple.com/br/app/smarters-player-lite/id1628995509",
+        "https://apps.apple.com/br/app/zuxo-player/id6782688104",
     ).trim(),
     deviceMenu: {
       message: String(messages.testAskDevice || "Em qual aparelho?"),
@@ -2276,9 +2270,9 @@ function resolveLegacyTestFlowFromBot(bot: Record<string, unknown>) {
           options: [
             {
               key: "1",
-              label: "Prime IPTV",
-              keywords: "prime",
-              action: "app_prime",
+              label: "Zuxo Player",
+              keywords: "zuxo",
+              action: "app_zuxo",
             },
             {
               key: "2",
@@ -2294,7 +2288,7 @@ function resolveLegacyTestFlowFromBot(bot: Record<string, unknown>) {
     texts: {
       askName: String(messages.testAskName || DEFAULT_MESSAGES.testAskName),
       pixelReady: String(messages.testAppPixelReady || ""),
-      primeReady: String(messages.testAppPrimeReady || ""),
+      zuxoReady: String(messages.testAppZuxoReady || ""),
       utmReady: String(messages.testAppUtmReady || ""),
       macOk: String(messages.testMacOk || DEFAULT_MESSAGES.testMacOk),
       macOkRoku: String(
@@ -2359,19 +2353,8 @@ function resolveLegacyTestFlowFromBot(bot: Record<string, unknown>) {
   });
 }
 
-function pickMacOkTemplate(
-  texts: Record<string, string>,
-  isRoku: boolean,
-): string {
-  if (isRoku) {
-    const custom = String(texts.macOkRoku || "").trim();
-    if (custom) return custom;
-    return DEFAULT_MESSAGES.testMacOkRoku;
-  }
-  const custom = String(texts.macOk || "").trim();
-  // Conta com texto antigo (sem passos) → usa o modelo novo
-  if (custom && /recarregar|reload/i.test(custom)) return custom;
-  return DEFAULT_MESSAGES.testMacOk;
+function pickMacOkTemplate(_texts: Record<string, string>, _isRoku: boolean, device?: string): string {
+  return zuxoActivatedInstructions(device);
 }
 
 Deno.serve(async (req) => {
@@ -2381,15 +2364,14 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Use POST" }, 405);
 
   let botLease: Awaited<ReturnType<typeof acquireBotLease>> = null;
+  let retryFailedMessage: (() => Promise<void>) | undefined;
+  let deliveredReply = false;
   try {
     const payload = (await req.json().catch(() => ({}))) as Record<
       string,
       unknown
     >;
     const event = String(payload.event || payload.type || "").toLowerCase();
-    if (event && !event.includes("upsert") && !event.includes("messages")) {
-      return json({ ok: true, skipped: event });
-    }
 
     const instance = String(
       payload.instance ||
@@ -2397,16 +2379,12 @@ Deno.serve(async (req) => {
         "",
     ).trim();
     const data = normalizeMessageData(payload);
+    const skippedInbound = skipAttendantEvent(event, data);
+    if (skippedInbound) return json({ ok: true, skipped: skippedInbound });
     const { phone, fromMe } = extractRemotePhone(data);
     let text = extractText(data).trim();
     const mediaKind = detectInboundMedia(data);
     const messageId = extractMessageId(data);
-
-    // Skip grupos — bot só responde em DM privado
-    const remoteJidStr = String(data.key?.remoteJid || data.remoteJid || "").trim();
-    if (remoteJidStr.includes("@g.us")) {
-      return json({ ok: true, skipped: "group" });
-    }
 
     if (!instance || !phone || (!text && !mediaKind)) {
       return json({
@@ -2468,15 +2446,17 @@ Deno.serve(async (req) => {
       testUsername?: string;
       testPassword?: string;
       testRemoteId?: string | number;
-      testApp?: "pixel" | "prime" | "utm";
+      testApp?: "pixel" | "zuxo" | "utm";
       testDevice?: "tv" | "pc" | "phone";
+      testPhoneOs?: "android" | "ios";
+      testActivationMode?: "remote_mac" | "manual_samsung";
       testTv?: "box" | "android" | "roku" | "samsung" | "lg";
       testHours?: number;
       testDoneAt?: string;
       recoveryId?: string;
       recoveryUsername?: string;
       testAppMenuId?: string;
-      devicePhoto?: { device: PhotoDevice; app: "pixel" | "prime" | "utm"; at: string; state: string };
+      devicePhoto?: { device: PhotoDevice; app: "pixel" | "zuxo" | "utm"; at: string; state: string };
       /** Nome informado antes de criar o teste (vai na nota do painel). */
       testClientName?: string;
       /** Telas/ativações MAC após contratar plano (extras além do teste). */
@@ -2611,6 +2591,8 @@ Deno.serve(async (req) => {
       });
     };
 
+    if (expireHumanConversations(sessions, humanPaused, phoneMatches)) await persistState();
+
     // Dedup: Evolution às vezes reenvia o mesmo evento
     if (messageId) {
       const exp = Number(recentMsgIds[messageId] || 0);
@@ -2619,6 +2601,12 @@ Deno.serve(async (req) => {
       }
       recentMsgIds[messageId] = Date.now() + BOT_DEDUP_TTL_MS;
       await persistState();
+      // A failed delivery must remain eligible for the provider's retry.
+      retryFailedMessage = async () => {
+        if (deliveredReply) return;
+        delete recentMsgIds[messageId];
+        await persistState();
+      };
     }
 
     const phoneKeyForCaps = () => phoneStateKey(phone) || digitsPhone(phone) || phone;
@@ -2666,6 +2654,7 @@ Deno.serve(async (req) => {
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       botLease?.assertHeld();
       await evoSend(apiBaseUrl, apiKey, instance, phone, body, BOT_TYPING_DELAY_MS, imageUrl);
+      deliveredReply = true;
       const sentAt = Date.now();
       lastSendInRequest = sentAt;
       lastSendAtByPhone[key] = sentAt;
@@ -2764,6 +2753,16 @@ Deno.serve(async (req) => {
       return json({ ok: true, action: "human_ended" });
     }
 
+    // Activity on either side extends human service. Ignore echoes of bot replies.
+    if (isPausedConversation(phone, sessions, humanPaused, phoneMatches)) {
+      const botEcho = fromMe && Object.entries(recentRepliesByPhone)
+        .filter(([p]) => phoneMatches(p, phone))
+        .some(([, replies]) => isRepeatedBotReply(replies, text.trim()));
+      if (!botEcho) {
+        sessions[phone] = { ...sessions[phone], state: "human", updatedAt: new Date().toISOString() };
+        await persistState();
+      }
+    }
     if (fromMe) return json({ ok: true, skipped: "fromMe" });
 
     // Depois do aviso de transferência, silêncio absoluto até o dono encerrar.
@@ -2781,7 +2780,7 @@ Deno.serve(async (req) => {
 
     // Foto/áudio/vídeo/doc sem legenda → não ficar calado
     const photoStates = ["test_await_mac", "test_confirm_install", "test_plan_await_mac"];
-    const receivesDevicePhoto = mediaKind === "image" && photoStates.includes(sessions[phone]?.state || "") && Boolean(sessions[phone]?.testApp);
+    const receivesDevicePhoto = mediaKind === "image" && photoStates.includes(sessions[phone]?.state || "") && Boolean(sessions[phone]?.testApp) && sessions[phone]?.testActivationMode !== "manual_samsung" && sessions[phone]?.testTv !== "samsung";
     if (!text && mediaKind && !receivesDevicePhoto) {
       if (isHumanPaused(phone)) {
         return json({ ok: true, skipped: "human_media" });
@@ -2835,13 +2834,15 @@ Deno.serve(async (req) => {
       return json({ ok: true, skipped: "opt_out" });
     }
 
-    // Free local OCR only. Never fall back to a paid provider.
-    const { data: photoConfig } = await client.from("platform_private_secrets").select("value").eq("name", "local_device_ocr").maybeSingle();
-    const photoPanel = await getSetting<Record<string, unknown>>(client, "iptv_panel");
-    const localOcrBase = String(photoPanel?.apiProxyUrl || photoPanel?.api_proxy_url || "").trim();
-    const localOcrToken = String(photoConfig?.value?.token || "");
-    const ocrEnabled = Boolean(localOcrBase && localOcrToken);
     if (receivesDevicePhoto) {
+      // Only photos need OCR settings; text menus must not wait for these reads.
+      const [{ data: photoConfig }, photoPanel] = await Promise.all([
+        client.from("platform_private_secrets").select("value").eq("name", "local_device_ocr").maybeSingle(),
+        getSetting<Record<string, unknown>>(client, "iptv_panel"),
+      ]);
+      const localOcrBase = String(photoPanel?.apiProxyUrl || photoPanel?.api_proxy_url || "").trim();
+      const localOcrToken = String(photoConfig?.value?.token || "");
+      const ocrEnabled = Boolean(localOcrBase && localOcrToken);
       const current = sessions[phone];
       // A new image always replaces any previous reading, even if it is unreadable.
       sessions[phone] = { ...current, devicePhoto: undefined, updatedAt: new Date().toISOString() };
@@ -2916,11 +2917,7 @@ Deno.serve(async (req) => {
     const mpToken = String(automations.mpAccessToken || "").trim();
     const mpEmail = String(automations.mpPayerEmail || "").trim();
     let bearer = String(automations.iptvBearerToken || "").trim();
-    try {
-      bearer = await ensurePanelBearer(client, userId, automations);
-    } catch {
-      /* mantém bearer atual; ações UniPlay vão falhar com mensagem clara */
-    }
+    // Refresh only when an action needs the panel; menus must work during outages.
     const syncResellersFolderId = String(
       automations.syncResellersFolderId || "",
     ).trim();
@@ -2990,7 +2987,11 @@ Deno.serve(async (req) => {
     const resellerItem = byPhone.find(
       (i) => String(i.folder_id) === syncResellersFolderId,
     );
+    const renewalClients = byPhone.filter(i => String(i.folder_id) !== syncResellersFolderId);
+    const reminderUsername = text.trim() === "1" ? quotedReminderUsername(data) : "";
+    const reminderClient = reminderUsername ? renewalClients.find(i => String(i.item_id || "").trim().toLowerCase() === reminderUsername) : undefined;
     let clientItem =
+      reminderClient ||
       byPhone.find((i) => String(i.folder_id) !== syncResellersFolderId) ||
       byPhone[0];
     if (clientItem) {
@@ -3019,6 +3020,13 @@ Deno.serve(async (req) => {
       state: "idle",
       updatedAt: new Date().toISOString(),
     };
+    // Never activate the replacement app using a MAC taken from the retired app.
+    if (String(session.testApp) === "prime" && String(session.state).startsWith("test_")) {
+      session = { ...session, state: "test_ask_app", testApp: undefined, devicePhoto: undefined,
+        testAppMenuId: session.testAppMenuId || session.testTv || "samsung", updatedAt: new Date().toISOString() };
+      sessions[phone] = session;
+      await persistState();
+    }
     const legacyApp = String(session.testApp || "");
     if (legacyApp === "fun" || legacyApp === "xcloud") {
       session = { ...session, testApp: legacyApp === "fun" ? "pixel" : "utm", state: "test_confirm_install" };
@@ -3426,7 +3434,7 @@ Deno.serve(async (req) => {
     };
 
     /**
-     * Ativa o MAC no app (Pixel Player/Prime) e agenda o check-in pós-teste.
+     * Ativa o MAC no app (Pixel Player/Zuxo) e agenda o check-in pós-teste.
      * Compartilhado entre o estado test_await_mac e a confirmação de
      * instalação (quando o cliente já manda o MAC sem responder sim/não).
      */
@@ -3453,7 +3461,8 @@ Deno.serve(async (req) => {
     };
 
     const activateMacForSession = async (sess: Session, rawMac: string) => {
-      const app = sess.testApp === "utm" ? "utm" : sess.testApp === "prime" ? "prime" : "pixel";
+      if (sess.testActivationMode === "manual_samsung" || sess.testTv === "samsung") return await finishTestPcPhone(sess, "samsung");
+      const app = sess.testApp === "utm" ? "utm" : sess.testApp === "zuxo" ? "zuxo" : "pixel";
       const { device: mac, deviceKey } = parsePartnerDeviceText(app, rawMac);
       const username = String(sess.testUsername || "").trim();
       const password = String(sess.testPassword || "").trim();
@@ -3474,11 +3483,11 @@ Deno.serve(async (req) => {
       const isRoku = sess.testTv === "roku";
       await send(
         fillTestReady(
-          pickMacOkTemplate(tfTexts, isRoku),
+          pickMacOkTemplate(tfTexts, isRoku, sess.testDevice),
           {
             mac,
             hours: sess.testHours || testHours,
-            app: app === "utm" ? "UTM Play" : app === "pixel" ? "Pixel Player" : "Prime IPTV",
+            app: app === "utm" ? "UTM Play" : app === "pixel" ? "Pixel Player" : "Zuxo Player",
           },
           Number(sess.testHours) || testHours,
         ),
@@ -3489,7 +3498,7 @@ Deno.serve(async (req) => {
 
     const finishTestWithApp = async (
       sess: Session,
-      app: "pixel" | "prime" | "utm",
+      app: "pixel" | "zuxo" | "utm",
     ) => {
       bearer = await ensurePanelBearer(client, userId, automations);
       const hours = Number(sess.testHours) || testHours;
@@ -3526,21 +3535,23 @@ Deno.serve(async (req) => {
         testPassword: password,
         testRemoteId: remoteId,
         testApp: app,
+        testActivationMode: "remote_mac",
         testHours: hours,
         panelUsername: username,
         updatedAt: new Date().toISOString(),
       };
       sessions[phone] = { ...baseSess, state: "test_await_mac", devicePhoto: undefined };
       await persistState();
-      const guideUrl = partnerGuideUrl(Deno.env.get("DEVICE_GUIDE_ASSET_BASE_URL") || "", app);
-      const prompt = `*Teste de ${hours}h*\n\n${partnerDeviceGuide(app, ocrEnabled)}${guideUrl ? "\n\nImagem de exemplo. Use os dados da sua TV." : ""}`;
+      const guideBase = app === "zuxo" ? `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/whatsapp-guides` : Deno.env.get("DEVICE_GUIDE_ASSET_BASE_URL") || "";
+      const guideUrl = partnerGuideUrl(guideBase, app, sess.testPhoneOs || "tv");
+      const prompt = `*Teste de ${hours}h*\n\n${app === "zuxo" ? zuxoRemoteInstructions(sess.testPhoneOs || sess.testTv || "android") : partnerDeviceGuide(app, true)}${guideUrl ? "\n\nImagem de exemplo. Use os dados do seu aparelho." : ""}`;
       await send(fillTestReady(prompt, { user: username, password, hours }, hours), guideUrl);
       return json({ ok: true, action: "test_await_mac" });
     };
 
     const finishTestPcPhone = async (
       sess: Session,
-      device: "pc" | "phone_android" | "phone_ios",
+      device: "pc" | "samsung",
     ) => {
       const clientName = String(sess.testClientName || "").trim();
       if (!clientName) {
@@ -3548,8 +3559,10 @@ Deno.serve(async (req) => {
       }
       bearer = await ensurePanelBearer(client, userId, automations);
       const hours = Number(sess.testHours) || testHours;
+      const reusedCredentials = Boolean(sess.testUsername && sess.testPassword);
       const created = await createTestForSession(sess);
       const doneAt = new Date().toISOString();
+      if (!reusedCredentials) {
       markTestConsumed(phone, {
         at: doneAt,
         username: created.username,
@@ -3563,13 +3576,19 @@ Deno.serve(async (req) => {
         remoteId: created.remoteId,
         hours,
       });
-      const testDevice: "pc" | "phone" =
-        device === "pc" ? "pc" : "phone";
+      }
+      const testDevice: "pc" | "phone" | "tv" =
+        device === "pc" ? "pc" : device === "samsung" ? "tv" : "phone";
       sessions[phone] = {
         ...sess,
         state: "test_confirm_install",
         role: sess.role || "unknown",
         testDevice,
+        testApp: device === "samsung" ? "zuxo" : undefined,
+        testActivationMode: device === "samsung" ? "manual_samsung" : undefined,
+        testTv: device === "samsung" ? "samsung" : undefined,
+        testAppMenuId: undefined,
+        devicePhoto: undefined,
         testUsername: created.username,
         testPassword: created.password,
         testRemoteId: created.remoteId,
@@ -3578,13 +3597,13 @@ Deno.serve(async (req) => {
         updatedAt: new Date().toISOString(),
       };
       await persistState();
+      if (device === "samsung") {
+        await send(zuxoSamsungInstructions(created.username, created.password, hours), partnerGuideUrl(`${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/whatsapp-guides`, "zuxo", "samsung"));
+        return json({ ok: true, action: "test_samsung_manual" });
+      }
       const loginUrl =
         String(flowObj?.pcLoginUrl || "").trim() ||
         "http://navegauni.top/login";
-      const apkUrl =
-        String(flowObj?.phoneApkUrl || "").trim() || DEFAULT_PHONE_APK;
-      const iosAppUrl =
-        String(flowObj?.phoneIosUrl || "").trim() || DEFAULT_PHONE_IOS;
       if (device === "pc") {
         await send(
           fillTestReady(
@@ -3602,45 +3621,17 @@ Deno.serve(async (req) => {
         await send("Conseguiu abrir o link e assistir? (sim/n?o)");
         return json({ ok: true, action: "test_confirm_install" });
       }
-      if (device === "phone_ios") {
-        await send(
-          fillTestReady(
-            tfTexts.phoneIosReady || DEFAULT_MESSAGES.testPhoneIosReady,
-            {
-              user: created.username,
-              password: created.password,
-              hours,
-              iosApp: iosAppUrl,
-              dns: dnsSmartersDefault,
-              name: clientName,
-            },
-            hours,
-          ),
-        );
-        await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
-        return json({ ok: true, action: "test_confirm_install" });
-      }
-      await send(
-        fillTestReady(
-          tfTexts.phoneReady || DEFAULT_MESSAGES.testPhoneReady,
-          {
-            user: created.username,
-            password: created.password,
-            hours,
-            apk: apkUrl,
-          },
-          hours,
-        ),
-      );
-      await send(tfTexts.confirmInstall || DEFAULT_MESSAGES.testConfirmInstall);
-      return json({ ok: true, action: "test_confirm_install" });
     };
 
     const askPlanScreenMac = async (sess: Session) => {
+      if (sess.testActivationMode === "manual_samsung") {
+        await send(zuxoSamsungInstructions(sess.testUsername || "", sess.testPassword || "", sess.testHours || testHours));
+        return;
+      }
       const total = Math.max(1, Number(sess.activationsTotal) || 1);
       const done = Math.max(0, Number(sess.activationsDone) || 0);
       const next = done + 1;
-      const appName = sess.testApp === "utm" ? "UTM Play (MAC e Device Key juntos)" : sess.testApp === "prime" ? "Prime IPTV" : "Pixel Player (Device ID ou MAC)";
+      const appName = sess.testApp === "utm" ? "UTM Play (MAC e Device Key juntos)" : sess.testApp === "zuxo" ? "Zuxo Player" : "Pixel Player (Device ID ou MAC)";
       await send(
         `Seu plano inclui *${total} telas*. A *1ª* já foi no teste.\n\n` +
           `Envie o *MAC* da *${next}ª tela* no *${appName}*.\n` +
@@ -3648,6 +3639,13 @@ Deno.serve(async (req) => {
           `_Formatos: *aa:bb:cc:dd:ee:ff* ou *aabbccddeeff*.\n` +
           `Digite *pular* para encerrar, ou *atendente*._`,
       );
+    };
+
+    const finishZuxoDevice = async (sess: Session, device?: "android" | "ios") => {
+      if (!device && (sess.testTv === "samsung" || sess.testAppMenuId?.includes("samsung"))) return await finishTestPcPhone(sess, "samsung");
+      const next = device ? { ...sess, testDevice: "phone" as const, testPhoneOs: device, testTv: undefined, testAppMenuId: undefined }
+        : { ...sess, testDevice: "tv" as const, testPhoneOs: undefined };
+      return await finishTestWithApp(next, "zuxo");
     };
 
     const runTestAction = async (
@@ -3685,10 +3683,10 @@ Deno.serve(async (req) => {
         return json({ ok: true, action: "test_ask_phone_os" });
       }
       if (action === "phone_android") {
-        return await finishTestWithApp(sess, "pixel");
+        return await finishZuxoDevice(sess, "android");
       }
       if (action === "phone_ios") {
-        return await finishTestPcPhone(sess, "phone_ios");
+        return await finishZuxoDevice(sess, "ios");
       }
       if (action === "ask_app") {
         const menu = findAppMenu(nextMenuId);
@@ -3710,10 +3708,9 @@ Deno.serve(async (req) => {
         return json({ ok: true, action: "test_ask_app" });
       }
       if (action === "back") return await goBackTest(sess);
-      if (action === "app_pixel") return await finishTestWithApp(sess, "pixel");
-      if (action === "app_prime") return await finishTestWithApp(sess, "prime");
+      if (action === "app_pixel" || action === "app_zuxo") return await finishZuxoDevice(sess);
       if (action === "app_utm") {
-        return await finishTestWithApp(sess, "utm");
+        return await finishZuxoDevice(sess);
       }
       if (action === "human") {
         setHumanPaused(phone, true);
@@ -3822,7 +3819,7 @@ Deno.serve(async (req) => {
             accessToken: mpToken,
             amount: planAmount,
             email: mpEmail,
-            externalReference: `auxplus_test_${userId}_${username}_${Date.now()}`,
+            externalReference: `auxplus_test_${userId}_${username}_${messageId || Date.now()}`,
             description: `Plano teste ${username} · ${moneyBrl(planAmount)}`,
           });
           const order = {
@@ -3841,6 +3838,7 @@ Deno.serve(async (req) => {
             kind: "test_activate",
             screens,
             testApp: sess.testApp || "",
+            testActivationMode: sess.testActivationMode,
             testPassword: String(sess.testPassword || ""),
             testRemoteId: remoteId,
             createdAt: new Date().toISOString(),
@@ -3871,6 +3869,12 @@ Deno.serve(async (req) => {
       await send(messages.errorGeneric || "Opção inválida.");
       return json({ ok: true, action: "test_bad_action" });
     };
+
+    // Repair only on a real incoming message; reuse the trial already created by the old bug.
+    if (["test_await_mac", "test_confirm_install"].includes(session.state || "") && !session.testDoneAt && !wantsAttendant && !["0", "voltar", "menu"].includes(t)
+      && (session.testDevice === "phone" && session.testApp !== "zuxo" || session.testDevice === "tv" && (session.testApp !== "zuxo" || session.testTv === "samsung" && session.testActivationMode !== "manual_samsung"))) {
+      return await finishZuxoDevice(session, session.testDevice === "phone" ? session.testPhoneOs || "android" : undefined);
+    }
 
     // Campaign replies are isolated from ordinary renewal menus and old trial limits.
     if (recoveryContact?.status === "invited") {
@@ -3920,7 +3924,6 @@ Deno.serve(async (req) => {
       !resellerItem
     ) {
       try {
-        bearer = await ensurePanelBearer(client, userId, automations);
         if (!flowObj) {
           await send(
             tfTexts.notConfigured ||
@@ -4060,12 +4063,14 @@ Deno.serve(async (req) => {
         }
         if (["test_await_mac", "test_confirm_install"].includes(String(session.state)) && session.testApp) {
           if (["ajuda", "9", "nao achei", "nao encontrei"].includes(t)) {
-            await send(partnerDeviceHelp(session.testApp, ocrEnabled));
+            await send(session.testActivationMode === "manual_samsung" ? zuxoSamsungInstructions(session.testUsername || "", session.testPassword || "", session.testHours || testHours) : session.testApp === "zuxo" ? zuxoRemoteInstructions(session.testPhoneOs || session.testTv || "android") : partnerDeviceHelp(session.testApp, true));
             return json({ ok: true, action: "test_device_help" });
           }
           if (["instalar", "nao instalei", "nao sei instalar"].includes(t)) {
-            const brand = session.testTv === "box" ? "android" : session.testTv || ["samsung", "lg", "roku"].find(id => session.testAppMenuId?.includes(id)) || "android";
-            return await runTestAction(session, "ask_app", `guide_${brand}_${session.testApp}`);
+            await send(session.testActivationMode === "manual_samsung"
+              ? zuxoSamsungInstructions(session.testUsername || "", session.testPassword || "", session.testHours || testHours)
+              : zuxoRemoteInstructions(session.testPhoneOs || session.testTv || "android"));
+            return json({ ok: true, action: "test_install_help" });
           }
         }
         if (wantsAttendant || t === "atendente" || t === "atendentes") {
@@ -4098,7 +4103,7 @@ Deno.serve(async (req) => {
 
         if (session.state === "test_confirm_install") {
           const isMacApp =
-            session.testApp === "pixel" || session.testApp === "prime" || session.testApp === "utm";
+            session.testActivationMode !== "manual_samsung" && (session.testApp === "pixel" || session.testApp === "zuxo" || session.testApp === "utm");
           // Já mandou o MAC direto (pulou o sim/não) → ativa
           if (isMacApp && (looksLikeMacMessage(text) || (session.testApp === "pixel" && text.trim().length >= 10) || (session.testApp === "utm" && /[a-f0-9]{2}:/i.test(text)))) {
             return await activateMacForSession(session, text);
@@ -4113,7 +4118,7 @@ Deno.serve(async (req) => {
               };
               await persistState();
               await send(
-                partnerDeviceGuide(session.testApp!, ocrEnabled),
+                partnerDeviceGuide(session.testApp!, true),
               );
               return json({ ok: true, action: "test_confirm_install_ok_mac" });
             }
@@ -4171,7 +4176,7 @@ Deno.serve(async (req) => {
             );
             return json({ ok: true, action: "test_plan_mac_skip" });
           }
-          const app = session.testApp === "utm" ? "utm" : session.testApp === "prime" ? "prime" : "pixel";
+          const app = session.testApp === "utm" ? "utm" : session.testApp === "zuxo" ? "zuxo" : "pixel";
           const { device: mac, deviceKey } = parsePartnerDeviceText(app, text);
           const username = String(session.testUsername || "").trim();
           const password = String(session.testPassword || "").trim();
@@ -4181,10 +4186,10 @@ Deno.serve(async (req) => {
           const done = Math.max(0, Number(session.activationsDone) || 0) + 1;
           const isRoku = session.testTv === "roku";
           await send(
-            fill(pickMacOkTemplate(tfTexts, isRoku), {
+            fill(pickMacOkTemplate(tfTexts, isRoku, session.testDevice), {
               mac,
               hours: session.testHours || testHours,
-              app: app === "utm" ? "UTM Play" : app === "pixel" ? "Pixel Player" : "Prime IPTV",
+              app: app === "utm" ? "UTM Play" : app === "pixel" ? "Pixel Player" : "Zuxo Player",
             }),
           );
           if (done < total) {
@@ -4412,7 +4417,7 @@ Deno.serve(async (req) => {
             accessToken: mpToken,
             amount,
             email: mpEmail,
-            externalReference: `auxplus_res_${userId}_${resellerItem.id}_${Date.now()}`,
+            externalReference: `auxplus_res_${userId}_${resellerItem.id}_${messageId || Date.now()}`,
             description: `Créditos revendedor ${resellerItem.item_id}`,
           });
           const order = {
@@ -4470,7 +4475,12 @@ Deno.serve(async (req) => {
       // Texto livre após um lembrete deve abrir o menu, mesmo contendo
       // palavras como "problema". Só um pedido explícito pula essa etapa.
       const explicitHumanRequest = ["atendente", "atendentes", "3"].includes(t);
-      if (isFreshClientSession && !explicitHumanRequest) {
+      const directReminderRenewal = isReminderRenewalReply(t, session.state);
+      if (directReminderRenewal && renewalClients.length > 1 && !reminderClient) {
+        await send("Encontrei mais de um acesso neste número. Para gerar o PIX do acesso correto, use *Responder* no lembrete que deseja renovar e digite *1*.");
+        return json({ ok: true, action: "renewal_identification_required" });
+      }
+      if (isFreshClientSession && !explicitHumanRequest && !directReminderRenewal) {
         sessions[phone] = {
           state: "ask_intent",
           role: "client",
@@ -4776,7 +4786,7 @@ Deno.serve(async (req) => {
             accessToken: mpToken,
             amount,
             email: mpEmail,
-            externalReference: `auxplus_bot_${userId}_${clientItem.id}_${Date.now()}`,
+            externalReference: `auxplus_bot_${userId}_${clientItem.id}_${messageId || Date.now()}`,
             description: `${stillActive ? "Extensão" : "Renovação"} ${clientItem.item_id} · ${months}m`,
           });
           const order = {
@@ -4851,10 +4861,16 @@ Deno.serve(async (req) => {
       return json({ ok: true, action: "ask_intent_repeat" });
     }
 
-    // Desconhecido: não aciona o robô (conversa segue normal).
-    // Só responde se a frase de teste tiver sido enviada (tratada acima).
+    // A greeting from a new contact must not leave them without a next step.
+    if (/^(oi|ola|opa|bom dia|boa tarde|boa noite)[!.,\s]*$/.test(waNorm(text))) {
+      await send("Olá! Como posso ajudar?\n\nPara conhecer o serviço, escreva *teste*.\nPara falar com nossa equipe, escreva *atendente*.");
+      return json({ ok: true, action: "new_contact_greeting" });
+    }
+    // Other messages from unknown contacts do not start a test automatically.
     return json({ ok: true, skipped: "unknown_silent" });
   } catch (e) {
+    if (retryFailedMessage) await retryFailedMessage().catch(() => {});
+    console.error("evolution_webhook_failed", e instanceof Error ? e.message : "unknown");
     return json(
       { error: e instanceof Error ? e.message : "webhook falhou" },
       500,

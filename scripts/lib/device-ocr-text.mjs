@@ -4,7 +4,7 @@ const failed = reason => ({ readable: false, device: "", deviceKey: "", reason }
 
 /** Never repairs ambiguous characters; incomplete or conflicting codes require a new photo. */
 export function extractDeviceFromOcr(app, text) {
-  if (!['prime', 'utm', 'pixel'].includes(app)) return failed("wrong_app");
+  if (!['zuxo', 'utm', 'pixel'].includes(app)) return failed("wrong_app");
   const normalized = String(text).replace(/[–—−]/g, "-");
   if (/EXEMPLO|DADOS\s+FICT[IÍ]CIOS|EXAMPLE/i.test(normalized)) return failed("example_image");
   if (app === "pixel") {

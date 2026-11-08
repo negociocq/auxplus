@@ -75,12 +75,12 @@ export interface WhatsappBotConfig {
     testAskTv: string;
     /** Samsung: Pixel Player ou UTM Play */
     testAskAppSamsung: string;
-    /** Roku/LG: Prime ou UTM Play */
+    /** Roku/LG: Zuxo ou UTM Play */
     testAskAppRokuLg: string;
     /** Pixel Player — pedir MAC ({user} {password} {hours}) */
     testAppPixelReady: string;
-    /** Prime IPTV — pedir MAC ({user} {password} {hours}) */
-    testAppPrimeReady: string;
+    /** Zuxo Player — pedir MAC ({user} {password} {hours}) */
+    testAppZuxoReady: string;
     /** UTM Play — provedor/usuário/senha ({user} {password} {hours}) */
     testAppUtmReady: string;
     /** MAC ativado ({mac} {hours} {app}) */
@@ -200,7 +200,7 @@ export function defaultWhatsappBotConfig(): WhatsappBotConfig {
       testAskAppSamsung: "",
       testAskAppRokuLg: "",
       testAppPixelReady: "",
-      testAppPrimeReady: "",
+      testAppZuxoReady: "",
       testAppUtmReady: "",
       testMacOk: "",
       testMacInvalid: "",
@@ -515,8 +515,10 @@ export interface WaBotSession {
   testUsername?: string;
   testPassword?: string;
   testRemoteId?: string | number;
-  testApp?: "pixel" | "prime" | "utm";
+  testApp?: "pixel" | "zuxo" | "utm";
   testDevice?: "tv" | "pc" | "phone";
+  testPhoneOs?: "android" | "ios";
+  testActivationMode?: "remote_mac" | "manual_samsung";
   testTv?: "box" | "android" | "roku" | "samsung" | "lg";
   testHours?: number;
   testDoneAt?: string;

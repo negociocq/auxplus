@@ -1,3 +1,4 @@
+import { UniPlayNavigation } from "@/components/UniPlayNavigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { format } from "date-fns";
@@ -53,8 +54,6 @@ import { Switch } from "@/components/ui/switch";
 import {
   Tabs,
   TabsContent,
-  TabsList,
-  TabsTrigger,
 } from "@/components/ui/tabs";
 import {
   Select,
@@ -152,8 +151,8 @@ import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
 import { replaceRecreatedItemAccess, replaceRecreatedJobAccess, type RecreatedIptvAccess } from "@/lib/iptvRecreation";
 import { UniplayEditUserDialog } from "@/components/UniplayEditUserDialog";
-import { UniplayUnlinkUtmDialog } from "@/components/UniplayUnlinkUtmDialog";
 import { UniplayTicketsPanel } from "@/components/UniplayTicketsPanel";
+import { UniplayDiscoverPanel } from "@/components/UniplayDiscoverPanel";
 import { configurePartnerAppsAccount, migratePartnerApps, syncPartnerApps } from "@/lib/partnerAppsSync";
 
 type ActivateAppScope = "clientes" | "testes";
@@ -256,10 +255,9 @@ export default function UniPlay() {
   const [clientOnOff, setClientOnOff] = useState<Record<string, boolean | undefined>>({});
   const [togglingClientId, setTogglingClientId] = useState<string | null>(null);
   const [editingPanelUsername, setEditingPanelUsername] = useState<string | null>(null);
-  const [unlinkUtmByMacOpen, setUnlinkUtmByMacOpen] = useState(false);
   const [cleaningTestRange, setCleaningTestRange] = useState<IptvTestCleanupRange | null>(null);
   const emptyActivateForm = (): ActivateAppForm => ({
-    appId: "prime",
+    appId: "zuxo",
     username: "",
     password: "",
     device: "",
@@ -2537,66 +2535,21 @@ export default function UniPlay() {
         title="UniPlay"
         description="Clientes, revendedores, testes, renovações e atendimento do seu painel IPTV."
       />
-      <Button type="button" variant="outline" size="sm"
-        disabled={!bearer.trim() && !(panelUser.trim() && panelPass)}
-        onClick={() => setUnlinkUtmByMacOpen(true)}>
-        <Unlink2 className="h-4 w-4" />Desvincular UTM por MAC
-      </Button>
 
       <Tabs
         value={tab}
         onValueChange={setTab}
         className="space-y-4"
       >
-        <TabsList className="h-auto flex-wrap bg-background/80">
-          <TabsTrigger value="clientes" className="gap-1.5">
-            Clientes
-            {activeClients.length > 0 || overdueClients.length > 0 ? (
-              <Badge
-                variant="secondary"
-                className="ml-0.5 h-5 px-1.5 text-[10px]"
-              >
-                {activeClients.length + overdueClients.length}
-              </Badge>
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="revendedores" className="gap-1.5">
-            <Users className="h-3.5 w-3.5" />
-            Revendedores
-            {resellers.length > 0 ? (
-              <Badge
-                variant="secondary"
-                className="ml-0.5 h-5 px-1.5 text-[10px]"
-              >
-                {resellers.length}
-              </Badge>
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="testes" className="gap-1.5">
-            <FlaskConical className="h-3.5 w-3.5" />
-            Testes
-            {testsCountConfirmed && testJobsCount > 0 ? (
-              <Badge
-                variant="secondary"
-                className="ml-0.5 h-5 px-1.5 text-[10px]"
-              >
-                {testJobsCount}
-              </Badge>
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="renovacoes" className="gap-1.5">
-            <Wallet className="h-3.5 w-3.5" />
-            Renovações
-          </TabsTrigger>
-          <TabsTrigger value="atendimento" className="gap-1.5">
-            <Headset className="h-3.5 w-3.5" />
-            Atendimento
-          </TabsTrigger>
-          <TabsTrigger value="tickets" className="gap-1.5">
-            <Headset className="h-3.5 w-3.5" />Tickets
-          </TabsTrigger>
-        </TabsList>
+        <UniPlayNavigation
+          clients={activeClients.length + overdueClients.length}
+          resellers={resellers.length}
+          tests={testsCountConfirmed ? testJobsCount : undefined}
+        />
 
+        <TabsContent value="novidades" className="mt-0 space-y-4">
+          {tab === "novidades" ? <UniplayDiscoverPanel creds={panelCreds()} onToken={persistToken} accountId={user?.id || "local"} /> : null}
+        </TabsContent>
         <TabsContent value="tickets" className="mt-0 space-y-4">
           {tab === "tickets" ? <UniplayTicketsPanel creds={panelCreds()} onToken={persistToken} resellers={resellers} /> : null}
         </TabsContent>
@@ -3565,7 +3518,6 @@ export default function UniPlay() {
         </DialogContent>
       </Dialog>
 
-      {unlinkUtmByMacOpen ? <UniplayUnlinkUtmDialog creds={panelCreds()} onToken={persistToken} onClose={() => setUnlinkUtmByMacOpen(false)} /> : null}
       {editingPanelUsername ? <UniplayEditUserDialog
         key={editingPanelUsername}
         username={editingPanelUsername}

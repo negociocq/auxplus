@@ -7,7 +7,7 @@ import { recognizeDeviceImage, closeOcrWorker, handleLocalDeviceOcr } from "./li
 const mac = "02:11:22:33:44:55";
 const id = "1234ABCD-5678-90AB-CDEF-1234567890AB";
 const tizenId = "1234ABC-D5678-90AB-CDEF-1234567890AB";
-assert.equal(extractDeviceFromOcr("prime", `Endereço MAC: ${mac}`).device, mac);
+assert.equal(extractDeviceFromOcr("zuxo", `Endereço MAC: ${mac}`).device, mac);
 assert.equal(extractDeviceFromOcr("utm", `MAC: ${mac}\nDevice Key: 001234`).deviceKey, "001234");
 assert.equal(extractDeviceFromOcr("pixel", `Device ID:\n1234ABCD-5678-90AB-CDEF-\n1234567890AB`).device, id);
 assert.equal(extractDeviceFromOcr("pixel", "Device ID:\n1234ABC-D5678-90AB-CDEF-\n1234567890AB\n(Tizen v1.5.91)").device, tizenId);
@@ -24,12 +24,12 @@ assert.equal(extractDeviceFromOcr("pixel", "Device ID:\n1234ABCD-5678-90AB-CDEF-
 assert.equal(extractDeviceFromOcr("pixel", "Device ID:\n1234ABCD-5678-90AB-CDEF-123456789OAB").readable, false);
 assert.equal(extractDeviceFromOcr("utm", `MAC: ${mac}\nDevice Key: 01234`).readable, false);
 assert.equal(extractDeviceFromOcr("utm", `MAC: ${mac}\nDevice Key: 001234\nDevice Key: 991234`).readable, false);
-assert.equal(extractDeviceFromOcr("prime", `${mac}\n02:99:88:77:66:55`).readable, false);
-assert.equal(extractDeviceFromOcr("prime", `EXEMPLO\n${mac}`).reason, "example_image");
+assert.equal(extractDeviceFromOcr("zuxo", `${mac}\n02:99:88:77:66:55`).readable, false);
+assert.equal(extractDeviceFromOcr("zuxo", `EXEMPLO\n${mac}`).reason, "example_image");
 
 const makeImage = async lines => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="550"><rect width="100%" height="100%" fill="white"/>${lines.map((line, i) => `<text x="60" y="${90 + i * 80}" font-family="Arial" font-size="42" fill="black">${line}</text>`).join("")}</svg>`)).png().toBuffer();
 const cases = [
-  ["prime", ["Prime IPTV", `MAC: ${mac}`], { device: mac }],
+  ["zuxo", ["Zuxo Player", `MAC: ${mac}`], { device: mac }],
   ["utm", ["UTM Play", `Your TV MAC Address: ${mac}`, "Your Device Key: 001234"], { device: mac, deviceKey: "001234" }],
   ["pixel", ["Pixel Player", "Device ID:", "1234ABCD-5678-90AB-CDEF-", "1234567890AB"], { device: id }],
   ["pixel", ["Pixel Player", "Device ID:", mac, "(AndroidTV v1.6.0)"], { device: mac }],
@@ -58,8 +58,8 @@ try {
   assert.equal(samsungResult.device, samsungId);
   console.log("PASS real local OCR: Samsung two-line ID on dark background");
   const primePhoto = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280"><rect width="100%" height="100%" fill="#1665a8"/><g font-family="Arial" font-weight="bold" fill="white"><text x="60" y="850" font-size="27">Chave do dispositivo: 001234</text><text x="60" y="895" font-size="27">Endereco Mac: ${mac}</text></g></svg>`)).rotate(15, { background: "#1665a8" }).jpeg().toBuffer();
-  assert.equal((await recognizeDeviceImage(primePhoto, "prime")).device, mac);
-  console.log("PASS real local OCR: tilted Prime MAC on blue background");
+  assert.equal((await recognizeDeviceImage(primePhoto, "zuxo")).device, mac);
+  console.log("PASS real local OCR: tilted Zuxo MAC on blue background");
   const utmPhoto = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280"><rect width="100%" height="100%" fill="#344566"/><rect x="0" y="520" width="720" height="310" fill="#858da0"/><g font-family="Arial" fill="white" font-size="27"><text x="25" y="605">Upload your playlist</text><text x="25" y="670">Your TV MAC Address: ${mac}</text><text x="25" y="725">Your Device Key: 001234</text></g></svg>`)).rotate(-5, { background: "#344566" }).jpeg().toBuffer();
   const utmResult = await recognizeDeviceImage(utmPhoto, "utm");
   assert.equal(utmResult.device, mac);
@@ -74,8 +74,8 @@ try {
   const headers = { Authorization: `Bearer ${process.env.LOCAL_OCR_TOKEN}`, "Content-Type": "application/json" };
   assert.equal((await fetch(`${base}/ocr/health`, { headers })).status, 200);
   assert.equal((await fetch(`${base}/ocr/device`, { method: "POST", headers, body: JSON.stringify({ app: "pixel", image: "https://example.test/image.png" }) })).status, 400);
-  const image = (await makeImage(["Prime IPTV", `MAC: ${mac}`])).toString("base64");
-  const response = await fetch(`${base}/ocr/device`, { method: "POST", headers, body: JSON.stringify({ app: "prime", image: `data:image/png;base64,${image}` }) });
+  const image = (await makeImage(["Zuxo Player", `MAC: ${mac}`])).toString("base64");
+  const response = await fetch(`${base}/ocr/device`, { method: "POST", headers, body: JSON.stringify({ app: "zuxo", image: `data:image/png;base64,${image}` }) });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).device, mac);
   console.log("PASS: local HTTP authentication, image validation and real OCR; ambiguous and incomplete codes rejected. No paid API calls.");

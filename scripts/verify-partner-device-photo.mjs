@@ -21,7 +21,7 @@ for (const raw of [
   { readable: true, device: "021122334455", deviceKey: 123456 },
   { readable: true, device: "GABBCCDDEEFF", deviceKey: "001234" },
 ]) assert.throws(() => validatePhotoDevice("utm", raw));
-assert.throws(() => validatePhotoDevice("prime", { readable: true, device: "AA:BB:CC:DD:EE:FF" }), /example_image/);
+assert.throws(() => validatePhotoDevice("zuxo", { readable: true, device: "AA:BB:CC:DD:EE:FF" }), /example_image/);
 assert.throws(() => validatePhotoDevice("pixel", { readable: true, device: "EXEMPLO-0000-1111-2222" }), /example_image/);
 const fullId = "00Device-021122334455-9876543210";
 const pixel = validatePhotoDevice("pixel", { readable: true, device: fullId });
@@ -99,8 +99,9 @@ const { partnerDeviceGuide, partnerGuideUrl } = await loadTs("supabase/functions
 assert.ok(partnerDeviceGuide("utm", true).includes("User Account"));
 assert.ok(partnerDeviceGuide("utm", true).includes("Settings"));
 assert.ok(partnerDeviceGuide("pixel", true).includes("duas linhas"));
-assert.ok(partnerDeviceGuide("prime", true).includes("Endereço MAC"));
-assert.ok(!partnerDeviceGuide("prime", false).includes("Pode mandar uma foto"));
+assert.ok(partnerDeviceGuide("zuxo", true).includes("MAC"));
+for (const device of ["tv","lg","roku","android-tv","android","ios","samsung"]) assert.equal(partnerGuideUrl("https://example.test", "zuxo",device), `https://example.test/atendimento/zuxo-${["android","ios","samsung"].includes(device) ? device : "tv-v2"}-guide.png`);
+assert.ok(!partnerDeviceGuide("zuxo", false).includes("Pode mandar uma foto"));
 assert.equal(partnerGuideUrl("https://example.test/", "utm"), "https://example.test/atendimento/utm-device-guide.png");
 assert.equal(partnerGuideUrl("not a url", "utm"), undefined);
 assert.equal(partnerGuideUrl("http://example.test", "utm"), undefined);

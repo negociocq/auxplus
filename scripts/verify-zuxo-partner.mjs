@@ -1,0 +1,43 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+import { partnerActivationRequest } from '../supabase/functions/_shared/partnerAppContract.ts';
+import { upgradePartnerTestFlow } from '../supabase/functions/_shared/partnerTestFlow.ts';
+
+assert.deepEqual(partnerActivationRequest('zuxo',42,'02:11:22:33:44:55'),{path:'/activate-zuxo',body:{id_user:42,mac:'02:11:22:33:44:55'}});
+assert.deepEqual(partnerActivationRequest('pixel',42,'full-device-id'),{path:'/activate-pixel',body:{id_usuario:42,device_identifier:'full-device-id'}});
+assert.deepEqual(partnerActivationRequest('utm',42,'02:11:22:33:44:55','001234'),{path:'/activate-utm',body:{id_usuario:42,mac:'02:11:22:33:44:55',device_key:'001234'}});
+assert.throws(()=>partnerActivationRequest('prime',42,'02:11:22:33:44:55'),/indisponível/);
+assert.throws(()=>partnerActivationRequest('zuxo',undefined,'02:11:22:33:44:55'),/sem ID/);
+
+const file=ts.createSourceFile('api.ts',fs.readFileSync('src/lib/iptvPanelApi.ts','utf8'),ts.ScriptTarget.Latest,true);
+const declarations=file.statements.filter(n=>ts.isFunctionDeclaration(n)&&['activatePartnerApp','macHexDigits','normalizeMac'].includes(n.name?.text)||ts.isVariableStatement(n)&&n.declarationList.declarations.some(d=>['PARTNER_APPS','ACTIVATE_PATH'].includes(d.name.getText(file)))).map(n=>n.getText(file).replace(/^export\s+/,'')).join('\n');
+const calls=[],ctx={partnerActivationRequest,findIptvUserByUsername:async()=>({id:42}),panelFetch:async(_creds,path,init)=>{calls.push({path,body:JSON.parse(init.body)});return {success:true}}};
+vm.runInNewContext(ts.transpileModule(declarations,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,ctx);
+await ctx.activatePartnerApp({}, {app:'zuxo',username:'fixture',password:'',device:'021122334455'});
+assert.deepEqual(calls[0],{path:'/activate-zuxo',body:{id_user:42,mac:'02:11:22:33:44:55'}});
+await ctx.activatePartnerApp({}, {app:'pixel',username:'fixture',password:'',device:'full-device-id'});
+await ctx.activatePartnerApp({}, {app:'utm',username:'fixture',password:'',device:'021122334455',deviceKey:'001234'});
+assert.equal(calls.length,3);
+await assert.rejects(ctx.activatePartnerApp({}, {app:'prime',username:'fixture',password:'',device:'021122334455'}),/inválido/);
+assert.equal(calls.length,3,'retired apps never invoke the provider');
+
+const webhook=ts.createSourceFile('webhook.ts',fs.readFileSync('supabase/functions/evolution-webhook/index.ts','utf8'),ts.ScriptTarget.Latest,true);
+const activation=webhook.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='activatePartnerAppWa');
+let lookedUp=0;const waCalls=[],wa={partnerActivationRequest,findUniplayUserId:async()=>{lookedUp++;return 42},uniplayFetch:async(path,_bearer,init)=>{waCalls.push({path,body:JSON.parse(init.body)});return {success:true}}};
+vm.runInNewContext(ts.transpileModule(activation.getText(webhook),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,wa);
+await wa.activatePartnerAppWa('fixture','zuxo','fixture-user','fixture-password','02:11:22:33:44:55');
+assert.equal(lookedUp,1,'existing trial credentials with no saved ID resolve the existing customer, never create another trial');
+assert.deepEqual(waCalls[0],calls[0]);
+
+const legacy={appCatalogVersion:9,phoneApkUrl:'https://fixture.invalid/uni.apk',appMenus:[{id:'samsung',menu:{message:'Escolha o app',options:[{key:'1',label:'Prime IPTV',keywords:'prime,prime iptv',action:'app_prime'},{key:'2',label:'Pixel Player',action:'app_pixel'}]}}],texts:{primeReady:'Prime IPTV',askName:'Custom name',macOk:'Custom success'}};
+const migrated=upgradePartnerTestFlow(legacy);
+assert.equal(migrated.appMenus[0].menu.options[0].action,'app_zuxo');
+assert.match(migrated.appMenus[0].menu.options[0].label,/Zuxo Player/);
+assert.equal(migrated.texts.askName,'Custom name');
+assert.equal(migrated.texts.macOk,'Custom success');
+assert.equal(migrated.phoneApkUrl,'https://play.google.com/store/apps/details?id=com.zuxoplayer.app');
+assert.deepEqual(upgradePartnerTestFlow(migrated),migrated);
+assert.equal(legacy.appMenus[0].menu.options[0].action,'app_prime','migration must not mutate stored input');
+console.log('PASS: live-panel Zuxo id_user/MAC contract; Pixel/UTM unchanged; retired app blocked; saved menus migrated without creating real activations.');

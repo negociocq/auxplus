@@ -370,8 +370,8 @@ export async function releasePaidMpOrder(
 
       const screens = Math.max(1, Math.floor(Number(order.screens) || 1));
       const testApp =
-        order.testApp === "prime"
-          ? "prime"
+        order.testApp === "zuxo"
+          ? "zuxo"
           : order.testApp === "utm"
             ? "utm"
             : "";
@@ -385,7 +385,8 @@ export async function releasePaidMpOrder(
       );
       if (
         screens > 1 &&
-        (testApp === "utm" || testApp === "prime") &&
+        order.testActivationMode !== "manual_samsung" &&
+        (testApp === "utm" || testApp === "zuxo") &&
         order.testPassword &&
         phone.length >= 10
       ) {
@@ -408,7 +409,7 @@ export async function releasePaidMpOrder(
           };
           await saveWaBotStateRemote(user.id, state);
           await new Promise((r) => window.setTimeout(r, 1400));
-          const appName = testApp === "prime" ? "Prime IPTV" : "FunPlay";
+          const appName = testApp === "zuxo" ? "Zuxo Player" : "FunPlay";
           await sendWa(
             user,
             phone,

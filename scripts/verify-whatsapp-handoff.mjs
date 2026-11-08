@@ -13,6 +13,12 @@ vm.runInNewContext(compile("supabase/functions/_shared/waBotGuard.ts"), {
 });
 const dueExports = {};
 vm.runInNewContext(compile("supabase/functions/_shared/itemDue.ts"), { exports: dueExports, Intl, Date });
+const inboundExports = {};
+vm.runInNewContext(compile("supabase/functions/_shared/waInbound.ts"), { exports: inboundExports });
+const reminderExports = {};
+vm.runInNewContext(compile("supabase/functions/_shared/waReminderReply.ts"), { exports: reminderExports });
+const partnerExports = {};
+vm.runInNewContext(compile("supabase/functions/_shared/partnerTestFlow.ts"), { exports: partnerExports });
 
 class Database {
   constructor() { this.tables = { platform_settings: [], platform_private_secrets: [], folders: [], items: [], wa_recovery_contacts: [] }; }
@@ -25,6 +31,7 @@ class Database {
     const query = {
       select() { return query; },
       eq(key, value) { filters.push((r) => String(valueAt(r, key)) === String(value)); return query; },
+      like(key, value) { const prefix = value.replace(/%$/, ""); filters.push(r => String(r[key]).startsWith(prefix)); return query; },
       lt(key, value) { filters.push((r) => valueAt(r, key) < value); return query; },
       maybeSingle() { single = true; return query; },
       insert(value) { mode = "insert"; values = value; return query; },
@@ -70,13 +77,16 @@ const context = {
   require: (path) => {
     if (path.includes("waBotGuard")) return guardExports;
     if (path.includes("itemDue")) return dueExports;
+    if (path.includes("waInbound")) return inboundExports;
+    if (path.includes("waReminderReply")) return reminderExports;
     if (path.includes("supabase-js")) return { createClient: () => db };
     if (path.includes("waRecovery")) return { recoveryPhone: (p) => p, recoveryPanel: async () => ({}) };
-    if (path.includes("partnerTestFlow")) return { upgradePartnerTestFlow: (flow) => flow };
+    if (path.includes("partnerTestFlow")) return partnerExports;
     return {};
   },
   fetch: async (url, init) => {
     assert.match(String(url), /^https:\/\/evolution\.invalid\/message\/sendText\//);
+    assert.equal(JSON.parse(init.body).delay,0,'bot replies must not simulate a typing delay');
     sent.push(JSON.parse(init.body).text);
     return Response.json({ ok: true });
   },
@@ -164,3 +174,58 @@ assert.equal(visibleHumans.length, 1, "panel unifies paused flags and human sess
 assert.equal(visibleHumans[0], normalize(phone));
 assert.equal(humanExports.humanConversationPhones({ sessions: { [legacyPhone]: { state: "human" } }, humanPaused: {} }, normalize).length, 1, "legacy human session must be visible even when the pause flag is absent");
 console.log("PASS: concurrent messages, option 3 from idle, silent human mode, media, dedup and owner resume.");
+
+// An external outage must not consume the incoming ID before a reply is delivered.
+state().sessions = {};
+state().humanPaused = {};
+state().recentRepliesByPhone = {};
+const workingFetch = context.fetch;
+context.fetch = async (_url, init) => {
+  assert.ok(init.signal, "WhatsApp delivery must have an abort deadline");
+  throw new Error("simulated delivery outage");
+};
+const failureRequest = () => new Request("https://webhook.invalid", {
+  method: "POST", headers: { "content-type": "application/json" },
+  body: JSON.stringify({ event: "messages.upsert", instance: "test", data: {
+    key: { id: "retry-after-outage", remoteJid: `${phone}@s.whatsapp.net`, fromMe: false },
+    message: { conversation: "oi" },
+  } }),
+});
+assert.equal((await handler(failureRequest())).status, 500);
+assert.equal(state().recentMsgIds["retry-after-outage"], undefined);
+context.fetch = workingFetch;
+const retried = await handler(failureRequest());
+assert.equal(retried.status, 200);
+assert.notEqual((await retried.json()).skipped, "dup_message");
+assert.equal((await receive("oi", { id: "retry-after-outage" })).skipped, "dup_message");
+
+// Even expired panel credentials cannot force a login before a simple menu reply.
+const auto = db.tables.platform_settings.find(row => row.key === "automations_user_1");
+auto.value = { iptvUsername: "fixture", iptvPassword: "fixture", iptvBearerToken: "" };
+state().sessions = {};
+assert.equal((await receive("oi")).action, "ask_intent");
+db.tables.items = [];
+state().sessions = {};
+assert.equal((await receive("Olá!")).action, "new_contact_greeting");
+assert.match(sent.at(-1), /teste/);
+console.log("PASS: failed delivery can retry, successful delivery deduplicates, menus do not log into the panel.");
+
+db.tables.items.push({ id: "customer", folder_id: "folder", item_id: "sample", phone, is_active: true, due_date: "2026-11-19", due_time: "19:54:31" });
+const aged = ms => new Date(Date.now() - ms).toISOString();
+state().sessions = { [phone]: { state: "human", updatedAt: aged(59 * 60_000), testUsername: "preserved" } };
+state().humanPaused = { [phone]: true };
+assert.equal((await receive("estou aguardando")).skipped, "human_paused");
+assert.ok(Date.now() - Date.parse(state().sessions[phone].updatedAt) < 2000, "customer activity renews the hour");
+state().sessions[phone].updatedAt = aged(59 * 60_000);
+await receive("vou verificar", { fromMe: true });
+assert.ok(Date.now() - Date.parse(state().sessions[phone].updatedAt) < 2000, "attendant activity renews the hour");
+state().sessions[phone].updatedAt = aged(61 * 60_000);
+state().humanPaused[legacyPhone] = true;
+await guardExports.sweepHumanConversations(db);
+assert.equal(state().sessions[phone].state, "idle");
+assert.equal(state().sessions[phone].testUsername, "preserved");
+assert.equal(Object.keys(state().humanPaused).length, 0, "scheduled sweep clears phone aliases");
+state().sessions[phone] = { state: "human", updatedAt: aged(61 * 60_000) };
+state().humanPaused[phone] = true;
+assert.equal((await receive("oi")).action, "ask_intent", "first message after expiry reaches the bot immediately");
+console.log("PASS: customer and attendant activity, scheduled idle expiry, aliases, trial preservation and bot resume.");

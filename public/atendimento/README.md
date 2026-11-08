@@ -1,5 +1,22 @@
 # Imagens de orientação do atendimento
 
+## Zuxo Player
+
+Guias produzidos com a ferramenta integrada imagegen e revisados visualmente:
+
+- `zuxo-tv-v2-guide.png`: LG, Android TV e Roku, com a tela fornecida pelo usuário: TV ao Vivo à esquerda, Filmes/Séries à direita e ID do aparelho no rodapé. Substitui o primeiro guia de TV.
+- `zuxo-android-guide.png`: celulares/tablets Android, MAC na tela inicial.
+- `zuxo-ios-guide.png`: iPhone/iPad, engrenagem e print das configurações com MAC.
+- `zuxo-samsung-guide.png`: Samsung, Listas e formulário manual com jung777, usuário e senha do atendimento.
+
+Prompts: infográfico em português para WhatsApp, fundo escuro e detalhes verdes,
+tipografia legível, representação da tela correspondente ao dispositivo,
+marca EXEMPLO/DADOS FICTÍCIOS, MAC AA:BB:CC:DD:EE:FF; nunca dados reais.
+Samsung destaca código jung777 e os campos SEU USUÁRIO/SUA SENHA.
+Demais aparelhos orientam aguardar alguns segundos com o app aberto após ativar.
+Os arquivos são publicados no bucket público whatsapp-guides pelo script
+`scripts/publish-zuxo-guides.mjs`; o bot seleciona por sistema/aparelho.
+
 Arquivos de exemplo para o cliente localizar os identificadores do próprio app.
 Criados com a ferramenta integrada imagegen, a partir das telas fornecidas como
 referência, e revisados visualmente antes de serem incluídos no projeto.

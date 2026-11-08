@@ -7,6 +7,7 @@ import { SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
 import { formatBrDate } from "@/lib/format";
 import { DEFAULT_PRORROGA_MESSAGE } from "@/lib/whatsappAutomation";
 import { readSyncedDevices, writeSyncedDevice } from "@/lib/partnerAppsSync";
+import { partnerActivationRequest } from "../../supabase/functions/_shared/partnerAppContract.ts";
 import { parseUniplayRenewalLogs, parseUniplayRecreatedLines, parseUniplayCreditLogs } from "@/lib/uniplayRenewalLogs";
 
 /** Mesmo endpoint mensal da tela Listagem de Logs da Uniplay. */
@@ -52,6 +53,17 @@ export type IptvPackage = {
 };
 
 export type UniplayTicket = Record<string, unknown> & { id: string | number };
+
+/** Catálogo usado pela tela Filmes e Séries do painel original. */
+export async function getUniplayCatalog(creds: IptvPanelCreds): Promise<{ movies: unknown[]; series: unknown[] }> {
+  const query = new URLSearchParams({ reg_password: creds.regPassword?.trim() || "" });
+  const raw = await panelFetch(creds, `/get-available-movies?${query}`, { cache: "no-store" });
+  const data = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  if (!Array.isArray(data.movies) || !Array.isArray(data.series)) {
+    throw new Error("A Uniplay não retornou o catálogo de filmes e séries esperado.");
+  }
+  return { movies: data.movies, series: data.series };
+}
 export type UniplayTicketInput = {
   title: string; category: string; content: string; tech: string;
   resolution?: string; idUser?: string | number; username?: string; channels?: string[];
@@ -3055,7 +3067,7 @@ export async function fetchIptvPanelCredits(
 }
 
 /** Apps parceiros do painel (ativação por MAC / Device ID). */
-export type PartnerAppId = "prime" | "utm" | "pixel";
+export type PartnerAppId = "zuxo" | "utm" | "pixel";
 
 export const PARTNER_APPS: {
   id: PartnerAppId;
@@ -3074,8 +3086,8 @@ export const PARTNER_APPS: {
   hint: string;
 }[] = [
   {
-    id: "prime",
-    label: "Prime IPTV",
+    id: "zuxo",
+    label: "Zuxo Player",
     deviceField: "mac",
     hint: "MAC com 17 caracteres (aa:bb:cc:dd:ee:ff)",
   },
@@ -3101,7 +3113,7 @@ export const PARTNER_APPS: {
 ];
 
 const ACTIVATE_PATH: Record<PartnerAppId, string> = {
-  prime: "/activate-prime",
+  zuxo: "/activate-zuxo",
   utm: "/activate-utm",
   pixel: "/activate-pixel",
 };
@@ -3331,7 +3343,7 @@ function listLocalPartnerAppsForUsername(username: string): SmartAppEntry[] {
   const want = username.trim().toLowerCase();
   if (!want) return [];
   return loadLocalPartnerApps()
-    .filter((r) => r.username.toLowerCase() === want)
+    .filter((r) => r.username.toLowerCase() === want && PARTNER_APPS.some(app => app.id === r.app))
     .map((r) =>
       withNickname({
         id: r.id,
@@ -3547,7 +3559,7 @@ export async function deleteSmartApp(
 
 /**
  * Ativa app parceiro no painel.
- * Prime: { username, password, mac }. Pixel: { id_usuario, device_identifier }.
+ * Zuxo: { id_user, mac }. Pixel: { id_usuario, device_identifier }.
  * UTM Play usa { id_usuario, mac, device_key }.
  */
 export async function activatePartnerApp(
@@ -3563,9 +3575,8 @@ export async function activatePartnerApp(
   },
 ): Promise<unknown> {
   const username = opts.username.trim();
-  const password = opts.password;
-  if (!username || !password) {
-    throw new Error("Informe usuário e senha IPTV do cliente");
+  if (!username) {
+    throw new Error("Informe o usuário IPTV do cliente");
   }
 
   const meta = PARTNER_APPS.find((a) => a.id === opts.app);
@@ -3600,20 +3611,15 @@ export async function activatePartnerApp(
     }
   }
 
-  let body: Record<string, string | number> =
-    meta.deviceField === "mac"
-      ? { username, password, mac: device }
-      : { username, password, deviceId: device };
+  let body: Record<string, string | number>;
 
-  // UTM e Pixel vinculam pelo ID interno do cliente, não pelo login IPTV.
-  if (opts.app === "utm" || opts.app === "pixel") {
+  // All current partners link through the panel's internal customer ID.
+  {
     const user = await findIptvUserByUsername(creds, username, { exactOnly: true });
     if (user?.id == null || user.id === "") {
       throw new Error(`Cliente IPTV não encontrado no painel para ativar o ${meta.label}.`);
     }
-    body = opts.app === "utm"
-      ? { id_usuario: user.id, mac: device, device_key: opts.deviceKey!.trim() }
-      : { id_usuario: user.id, device_identifier: device };
+    body = partnerActivationRequest(opts.app, user.id, device, opts.deviceKey?.trim()).body;
   }
 
   try {
