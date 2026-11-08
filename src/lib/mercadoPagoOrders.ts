@@ -88,12 +88,17 @@ export function loadMpOrders(userId: string): MpRenewOrder[] {
   }
 }
 
-function mergeOrders(a: MpRenewOrder[], b: MpRenewOrder[]): MpRenewOrder[] {
+export function mergeOrders(a: MpRenewOrder[], b: MpRenewOrder[]): MpRenewOrder[] {
   const map = new Map<string, MpRenewOrder>();
   for (const row of [...a, ...b]) {
     if (!isOrder(row)) continue;
     const prev = map.get(row.id);
-    if (!prev || row.updatedAt > prev.updatedAt) map.set(row.id, row);
+    const completed = (o: MpRenewOrder) => o.status === "released" || Boolean(o.releasedAt);
+    if (!prev ||
+      (completed(row) && !completed(prev)) ||
+      (completed(row) === completed(prev) && row.updatedAt > prev.updatedAt)) {
+      map.set(row.id, row);
+    }
   }
   return trimOrders([...map.values()]);
 }
@@ -125,10 +130,8 @@ export async function loadMpOrdersRemote(
       .select("value")
       .eq("key", dbKey(userId))
       .maybeSingle();
-    if (error || !data?.value) {
-      if (local.length) void persistRemote(userId, local);
-      return local;
-    }
+    if (error) throw error;
+    if (!data?.value) return local;
     const raw =
       typeof data.value === "string"
         ? (JSON.parse(data.value) as { orders?: unknown })
@@ -140,7 +143,7 @@ export async function loadMpOrdersRemote(
       : [];
     const merged = mergeOrders(local, remote);
     writeLocal(userId, merged);
-    void persistRemote(userId, merged);
+    // A read must never upload an old browser snapshot over server completion.
     return merged;
   } catch {
     return local;

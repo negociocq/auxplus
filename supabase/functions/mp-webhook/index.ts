@@ -14,7 +14,7 @@
  * Ao receber pagamento aprovado: libera UniPlay + atualiza item + WhatsApp.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { recordPixPayment } from "../_shared/renewalPayments.ts";
 import { dueTime, mergeItemDue, normalizePanelDue } from "../_shared/itemDue.ts";
 
@@ -29,7 +29,7 @@ const PANEL_ORIGIN = "https://searchdefense.top";
 const UPSTREAM = "https://gesapioffice.com/api";
 const RELEASING_MARK = "__releasing__";
 /** Trava atômica de liberação (por pedido): só um lado libera o PIX. */
-const CLAIM_TTL_MS = 2 * 60 * 1000;
+// Claims never expire: an unknown outcome requires reconciliation, not replay.
 const claimKey = (orderId: string) => `mp_claim_${orderId}`;
 
 function json(data: unknown, status = 200) {
@@ -47,7 +47,7 @@ async function sb() {
 }
 
 async function getSetting<T>(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   key: string,
 ): Promise<T | null> {
   const { data } = await client
@@ -67,14 +67,15 @@ async function getSetting<T>(
 }
 
 async function putSetting(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   key: string,
   value: unknown,
 ) {
-  await client.from("platform_settings").upsert(
+  const { error } = await client.from("platform_settings").upsert(
     { key, value, updated_at: new Date().toISOString() },
     { onConflict: "key" },
   );
+  if (error) throw new Error("Falha ao persistir estado do pagamento");
 }
 
 type MpOrder = {
@@ -233,7 +234,8 @@ async function uniplayFetch(
   ];
 
   let lastErr: Error | null = null;
-  for (const attempt of attempts) {
+  const readOnly = method === "GET" || method === "HEAD";
+  for (const attempt of (readOnly ? attempts : attempts.slice(0, 1))) {
     try {
       let res: Response;
       if (attempt.kind === "proxy") {
@@ -279,12 +281,13 @@ async function uniplayFetch(
             : {};
         const msg = String(obj.message || obj.error || `UniPlay ${res.status}`);
         lastErr = new Error(msg);
-        if ([404, 403, 500, 502, 503].includes(res.status)) continue;
+        if (readOnly && [404, 403, 500, 502, 503].includes(res.status)) continue;
         throw lastErr;
       }
       return data;
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
+      if (!readOnly) throw lastErr;
     }
   }
   throw lastErr || new Error("Falha UniPlay");
@@ -308,7 +311,7 @@ function tokenNeedsRefresh(token: string) {
 }
 
 async function ensurePanelBearer(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   userId: string,
   automations: Record<string, unknown>,
 ): Promise<string> {
@@ -384,7 +387,7 @@ async function findUniplayUserId(bearer: string, username: string) {
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
     const u = String(r.username || r.user || "").trim().toLowerCase();
-    if (u === want) return r.id ?? r.user_id ?? r.uid ?? null;
+    if (u === want) { const id = r.id ?? r.user_id ?? r.uid; return typeof id === "string" || typeof id === "number" ? id : null; }
   }
   return null;
 }
@@ -399,17 +402,7 @@ async function renewIptvUser(
     credits: Math.max(0.1, Number(credits) || 1),
   });
   const path = `/users-iptv/${encodeURIComponent(String(remoteUserId))}`;
-  let last: Error | null = null;
-  for (const method of ["PUT", "PATCH", "POST"] as const) {
-    try {
-      return await uniplayFetch(path, bearer, { method, body });
-    } catch (e) {
-      last = e instanceof Error ? e : new Error(String(e));
-      if (/405|Method Not Allowed|não permitido/i.test(last.message)) continue;
-      throw last;
-    }
-  }
-  throw last || new Error("Falha ao renovar UniPlay");
+  return await uniplayFetch(path, bearer, { method: "PUT", body });
 }
 
 async function addResellerCredits(
@@ -431,23 +424,7 @@ async function addResellerCredits(
     reason: reason || "AuxPlus PIX",
   });
   const path = `/reg-users/${encodeURIComponent(String(idRes))}`;
-  let last: Error | null = null;
-  for (const method of ["PUT", "POST", "PATCH"] as const) {
-    try {
-      return await uniplayFetch(path, bearer, { method, body: actionBody });
-    } catch (e) {
-      last = e instanceof Error ? e : new Error(String(e));
-      if (/405|Method Not Allowed|não permitido/i.test(last.message)) continue;
-      break;
-    }
-  }
-  return await uniplayFetch("/recargas/criar", bearer, {
-    method: "POST",
-    body: JSON.stringify({
-      id_res: idRes,
-      qtd_creditos: Math.floor(credits),
-    }),
-  });
+  return await uniplayFetch(path, bearer, { method: "PUT", body: actionBody });
 }
 
 async function listResellers(bearer: string, search: string) {
@@ -562,7 +539,7 @@ async function notifyOwnerManualActivation(
 }
 
 async function resolveInstanceName(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   userId: string,
 ): Promise<string> {
   const { data } = await client
@@ -581,7 +558,7 @@ async function resolveInstanceName(
           })()
         : (row.value as { userId?: string; instanceName?: string } | null);
     if (String(val?.userId || "") === String(userId)) {
-      return String(val?.instanceName || row.key.replace(/^wa_instance_/, ""));
+      return String(val?.instanceName || String(row.key).replace(/^wa_instance_/, ""));
     }
   }
   const evo =
@@ -602,7 +579,7 @@ async function resolveInstanceName(
 }
 
 async function findOrderByPaymentId(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   paymentId: string,
 ): Promise<FoundOrder | null> {
   const want = String(paymentId || "").trim();
@@ -637,7 +614,7 @@ async function findOrderByPaymentId(
 }
 
 async function saveOrders(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   userId: string,
   orders: MpOrder[],
 ) {
@@ -649,74 +626,42 @@ async function saveOrders(
   await putSetting(client, `mp_orders_user_${userId}`, { orders: trimmed });
 }
 
-/**
- * Trava atômica de liberação (por pedido): `insert` com chave única é o
- * compare-and-set — quem inserir primeiro vence, o outro lado desiste.
- * Travas velhas (> TTL, ex.: crash) são removidas para permitir retry.
- */
+/** Permanent financial claim. A timeout never authorizes another debit. */
 async function acquireReleaseClaim(
-  client: ReturnType<typeof createClient>,
-  orderId: string,
-  claimer: string,
+  client: SupabaseClient, orderId: string, claimer: string,
+  userId: string, paymentId: string,
 ): Promise<boolean> {
-  const key = claimKey(orderId);
-  const now = Date.now();
-  try {
-    const { data: existing } = await client
-      .from("platform_settings")
-      .select("value")
-      .eq("key", key)
-      .maybeSingle();
-    const existingAt = Number(
-      (existing?.value as { at?: number } | undefined)?.at || 0,
-    );
-    if (existing && Number.isFinite(existingAt) && now - existingAt < CLAIM_TTL_MS) {
-      return false; // outro processo está liberando (ou já liberou)
-    }
-    if (existing) {
-      // trava velha (crash) → remove para poder assumir
-      await client.from("platform_settings").delete().eq("key", key);
-    }
-    const ins = await client
-      .from("platform_settings")
-      .insert({
-        key,
-        value: { at: now, claimer },
-        updated_at: new Date().toISOString(),
-      })
-      .select("key");
-    return Array.isArray(ins.data) && ins.data.length > 0;
-  } catch {
-    return false;
+  // Unique payment key also blocks two order IDs for the same payment.
+  if (!paymentId.trim()) throw new Error("Pagamento sem identificador");
+  for (const key of [`mp_payment_claim_${userId}_${paymentId}`, claimKey(orderId)]) {
+    const { data, error } = await client.from("platform_settings").insert({
+      key, value: { at: Date.now(), claimer, paymentId, userId }, updated_at: new Date().toISOString(),
+    }).select("key");
+    if (error?.code === "23505") return false;
+    if (error || !data?.length) throw new Error("Não foi possível registrar a execução do pagamento");
   }
-}
-
-async function releaseClaim(
-  client: ReturnType<typeof createClient>,
-  orderId: string,
-) {
-  try {
-    await client.from("platform_settings").delete().eq("key", claimKey(orderId));
-  } catch {
-    /* TTL limpa a trava */
-  }
+  return true;
 }
 
 async function claimOrder(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   found: FoundOrder,
 ): Promise<MpOrder | null> {
-  const { userId, order, orders } = found;
+  const { userId, order } = found;
   if (order.status === "released" || order.releasedAt) return null;
   if (order.error === RELEASING_MARK) {
     const t = Date.parse(String(order.updatedAt || "")) || 0;
     if (Date.now() - t < 2 * 60 * 1000) return null;
   }
   // Trava atômica: só um lado (webhook ou cliente) pode liberar o pedido.
-  const gotClaim = await acquireReleaseClaim(client, order.id, "server");
+  const gotClaim = await acquireReleaseClaim(client, order.id, "server", userId, order.mpPaymentId);
   if (!gotClaim) return null;
+  const fresh = await getSetting<{ orders?: MpOrder[] }>(client, `mp_orders_user_${userId}`);
+  const current = fresh?.orders || [];
+  const latest = current.find(o => o.id === order.id);
+  if (!latest || latest.status === "released" || latest.releasedAt) return null;
   const now = new Date().toISOString();
-  const next = orders.map((o) =>
+  const next = current.map((o) =>
     o.id === order.id
       ? {
           ...o,
@@ -732,7 +677,7 @@ async function claimOrder(
 }
 
 async function appendIptvJob(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   userId: string,
   job: Record<string, unknown>,
 ) {
@@ -760,7 +705,7 @@ async function appendIptvJob(
 }
 
 async function updateItemDue(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   itemId: string,
   dueDate: string,
   notesExtra?: string,
@@ -791,7 +736,7 @@ async function updateItemDue(
 }
 
 async function releaseOrder(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   userId: string,
   order: MpOrder,
 ) {
@@ -1067,7 +1012,7 @@ async function releaseOrder(
 }
 
 async function markOrderError(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   userId: string,
   orderId: string,
   error: string,
@@ -1098,7 +1043,7 @@ async function markOrderError(
 }
 
 async function processApprovedPayment(
-  client: ReturnType<typeof createClient>,
+  client: SupabaseClient,
   paymentId: string,
 ) {
   const found = await findOrderByPaymentId(client, paymentId);
@@ -1144,61 +1089,6 @@ async function processApprovedPayment(
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha ao liberar";
 
-    // Se o erro é "usuário não encontrado", remove IMEDIATAMENTE do armazenamento
-    // para evitar loop infinito de tentativas
-    if (
-      msg.includes("não encontrado") ||
-      msg.includes("not found") ||
-      msg.includes("Usuário") ||
-      msg.includes("user")
-    ) {
-      // REMOVE IMEDIATAMENTE DA FILA - não tenta mais nunca
-      const updatedOrders = found.orders.filter((o) => o.id !== claimed.id);
-      await saveOrders(client, found.userId, updatedOrders);
-
-      console.log(
-        `[mp-webhook] BLOQUEADO: Pedido ${claimed.id} removido permanentemente (${msg})`
-      );
-
-      // Avisa cliente UMA VEZ
-      try {
-        const phone = String(claimed.phone || "").replace(/\D/g, "");
-        if (phone.length >= 10) {
-          const evo =
-            (await getSetting<{
-              apiBaseUrl?: string;
-              apiKey?: string;
-            }>(client, "evolution_api")) || {};
-          const apiBaseUrl = String(evo.apiBaseUrl || "").trim();
-          const apiKey = String(evo.apiKey || "").trim();
-          if (apiBaseUrl && apiKey) {
-            const instance = await resolveInstanceName(client, found.userId);
-            await sendEvolutionText(
-              apiBaseUrl,
-              apiKey,
-              instance,
-              phone,
-              "⚠️ Pagamento recebido!\n\nMas não conseguimos localizar seu usuário no painel. Pode ser que:\n\n" +
-                "• Você tem outro cliente cadastrado com este número\n" +
-                "• Seu usuário foi alterado\n\n" +
-                "Entre em contato: *atendente*"
-            );
-          }
-        }
-      } catch (err) {
-        console.error("[mp-webhook] Erro ao avisar cliente:", err);
-      }
-
-      // Nao tenta mais — retorna sucesso para o MP (pedido foi processado, mesmo que com erro)
-      return {
-        ok: true,
-        error: `${msg} (Bloqueado para evitar retry infinito)`,
-        paymentId,
-        userId: found.userId,
-        orderId: claimed.id,
-      };
-    }
-
     // Para outros erros, marca como erro normal
     let sentNotification = false;
 
@@ -1241,7 +1131,7 @@ async function processApprovedPayment(
     }
 
     await markOrderError(client, found.userId, claimed.id, msg, sentNotification);
-    await releaseClaim(client, claimed.id);
+    // Keep the permanent claim, including on network errors and partial success.
 
     return {
       ok: false,
@@ -1253,7 +1143,7 @@ async function processApprovedPayment(
   }
 }
 
-async function pollAllPending(client: ReturnType<typeof createClient>) {
+async function pollAllPending(client: SupabaseClient) {
   const { data } = await client
     .from("platform_settings")
     .select("key,value")
