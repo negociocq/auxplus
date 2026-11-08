@@ -71,4 +71,8 @@ functions('src/lib/mpOrderAutoRelease.ts', ['releasePaidMpOrder'], browser);
 await Promise.all(Array.from({ length: 10 }, () => browser.releasePaidMpOrder({ user: { id: 'owner' }, items: [], setData: () => { active = true; } }, { id: 'one' })));
 assert.equal(invokes, 1, 'local in-flight guard is acquired before awaiting cloud reads');
 assert.equal(active, false, 'a timeout cannot fabricate an item renewal');
+const serverOnly = fs.readFileSync('supabase/migrations/20261108151000_mp_server_only_claims.sql', 'utf8');
+assert.match(serverOnly, /before insert or update or delete/);
+assert.match(serverOnly, /current_user not in \('postgres','service_role','supabase_admin'\)/);
+assert.match(serverOnly, /errcode='42501'/);
 console.log('PASS: one permanent execution per payment, concurrent order aliases, legacy claim preservation, fail-closed database errors, monotonic completion, no mutation retries/failover, server-only browser release. No real payments or credits.');

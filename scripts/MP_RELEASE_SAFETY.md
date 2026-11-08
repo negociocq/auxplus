@@ -11,6 +11,9 @@ Claims are permanent, unique by owner/payment and by legacy order ID. Database
 triggers preserve those claims even against old tabs attempting to delete them,
 and prevent completed orders from becoming pending/approved again. Historical
 completed orders are backfilled without executing panel operations.
+Only PostgreSQL administrators and `service_role` can create financial claims;
+old browser builds cannot start new renewals either. This authorization was
+verified against real `anon` and `service_role` roles with a rolled-back fixture.
 
 Panel writes use one HTTP method and one transport attempt. Network errors and
 partial failures retain their claims. They require an operator to inspect panel
