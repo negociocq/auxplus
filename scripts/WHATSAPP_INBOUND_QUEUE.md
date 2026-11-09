@@ -29,3 +29,39 @@ image alias points to it, with the prior image kept under a rollback tag.
 A fresh owner message is still required to measure real end-to-end latency. A
 healthy socket flag alone does not prove WhatsApp delivery. No synthetic request
 is sent to a real customer as a test.
+
+## Recovery without pairing again
+
+Further investigation found the existing authenticated socket answering profile
+queries while not delivering pending message frames. Sending the standard
+`ib/offline_batch` request resumed delivery immediately. Six additional recovery
+requests drained the pending delivery and the server emitted offline completion.
+The recovered records included the owner's actual commands at 20:33:42, 20:41:46
+and 20:42:44 Brasília. The latest verified command retained its original message
+ID when re-delivered to the webhook, so retries remained deduplicated.
+
+The confirmation `Teste liberado` was issued at 21:06:43 and has `DELIVERY_ACK`.
+The 0323 conversation is idle and its consumed-trial marker has been removed.
+No logout, QR code, replacement authentication or new trial was used for recovery.
+
+`evolution-offline-delivery.mjs` now resumes pending batches on the owner socket
+when startup delivery is quiet, postpones requests while messages are advancing,
+and stops on server completion, socket close or its finite request budget. It
+does not periodically poll after completion. Queue patch v2 clones the shared
+event map before extracting lifecycle events, preserving other subscribers.
+
+The high-volume owner also used one processing lease for every conversation.
+Owner requests and MAC follow-ups now use a per-conversation lease, with a brief
+account lease only while merging changed state into a fresh database snapshot.
+Other chats' sessions, trial markers, message IDs and send logs are preserved.
+The inactivity sweep continues using the account lease for its short update.
+
+Validation includes held-network-send concurrency in `verify-whatsapp-handoff`,
+state merge and failure checks in `verify-conversation-state`, pending-delivery
+recovery and shutdown checks in `verify-offline-delivery`, and existing payment,
+recovery and device-flow regressions. Production timing of a new inbound message
+after recovery has not been measured; a duplicate command check completed in
+about two seconds, which is not an end-to-end response-time measurement.
+
+Persistent image: `auxplus/evolution-api:2.3.7-offline-delivery-20261108`. Existing
+auth was retained; the temporary local inspector and probes were removed.

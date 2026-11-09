@@ -21,7 +21,10 @@ const app = {
 };
 const callback = patched.slice(0, patched.indexOf(';const opts'));
 vm.runInNewContext(`(function(){${callback}}).call(app)`, { app });
-await handler({ 'connection.update': { connection: 'close' }, 'creds.update': {} });
+const originalEvent = { 'connection.update': { connection: 'close' }, 'creds.update': {} };
+await handler(originalEvent);
+assert.ok(originalEvent['connection.update'], 'do not remove events shared with other Baileys subscribers');
+assert.ok(originalEvent['creds.update']);
 assert.deepEqual(controls, ['close'], 'reconnect must run even while message processing is stuck');
 assert.equal(credentials.length, 1, 'credential saves cannot wait behind slow messages');
 assert.equal(queued.length, 0);

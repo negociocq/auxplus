@@ -3,6 +3,7 @@ import vm from "node:vm";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import ts from "typescript";
+import * as conversationExports from '../supabase/functions/_shared/waConversationState.ts';
 
 const compile = (path) => ts.transpileModule(fs.readFileSync(path, "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
@@ -69,13 +70,15 @@ db.setting("notif_settings_user_1", { enabled: false });
 db.tables.folders.push({ id: "folder", user_id: 1, type: "Cliente" });
 db.tables.items.push({ id: "customer", folder_id: "folder", item_id: "sample", phone, is_active: true, due_date: "2026-11-19", due_time: "19:54:31" });
 const sent = [];
+let beforeSend;
 let handler;
 const context = {
-  exports: {}, console, Request, Response, URL, AbortSignal, crypto: webcrypto,
+  exports: {}, console, Request, Response, URL, AbortSignal, crypto: webcrypto, structuredClone,
   setTimeout, clearTimeout, setInterval, clearInterval,
   Deno: { env: { get: () => "fixture" }, serve: (fn) => { handler = fn; } },
   require: (path) => {
     if (path.includes("waBotGuard")) return guardExports;
+    if (path.includes("waConversationState")) return conversationExports;
     if (path.includes("itemDue")) return dueExports;
     if (path.includes("waInbound")) return inboundExports;
     if (path.includes("waReminderReply")) return reminderExports;
@@ -87,17 +90,19 @@ const context = {
   fetch: async (url, init) => {
     assert.match(String(url), /^https:\/\/evolution\.invalid\/message\/sendText\//);
     assert.equal(JSON.parse(init.body).delay,0,'bot replies must not simulate a typing delay');
-    sent.push(JSON.parse(init.body).text);
+    const body = JSON.parse(init.body);
+    if (beforeSend) await beforeSend(body);
+    sent.push(body.text);
     return Response.json({ ok: true });
   },
 };
 vm.runInNewContext(compile("supabase/functions/evolution-webhook/index.ts"), context);
 let nextId = 0;
-async function receive(text, { fromMe = false, id = String(++nextId), media = false } = {}) {
+async function receive(text, { fromMe = false, id = String(++nextId), media = false, targetPhone = phone } = {}) {
   const response = await handler(new Request("https://webhook.invalid", {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ event: "messages.upsert", instance: "test", data: {
-      key: { id, remoteJid: `${phone}@s.whatsapp.net`, fromMe },
+      key: { id, remoteJid: `${targetPhone}@s.whatsapp.net`, fromMe },
       message: media ? { imageMessage: { mimetype: "image/jpeg" } } : { conversation: text },
     } }),
   }));
@@ -229,3 +234,24 @@ state().sessions[phone] = { state: "human", updatedAt: aged(61 * 60_000) };
 state().humanPaused[phone] = true;
 assert.equal((await receive("oi")).action, "ask_intent", "first message after expiry reaches the bot immediately");
 console.log("PASS: customer and attendant activity, scheduled idle expiry, aliases, trial preservation and bot resume.");
+
+// A held WhatsApp send in one chat must not stall a different chat on owner 1.
+let unblock, entered;
+const blocked = new Promise(resolve => { unblock = resolve; });
+const started = new Promise(resolve => { entered = resolve; });
+beforeSend = async body => { if (body.number === phone) { entered(); await blocked; } };
+const slow = receive('liberar teste', { fromMe: true, id: 'slow-owner-command' });
+await started;
+try {
+  const other = await Promise.race([
+    receive('atender', { fromMe: true, id: 'independent-chat-command', targetPhone: '5511987654321' }),
+    new Promise((_, reject) => setTimeout(() => reject(Error('Independent chat blocked behind network work')), 1000)),
+  ]);
+  assert.equal(other.action, 'human_assumed');
+} finally { beforeSend = undefined; unblock(); }
+assert.equal((await slow).action, 'test_released');
+assert.equal(state().sessions[phone].state, 'idle');
+assert.equal(state().sessions['5511987654321'].state, 'human');
+assert.ok(state().recentMsgIds['slow-owner-command']);
+assert.ok(state().recentMsgIds['independent-chat-command']);
+console.log('PASS: independent chat responds while another network send is held; both states and message IDs survive.');

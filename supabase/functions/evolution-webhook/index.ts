@@ -13,6 +13,7 @@ import { dueTime, mergeItemDue, normalizePanelDue } from "../_shared/itemDue.ts"
 import { skipAttendantEvent } from "../_shared/waInbound.ts";
 import { partnerActivationRequest } from "../_shared/partnerAppContract.ts";
 import { isReminderRenewalReply, quotedReminderUsername } from "../_shared/waReminderReply.ts";
+import { persistConversationState } from "../_shared/waConversationState.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;
@@ -2491,10 +2492,12 @@ Deno.serve(async (req) => {
       /** Cliente pediu para parar o automático */
       optOut?: Record<string, boolean>;
     };
-    botLease = await acquireBotLease(client, userId);
+    const isolatedConversations = userId === "1";
+    botLease = await acquireBotLease(client, isolatedConversations ? `${userId}_chat_${digitsPhone(phone)}` : userId);
     if (!botLease) return json({ ok: false, error: "Atendimento ocupado; tentar novamente" }, 503);
     const store =
       (await getSetting<Store>(client, `wa_bot_state_user_${userId}`)) || {};
+    let stateBaseline = structuredClone(store);
     const sessions = { ...(store.sessions || {}) };
     // Evolution pode alternar a representação do mesmo telefone entre eventos.
     if (!sessions[phone]) {
@@ -2579,7 +2582,7 @@ Deno.serve(async (req) => {
       botSendLog = botSendLog
         .filter((r) => Date.parse(r.at) >= dayAgo)
         .slice(-400);
-      await putSetting(client, `wa_bot_state_user_${userId}`, {
+      const nextState = {
         sessions,
         humanPaused,
         testConsumed,
@@ -2588,10 +2591,16 @@ Deno.serve(async (req) => {
         lastSendAtByPhone,
         recentRepliesByPhone,
         optOut,
-      });
+      };
+      if (isolatedConversations) {
+        stateBaseline = await persistConversationState(client, userId, stateBaseline, nextState, acquireBotLease);
+      } else await putSetting(client, `wa_bot_state_user_${userId}`, nextState);
     };
 
-    if (expireHumanConversations(sessions, humanPaused, phoneMatches)) await persistState();
+    const expirationMatches = isolatedConversations
+      ? (a: string, b: string) => phoneMatches(a, b) && phoneMatches(a, phone)
+      : phoneMatches;
+    if (expireHumanConversations(sessions, humanPaused, expirationMatches)) await persistState();
 
     // Dedup: Evolution às vezes reenvia o mesmo evento
     if (messageId) {
@@ -3148,7 +3157,7 @@ Deno.serve(async (req) => {
         let checkInLease: Awaited<ReturnType<typeof acquireBotLease>> = null;
         try {
           await new Promise((r) => setTimeout(r, delayMs));
-          checkInLease = await acquireBotLease(client, userId);
+          checkInLease = await acquireBotLease(client, isolatedConversations ? `${userId}_chat_${digitsPhone(phone)}` : userId);
           if (!checkInLease) return;
           const fresh =
             (await getSetting<Store>(
@@ -3175,12 +3184,15 @@ Deno.serve(async (req) => {
             macCheckInId: undefined,
             updatedAt: new Date().toISOString(),
           };
-          await putSetting(client, `wa_bot_state_user_${userId}`, {
+          const checkInState = {
             ...fresh,
             sessions: sessMap,
             humanPaused: fresh.humanPaused || {},
             testConsumed: fresh.testConsumed || {},
-          });
+          };
+          if (isolatedConversations) {
+            await persistConversationState(client, userId, fresh, checkInState, acquireBotLease);
+          } else await putSetting(client, `wa_bot_state_user_${userId}`, checkInState);
         } catch (e) {
           console.error("macCheckIn failed", e);
         } finally {

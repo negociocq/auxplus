@@ -7,15 +7,18 @@ export function inboundDeadline(promise, ms) {
 }
 
 export function patchInboundQueue(source) {
-  const marker = '/* auxplus:inbound-queue:v1 */';
+  const marker = '/* auxplus:inbound-queue:v2 */';
   if (source.includes(marker)) return source;
+  if (source.includes('/* auxplus:inbound-queue:v1 */')) {
+    return source.replace('/* auxplus:inbound-queue:v1 */', marker + 'e={...e};');
+  }
   function replaceOnce(before, after) {
     if (source.split(before).length !== 2) throw new Error('Unrecognized Evolution source: ' + before);
     source = source.replace(before, after);
   }
   const owner = 'this.instance.name==="auxplus-tarciocq1"';
   replaceOnce('this.client.ev.process(async e=>{',
-    `this.client.ev.process(async e=>{${marker}if(${owner}){const update=e["connection.update"];if(update){delete e["connection.update"];void this.connectionUpdate(update).catch(error=>this.logger.error(error))}if(e["creds.update"]){delete e["creds.update"];void this.instance.authState.saveCreds().catch(error=>this.logger.error(error))}}`);
+    `this.client.ev.process(async e=>{${marker}e={...e};if(${owner}){const update=e["connection.update"];if(update){delete e["connection.update"];void this.connectionUpdate(update).catch(error=>this.logger.error(error))}if(e["creds.update"]){delete e["creds.update"];void this.instance.authState.saveCreds().catch(error=>this.logger.error(error))}}`);
   replaceOnce('connectTimeoutMs:3e4,keepAliveIntervalMs:3e4,',
     `...(${owner}?{defaultQueryTimeoutMs:8000}:{}),connectTimeoutMs:3e4,keepAliveIntervalMs:3e4,`);
   replaceOnce('let o=await this.client.profilePictureUrl(t,"image");',
