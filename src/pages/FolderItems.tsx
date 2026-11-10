@@ -1672,12 +1672,12 @@ export default function FolderItems() {
       {/* Create / Edit item */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="sm:max-w-md flex flex-col max-h-[85vh]">
-          <DialogHeader className="px-4 pt-4 pb-2 pr-10">
+          <DialogHeader>
             <DialogTitle>
               {editing ? "Editar Item" : "Adicionar Novo Item"}
             </DialogTitle>
           </DialogHeader>
-          <form className="space-y-4 overflow-y-auto flex-1 px-4" onSubmit={onSave}>
+          <form className="min-h-0 space-y-4 overflow-y-auto flex-1" onSubmit={onSave}>
             <div className="space-y-2">
               <Label htmlFor="item-user">Usuário</Label>
               <Input
@@ -1939,7 +1939,7 @@ export default function FolderItems() {
             onChange={(e) => setWhatsMsg(e.target.value)}
             className="font-mono text-sm"
           />
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"

@@ -37,9 +37,9 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed z-50 flex flex-col w-full border bg-background shadow-lg duration-200",
-          // Mobile: sheet inferior PEQUENO com scroll
-          "inset-x-0 bottom-0 top-auto max-h-[70vh] min-h-[200px] overflow-y-auto rounded-t-2xl",
+          "fixed z-50 grid w-full gap-4 border bg-background p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lg duration-200",
+          // Mobile: painel inferior com margens e rolagem dentro da área visível.
+          "inset-x-0 bottom-0 top-auto max-h-[90dvh] min-h-[200px] overflow-y-auto overscroll-contain rounded-t-2xl",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
           "data-[state=closed]:pointer-events-none",
@@ -53,7 +53,7 @@ const DialogContent = React.forwardRef<
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+        <DialogPrimitive.Close className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground ring-offset-background transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none sm:right-4 sm:top-4">
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
@@ -69,7 +69,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-1.5 text-center sm:text-left",
+      "flex flex-col space-y-1.5 pr-8 text-left",
       className,
     )}
     {...props}
@@ -83,7 +83,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "grid shrink-0 grid-cols-2 gap-2 border-t pt-3 [&>button]:m-0 [&>button]:h-auto [&>button]:min-h-11 [&>button]:min-w-0 [&>button]:w-full [&>button]:whitespace-normal [&>button]:py-2 [&>button]:text-center [&>button]:leading-tight [&>button:last-child:nth-child(odd)]:col-span-2",
       className,
     )}
     {...props}
@@ -98,7 +98,7 @@ const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
+      "break-words text-lg font-semibold leading-snug tracking-tight",
       className,
     )}
     {...props}

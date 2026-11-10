@@ -3213,7 +3213,7 @@ export default function UniPlay() {
               )}
             </div>
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -3306,7 +3306,7 @@ export default function UniPlay() {
                     );
                   })}
                 </div>
-                <DialogFooter className="gap-2 sm:gap-0">
+                <DialogFooter>
                   <Button
                     type="button"
                     variant="outline"
@@ -3480,7 +3480,7 @@ export default function UniPlay() {
             />
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -3841,7 +3841,7 @@ export default function UniPlay() {
                   </div>
                 );
               })()}
-              <DialogFooter className="grid grid-cols-1 gap-2 border-t pt-4 [&>button]:min-h-11 sm:flex sm:flex-row sm:gap-2 sm:space-x-0">
+              <DialogFooter>
                 <Button
                   type="button"
                   variant="secondary"

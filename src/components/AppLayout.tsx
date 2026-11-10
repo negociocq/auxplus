@@ -641,7 +641,7 @@ export function AppLayout() {
               {user.username}
             </p>
           </div>
-          <DialogFooter className="flex-col gap-2 sm:flex-col">
+          <DialogFooter>
             <Button
               type="button"
               disabled={avatarBusy}
