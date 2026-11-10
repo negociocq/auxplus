@@ -1,4 +1,4 @@
-import type { Item } from "@/types";
+import type { Item, ItemStatus } from "@/types";
 
 export interface LoanTerms {
   version: 1;
@@ -53,4 +53,24 @@ export function loanBalance(loan: LoanTerms, today = localLoanDay()) {
   const lateCents = Math.round(agreedCents * loan.lateRate / 100 * daysLate / (loan.latePeriod === "month" ? 30 : 1));
   const total = loan.paidAt ? loan.paidAmount! : (agreedCents + lateCents) / 100;
   return { daysLate, lateInterest: lateCents / 100, agreedInterest: Math.round((loan.agreedAmount - loan.principal) * 100) / 100, total, outstanding: loan.paidAt ? 0 : total };
+}
+
+export function loanDueStatus(dueDate: string, today = localLoanDay(), nearDays = 3): ItemStatus {
+  const days = dayNumber(dueDate) - dayNumber(today);
+  return days < 0 ? "Já Vencido" : days <= nearDays ? "Perto de Vencer" : "Longe de Vencer";
+}
+
+// Configuração exclusiva da pasta de empréstimos, preservada na coluna existente.
+const pixMarker = /<!--AXLOANPIX:([\s\S]*?)-->/g;
+export function readLoanPixKey(message?: string | null): string {
+  try {
+    const encoded = [...(message || "").matchAll(pixMarker)][0]?.[1];
+    return encoded ? decodeURIComponent(encoded) : "";
+  } catch { return ""; }
+}
+export function writeLoanPixKey(message: string | null | undefined, key: string): string {
+  const clean = (message || "").replace(pixMarker, "").trim();
+  const pix = key.trim();
+  if (pix.length > 140) throw Error("A chave PIX deve ter no máximo 140 caracteres.");
+  return pix ? `${clean}\n<!--AXLOANPIX:${encodeURIComponent(pix)}-->`.trim() : clean;
 }

@@ -4,11 +4,12 @@ import { ArrowLeft, Bell, CheckCircle2, Info, Pencil, Plus, Trash2, Wallet } fro
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
 import { createItem, deleteItem, updateItem } from "@/lib/storage";
-import { localLoanDay, loanBalance, readLoan, stripLoan, writeLoan, type LoanTerms } from "@/lib/loans";
+import { localLoanDay, loanBalance, loanDueStatus, readLoan, readLoanPixKey, stripLoan, writeLoan, writeLoanPixKey, type LoanTerms } from "@/lib/loans";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { formatBrDate } from "@/lib/format";
 import { normSearch } from "@/lib/utils";
-import type { Folder, Item } from "@/types";
+import type { Folder, Item, ItemStatus } from "@/types";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
 const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", latePeriod: "month" as LoanTerms["latePeriod"], notes: "" });
 const decimal = (value: string) => Number(value.trim().replace(",", "."));
+const dueColors: Record<ItemStatus, string> = {
+  "Longe de Vencer": "border-l-success bg-[linear-gradient(90deg,hsl(var(--success)_/_0.12)_0%,hsl(var(--success)_/_0.04)_35%,transparent_70%)]",
+  "Perto de Vencer": "border-l-warning bg-[linear-gradient(90deg,hsl(var(--warning)_/_0.14)_0%,hsl(var(--warning)_/_0.05)_35%,transparent_70%)]",
+  "Já Vencido": "border-l-destructive bg-[linear-gradient(90deg,hsl(var(--destructive)_/_0.12)_0%,hsl(var(--destructive)_/_0.04)_35%,transparent_70%)]",
+  "Sem Vencimento": "border-l-muted",
+};
 export function LoanFolderView({ folder }: { folder: Folder }) {
   const { data, setData } = useApp();
   const { money, phone: displayPhone } = useHideBalance();
@@ -32,6 +39,19 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const [editing, setEditing] = useState<Item | null>(null);
   const [form, setForm] = useState(blank);
   const [confirm, setConfirm] = useState<{ item: Item; action: "pay" | "delete" } | null>(null);
+  const currentFolder = data.folders.find(f => f.id === folder.id) || folder;
+  const pixKey = readLoanPixKey(currentFolder.whatsappMessage);
+  const [pixDraft, setPixDraft] = useState(pixKey);
+  const nearDays = data.folderSettings.find(s => s.folderId === folder.id)?.nearDueDays ?? 3;
+  useEffect(() => { setPixDraft(pixKey); }, [folder.id, pixKey]);
+  const savePix = (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      writeLoanPixKey(currentFolder.whatsappMessage, pixDraft);
+      setData(prev => ({ ...prev, folders: prev.folders.map(f => f.id === folder.id ? { ...f, whatsappMessage: writeLoanPixKey(f.whatsappMessage, pixDraft) } : f) }));
+      toast.success(pixDraft.trim() ? "Chave PIX salva nesta pasta" : "Chave PIX removida desta pasta");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Confira a chave PIX."); }
+  };
   useEffect(() => {
     const refresh = () => setToday(localLoanDay());
     const interval = window.setInterval(refresh, 30000);
@@ -40,12 +60,12 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   }, []);
   const rows = useMemo(() => data.items.filter(i => i.folderId === folder.id).map(item => {
     const loan = readLoan(item);
-    return { item, loan, balance: loan ? loanBalance(loan, today) : null };
-  }), [data.items, folder.id, today]);
+    return { item, loan, balance: loan ? loanBalance(loan, today) : null, dueStatus: loan ? loanDueStatus(loan.dueDate, today, nearDays) : "Sem Vencimento" as ItemStatus };
+  }), [data.items, folder.id, today, nearDays]);
   const pending = rows.filter(r => r.loan && !r.loan.paidAt);
-  const visible = rows.filter(({ item, loan, balance }) =>
+  const visible = rows.filter(({ item, loan, dueStatus }) =>
     (!query || normSearch(`${item.name} ${item.phone}`).includes(normSearch(query))) &&
-    (filter === "all" || (filter === "paid" ? !!loan?.paidAt : filter === "late" ? !loan?.paidAt && (balance?.daysLate || 0) > 0 : !loan?.paidAt))
+    (filter === "all" || (filter === "paid" ? !!loan?.paidAt : !loan?.paidAt && (filter === "open" || dueStatus === (filter === "late" ? "Já Vencido" : filter === "near" ? "Perto de Vencer" : "Longe de Vencer"))))
   ).sort((a, b) => (a.loan?.dueDate || a.item.dueDate || "").localeCompare(b.loan?.dueDate || b.item.dueDate || ""));
   const edit = (item?: Item) => {
     const loan = item && readLoan(item);
@@ -82,7 +102,8 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     const b = loanBalance(loan, localLoanDay());
     const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const message = `Olá, ${item.name}! Segue o lembrete do seu empréstimo.\n\nValor emprestado: ${brl(loan.principal)}\nValor combinado: ${brl(loan.agreedAmount)}\nVencimento: ${formatBrDate(loan.dueDate)}${b.daysLate ? `\nDias em atraso: ${b.daysLate}\nJuros de atraso: ${brl(b.lateInterest)}` : ""}\nTotal para pagamento em ${formatBrDate(localLoanDay())}: ${brl(b.total)}\n\nSe já realizou o pagamento, por favor envie o comprovante.`;
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    const withPix = pixKey ? `${message}\n\nChave PIX para pagamento:\n${pixKey}` : message;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(withPix)}`, "_blank", "noopener,noreferrer");
   };
   const confirmAction = () => {
     if (!confirm) return;
@@ -103,12 +124,20 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <div><Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" />Voltar</Link><h1 className="text-2xl font-semibold">{folder.name}</h1><p className="text-sm text-muted-foreground">Empréstimos · valores e juros atualizados diariamente</p></div>
       <Button onClick={() => edit()}><Plus className="h-4 w-4" />Novo empréstimo</Button>
     </div>
+    <form onSubmit={savePix} className="space-y-2 rounded-xl border bg-card p-4">
+      <Label htmlFor="loan-folder-pix">Chave PIX desta pasta</Label>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Input id="loan-folder-pix" className="min-w-0 flex-1" placeholder="CPF/CNPJ, e-mail, telefone ou chave aleatória" maxLength={140} value={pixDraft} onChange={e => setPixDraft(e.target.value)} />
+        <Button type="submit" variant="outline" disabled={pixDraft.trim() === pixKey}>Salvar chave PIX</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">A chave salva será incluída nos lembretes de todos os empréstimos desta pasta. Para removê-la, apague o campo e salve.</p>
+    </form>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       {[['Capital emprestado em aberto', pending.reduce((s, r) => s + r.loan!.principal, 0)], ['Total a receber hoje', pending.reduce((s, r) => s + r.balance!.outstanding, 0)], ['Juros de atraso em aberto', pending.reduce((s, r) => s + r.balance!.lateInterest, 0)]].map(([label, amount]) => <div key={label} className="rounded-xl border bg-card p-4"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{money(Number(amount))}</p></div>)}
     </div>
-    <div className="flex flex-wrap gap-2"><Input className="w-full sm:max-w-xs" aria-label="Buscar cliente ou telefone" placeholder="Buscar cliente ou telefone" value={query} onChange={e => setQuery(e.target.value)} /><select aria-label="Filtrar empréstimos" className="h-10 rounded-md border bg-background px-3 text-sm" value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Em aberto ({pending.length})</option><option value="late">Em atraso</option><option value="paid">Quitados</option><option value="all">Todos</option></select></div>
-    {!visible.length ? <div className="rounded-xl border border-dashed p-8 text-center"><Wallet className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p>Nenhum empréstimo nesta seleção.</p><p className="text-sm text-muted-foreground">Cadastre o cliente e as condições combinadas para acompanhar.</p></div> : <ul className="grid gap-3 lg:grid-cols-2">{visible.map(({ item, loan, balance }) => <li key={item.id} className="min-w-0 rounded-xl border bg-card p-4">
-      <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h2 className="break-words font-semibold">{item.name}</h2><p className="text-sm text-muted-foreground">{displayPhone(item.phone) || "Sem telefone"}</p></div><span className={`shrink-0 rounded-full px-2 py-1 text-xs ${loan?.paidAt ? "bg-success/10 text-success" : balance?.daysLate ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>{loan?.paidAt ? "Quitado" : !loan ? "Configurar" : balance?.daysLate ? `${balance.daysLate} dias em atraso` : "Em dia"}</span></div>
+    <div className="flex flex-wrap gap-2"><Input className="w-full sm:max-w-xs" aria-label="Buscar cliente ou telefone" placeholder="Buscar cliente ou telefone" value={query} onChange={e => setQuery(e.target.value)} /><select aria-label="Filtrar empréstimos" className="h-10 rounded-md border bg-background px-3 text-sm" value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Em aberto ({pending.length})</option><option value="far">Longe do vencimento</option><option value="near">Perto do vencimento</option><option value="late">Em atraso</option><option value="paid">Quitados</option><option value="all">Todos</option></select></div>
+    {!visible.length ? <div className="rounded-xl border border-dashed p-8 text-center"><Wallet className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p>Nenhum empréstimo nesta seleção.</p><p className="text-sm text-muted-foreground">Cadastre o cliente e as condições combinadas para acompanhar.</p></div> : <ul className="grid gap-3 lg:grid-cols-2">{visible.map(({ item, loan, balance, dueStatus }) => <li key={item.id} className={`min-w-0 rounded-xl border border-l-4 bg-card p-4 ${loan && !loan.paidAt ? dueColors[dueStatus] : "border-l-muted"}`}>
+      <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h2 className="break-words font-semibold">{item.name}</h2><p className="text-sm text-muted-foreground">{displayPhone(item.phone) || "Sem telefone"}</p></div>{loan && !loan.paidAt ? <StatusBadge status={dueStatus} className="shrink-0" /> : <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs">{loan?.paidAt ? "Quitado" : "Configurar"}</span>}</div>
       {loan && balance ? <><dl className="my-4 grid grid-cols-2 gap-3 text-sm">{[['Emprestado', money(loan.principal)], ['Combinado no vencimento', money(loan.agreedAmount)], ['Data do empréstimo', formatBrDate(loan.lentAt)], ['Vencimento', formatBrDate(loan.dueDate)], ['Juros combinados', money(balance.agreedInterest)], ['Juros de atraso', money(balance.lateInterest)]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}</dl><div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">{loan.paidAt ? `Pago em ${formatBrDate(loan.paidAt)}` : `Total atualizado · ${formatBrDate(today)}`}</p><p className="text-xl font-semibold">{money(balance.total)}</p><p className="mt-1 text-xs text-muted-foreground">{loan.lateRate ? `Atraso: ${loan.lateRate}% ao ${loan.latePeriod === "day" ? "dia" : "mês (30 dias)"}, juros simples.` : "Sem juros por atraso."}</p></div></> : <p className="my-4 text-sm text-muted-foreground">Registro anterior preservado. Edite para definir as condições do empréstimo.</p>}
       {cleanNotes(item.notes) ? <p className="mt-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{cleanNotes(item.notes)}</p> : null}
       <div className="mt-4 flex flex-wrap gap-2">{!loan?.paidAt && <><Button size="sm" variant="outline" onClick={() => edit(item)}><Pencil className="h-4 w-4" />Editar</Button>{loan && <><Button size="sm" variant="outline" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button><Button size="sm" onClick={() => setConfirm({ item, action: "pay" })}><CheckCircle2 className="h-4 w-4" />Registrar pagamento</Button></>}</>}<Button size="sm" variant="ghost" aria-label={`Excluir empréstimo de ${item.name}`} onClick={() => setConfirm({ item, action: "delete" })}><Trash2 className="h-4 w-4" /></Button></div>
