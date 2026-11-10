@@ -121,7 +121,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     });
     setConfirm(null); toast.success(action === "pay" ? "Pagamento registrado. Os juros foram encerrados." : "Empréstimo excluído");
   };
-  return <div className="space-y-5">
+  return <div className="space-y-3 sm:space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" />Voltar</Link><h1 className="text-2xl font-semibold">{folder.name}</h1><p className="text-sm text-muted-foreground">Empréstimos · valores e juros atualizados diariamente</p></div>
       <Button onClick={() => edit()}><Plus className="h-4 w-4" />Novo empréstimo</Button>
@@ -137,32 +137,34 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <p className="text-xs text-muted-foreground">A chave salva será incluída nos lembretes de todos os empréstimos desta pasta. Para removê-la, apague o campo e salve.</p>
     </form>
     </details>
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-      <div className="col-span-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 sm:col-span-1"><p className="text-xs text-muted-foreground">Total a receber hoje</p><p className="mt-1 break-words text-xl font-semibold tabular-nums text-primary">{money(pending.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></div>
-      <div className="min-w-0 rounded-xl border bg-card px-3 py-3"><p className="text-xs text-muted-foreground">Capital em aberto</p><p className="mt-1 break-words text-base font-semibold tabular-nums">{money(pending.reduce((s, r) => s + r.loan!.principal, 0))}</p></div>
-      <div className="min-w-0 rounded-xl border bg-card px-3 py-3"><p className="text-xs text-muted-foreground">Juros por atraso</p><p className="mt-1 break-words text-base font-semibold tabular-nums">{money(pending.reduce((s, r) => s + r.balance!.lateInterest, 0))}</p></div>
+    <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+      <div className="min-w-0 rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">A receber hoje</p><p className="mt-1 break-words text-sm font-semibold tabular-nums text-primary sm:text-lg">{money(pending.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></div>
+      <div className="min-w-0 rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Capital aberto</p><p className="mt-1 break-words text-sm font-semibold tabular-nums sm:text-lg">{money(pending.reduce((s, r) => s + r.loan!.principal, 0))}</p></div>
+      <div className="min-w-0 rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Juros de atraso</p><p className="mt-1 break-words text-sm font-semibold tabular-nums sm:text-lg">{money(pending.reduce((s, r) => s + r.balance!.lateInterest, 0))}</p></div>
     </div>
     <div className="flex flex-wrap gap-2"><Input className="w-full sm:max-w-xs" aria-label="Buscar cliente ou telefone" placeholder="Buscar cliente ou telefone" value={query} onChange={e => setQuery(e.target.value)} /><select aria-label="Filtrar empréstimos" className="h-10 rounded-md border bg-background px-3 text-sm" value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Em aberto ({pending.length})</option><option value="far">Longe do vencimento</option><option value="near">Perto do vencimento</option><option value="late">Em atraso</option><option value="paid">Quitados</option><option value="all">Todos</option></select></div>
     {!visible.length ? <div className="rounded-xl border border-dashed p-8 text-center"><Wallet className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p>Nenhum empréstimo nesta seleção.</p><p className="text-sm text-muted-foreground">Cadastre o cliente e as condições combinadas para acompanhar.</p></div> : <ul className="grid gap-3 lg:grid-cols-2">{visible.map(({ item, loan, balance, dueStatus }) => <li key={item.id} className={`min-w-0 overflow-hidden rounded-xl border border-l-4 bg-card ${loan && !loan.paidAt ? dueColors[dueStatus] : "border-l-muted"}`}>
-      <div className="p-3.5">
-        <div className="mb-2 flex items-center justify-between gap-2">{loan && !loan.paidAt ? <StatusBadge status={dueStatus} /> : <span className="rounded-full bg-muted px-2 py-1 text-xs">{loan?.paidAt ? "Quitado" : "Configurar"}</span>}{!loan?.paidAt && <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 rounded-full" aria-label="Editar" title="Editar empréstimo" onClick={() => edit(item)}><Pencil className="h-3.5 w-3.5" /></Button>}</div>
-        <h2 className="break-words text-base font-semibold leading-snug">{item.name}</h2><p className="mt-0.5 text-xs text-muted-foreground">{displayPhone(item.phone) || "Sem telefone"}</p>
+      <div className="p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1"><h2 className="break-words text-sm font-semibold leading-snug">{item.name}</h2><p className="mt-0.5 text-[11px] text-muted-foreground">{displayPhone(item.phone) || "Sem telefone"}</p></div>
+          <div className="flex shrink-0 items-center gap-1">{loan && !loan.paidAt ? <StatusBadge status={dueStatus} /> : <span className="rounded-full bg-muted px-2 py-1 text-xs">{loan?.paidAt ? "Quitado" : "Configurar"}</span>}{!loan?.paidAt && <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 rounded-full" aria-label="Editar" title="Editar empréstimo" onClick={() => edit(item)}><Pencil className="h-3.5 w-3.5" /></Button>}</div>
+        </div>
       {loan && balance ? (
-        <div className="mt-3 space-y-3">
-          <dl className="space-y-1.5 text-sm">
-            <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">Emprestado</dt><dd className="min-w-0 break-words text-right font-medium tabular-nums">{money(loan.principal)}</dd></div>
-            <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">Juros totais</dt><dd className="min-w-0 break-words text-right font-medium tabular-nums">{money(balance.agreedInterest + balance.lateInterest)}</dd></div>
+        <div className="mt-2.5 space-y-2">
+          <dl className="grid grid-cols-3 divide-x divide-foreground/10 border-y border-foreground/10 py-2">
+            <div className="min-w-0 pr-2"><dt className="text-[10px] text-muted-foreground">Emprestado</dt><dd className="mt-0.5 break-words text-xs font-medium tabular-nums min-[360px]:text-sm">{money(loan.principal)}</dd></div>
+            <div className="min-w-0 px-2"><dt className="text-[10px] text-muted-foreground">Juros totais</dt><dd className="mt-0.5 break-words text-xs font-medium tabular-nums min-[360px]:text-sm">{money(balance.agreedInterest + balance.lateInterest)}</dd></div>
+            <div className="min-w-0 pl-2 text-right"><dt className="text-[10px] text-muted-foreground">{loan.paidAt ? "Pago" : "Total a pagar"}</dt><dd className="mt-0.5 break-words text-xs font-bold tabular-nums text-primary min-[360px]:text-sm">{money(balance.total)}</dd></div>
           </dl>
-          <p className="text-[11px] text-muted-foreground">{loan.lateRate ? `Taxa de atraso: ${loan.lateRate}% ${loan.latePeriod === "day" ? "ao dia" : "ao mês (30 dias)"}` : "Sem juros por atraso"}</p>
-          <div className="flex items-end justify-between gap-3 border-t border-foreground/10 pt-2.5">
-            <div className="min-w-0"><p className="text-[11px] text-muted-foreground">Vencimento</p><p className="mt-0.5 text-xs font-medium">{formatBrDate(loan.dueDate)}</p></div>
-            <div className="min-w-0 text-right"><p className="text-[11px] text-muted-foreground">{loan.paidAt ? "Valor pago" : "Total a pagar"}</p><p className="break-words text-xl font-semibold leading-tight tabular-nums">{money(balance.total)}</p></div>
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+            <p>{loan.lateRate ? `Taxa de atraso: ${loan.lateRate}% ${loan.latePeriod === "day" ? "ao dia" : "ao mês (30 dias)"}` : "Sem juros por atraso"}</p>
+            <p>Vence: <span className="font-medium text-foreground">{formatBrDate(loan.dueDate)}</span></p>
           </div>
         </div>
       ) : <p className="my-3 text-sm text-muted-foreground">Configure as condições do empréstimo.</p>}
 
       </div>
-      <div className="grid grid-cols-2 gap-2 border-t border-foreground/10 bg-background/40 px-3 py-2.5"><Button type="button" variant="outline" className={`h-9 gap-1.5 text-xs ${!loan || loan.paidAt ? "col-span-2" : ""}`} onClick={() => setDetailId(item.id)}><Eye className="h-4 w-4" />Detalhes</Button>{loan && !loan.paidAt && <Button type="button" className="h-9 gap-1.5 text-xs" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button>}</div>
+      <div className="grid grid-cols-2 gap-2 border-t border-foreground/10 bg-background/40 px-3 py-2"><Button type="button" variant="outline" className={`h-9 gap-1.5 text-xs ${!loan || loan.paidAt ? "col-span-2" : ""}`} onClick={() => setDetailId(item.id)}><Eye className="h-4 w-4" />Detalhes</Button>{loan && !loan.paidAt && <Button type="button" className="h-9 gap-1.5 text-xs" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button>}</div>
     </li>)}</ul>}
     <Dialog open={!!detail} onOpenChange={value => { if (!value) setDetailId(null); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
