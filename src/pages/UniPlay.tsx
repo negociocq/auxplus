@@ -2633,12 +2633,12 @@ export default function UniPlay() {
                           </p>
                         ) : null}
 </div>
-                      <div className="grid w-full grid-cols-[1.75rem_1.75rem_minmax(0,1fr)_1.75rem_1.75rem_1.75rem] items-center gap-0.5 min-[360px]:grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_2rem_2rem_2rem] min-[360px]:gap-1 sm:flex sm:w-auto sm:shrink-0 sm:gap-1.5">
-                        <Button type="button" size="sm" variant="outline" className="order-1 h-8 w-7 p-0 min-[360px]:w-8 sm:h-9 sm:w-10"
+                      <div className="grid w-full grid-cols-[1.75rem_minmax(0,1fr)_1.75rem_1.75rem_1.75rem_1.75rem] items-center gap-0.5 min-[360px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem_2rem_2rem_2rem] min-[360px]:gap-1 sm:flex sm:w-auto sm:shrink-0 sm:gap-1.5">
+                        <Button type="button" size="sm" variant="outline" className="order-3 h-8 w-7 p-0 min-[360px]:w-8 sm:h-9 sm:w-10"
                           title="Detalhes do cliente" aria-label="Detalhes do cliente" onClick={() => openClientDetail(item.id)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button type="button" size="sm" variant="secondary" className="order-2 h-8 min-w-0 gap-1 px-1 text-[11px] min-[360px]:text-xs sm:h-9 sm:px-2"
+                        <Button type="button" size="sm" variant="secondary" className="order-1 h-8 min-w-0 gap-1 px-1 text-[11px] min-[360px]:text-xs sm:h-9 sm:px-2"
                           disabled={!item.itemId?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
                           onClick={() => fillActivateFromClient(item.id)}>
                           <Smartphone className="h-4 w-4" /><span className="hidden min-[360px]:inline sm:hidden">App</span><span className="hidden sm:inline">Ativar app</span>
@@ -2684,7 +2684,7 @@ export default function UniPlay() {
                               type="button"
                               size="sm"
                               variant="default"
-                              className="order-3 h-8 min-w-0 gap-1 px-1 text-[11px] min-[360px]:text-xs sm:h-9 sm:px-2"
+                              className="order-2 h-8 min-w-0 gap-1 px-1 text-[11px] min-[360px]:text-xs sm:h-9 sm:px-2"
                               disabled={!bearer.trim() || busyId === item.id}
                               onClick={() => {
                                 if (showRecreate) {
