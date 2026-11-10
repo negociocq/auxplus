@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Bell, CheckCircle2, Eye, Info, Pencil, Plus, Trash2, Wallet } from "lucide-react";
+import { ArrowLeft, Bell, CheckCircle2, Eye, Info, MessageSquareText, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
 import { createItem, deleteItem, updateItem } from "@/lib/storage";
@@ -19,6 +19,7 @@ import { stripPaymentMarker } from "@/lib/payments";
 import { stripPlanMarker } from "@/lib/planMonths";
 import { stripScreensMarker } from "@/lib/itemScreens";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DEFAULT_LOAN_REMINDER, readLoanReminder, renderLoanReminder, writeLoanReminder } from "@/lib/loans";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
 const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", latePeriod: "month" as LoanTerms["latePeriod"], notes: "" });
@@ -43,6 +44,18 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const currentFolder = data.folders.find(f => f.id === folder.id) || folder;
   const pixKey = readLoanPixKey(currentFolder.whatsappMessage);
   const [pixDraft, setPixDraft] = useState(pixKey);
+  const reminderTemplate = readLoanReminder(currentFolder.whatsappMessage);
+  const [messageOpen, setMessageOpen] = useState(false);
+  const [messageDraft, setMessageDraft] = useState(reminderTemplate);
+  const saveMessage = (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      writeLoanReminder(currentFolder.whatsappMessage, messageDraft);
+      setData(prev => ({ ...prev, folders: prev.folders.map(f => f.id === folder.id ? { ...f, whatsappMessage: writeLoanReminder(f.whatsappMessage, messageDraft) } : f) }));
+      setMessageOpen(false);
+      toast.success("Mensagem do lembrete salva nesta pasta");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Confira a mensagem."); }
+  };
   const nearDays = data.folderSettings.find(s => s.folderId === folder.id)?.nearDueDays ?? 3;
   useEffect(() => { setPixDraft(pixKey); }, [folder.id, pixKey]);
   const savePix = (event: FormEvent) => {
@@ -104,8 +117,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     if (!loan || loan.paidAt) return;
     const b = loanBalance(loan, localLoanDay());
     const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    const message = `Olá, ${item.name}! Segue o lembrete do seu empréstimo.\n\nValor emprestado: ${brl(loan.principal)}\nValor combinado: ${brl(loan.agreedAmount)}\nVencimento: ${formatBrDate(loan.dueDate)}${b.daysLate ? `\nDias em atraso: ${b.daysLate}\nJuros de atraso: ${brl(b.lateInterest)}` : ""}\nTotal para pagamento em ${formatBrDate(localLoanDay())}: ${brl(b.total)}\n\nSe já realizou o pagamento, por favor envie o comprovante.`;
-    const withPix = pixKey ? `${message}\n\nChave PIX para pagamento:\n${pixKey}` : message;
+    const withPix = renderLoanReminder(reminderTemplate, { name: item.name, principal: brl(loan.principal), agreed_amount: brl(loan.agreedAmount), due_date: formatBrDate(loan.dueDate), late_days: String(b.daysLate), late_interest: brl(b.lateInterest), total: brl(b.total), today: formatBrDate(localLoanDay()) }, pixKey);
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(withPix)}`, "_blank", "noopener,noreferrer");
   };
   const confirmAction = () => {
@@ -138,6 +150,10 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <p className="text-xs text-muted-foreground">A chave salva será incluída nos lembretes de todos os empréstimos desta pasta. Para removê-la, apague o campo e salve.</p>
     </form>
     </details>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-xs text-muted-foreground">Lembretes manuais pelo WhatsApp</p>
+      <Button type="button" size="sm" variant="outline" onClick={() => { setMessageDraft(reminderTemplate); setMessageOpen(true); }}><MessageSquareText className="h-4 w-4" />Editar lembrete</Button>
+    </div>
     <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
       <div className="min-w-0 rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Total a receber</p><p className="mt-1 break-words text-sm font-semibold tabular-nums text-primary sm:text-lg">{money(pending.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></div>
       <div className="min-w-0 rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Vence hoje</p><p className="mt-1 break-words text-sm font-semibold tabular-nums sm:text-lg">{money(dueToday.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></div>
@@ -167,6 +183,19 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       </div>
       <div className="grid grid-cols-2 gap-2 border-t border-foreground/10 bg-background/40 px-3 py-2"><Button type="button" variant="outline" className={`h-9 gap-1.5 text-xs ${!loan || loan.paidAt ? "col-span-2" : ""}`} onClick={() => setDetailId(item.id)}><Eye className="h-4 w-4" />Detalhes</Button>{loan && !loan.paidAt && <Button type="button" className="h-9 gap-1.5 text-xs" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button>}</div>
     </li>)}</ul>}
+    <Dialog open={messageOpen} onOpenChange={setMessageOpen}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Mensagem do lembrete</DialogTitle><DialogDescription>Personalize o texto desta pasta. O botão Lembrete abre o WhatsApp para você revisar e enviar; não há envio automático no vencimento.</DialogDescription></DialogHeader>
+        <form className="space-y-3" onSubmit={saveMessage}>
+          <div className="space-y-2"><Label htmlFor="loan-reminder-message">Mensagem</Label><Textarea id="loan-reminder-message" className="min-h-44" maxLength={4000} required value={messageDraft} onChange={e => setMessageDraft(e.target.value)} /></div>
+          <div className="flex flex-wrap gap-1.5">{[['name', 'Nome'], ['principal', 'Emprestado'], ['agreed_amount', 'Valor combinado'], ['due_date', 'Vencimento'], ['late_days', 'Dias em atraso'], ['late_interest', 'Juros de atraso'], ['total', 'Total atualizado'], ['today', 'Data atual'], ['pix', 'Chave PIX']].map(([key, label]) => <Button key={key} type="button" size="sm" variant="secondary" className="h-7 px-2 text-[11px]" onClick={() => setMessageDraft(text => `${text}${text && !/\s$/.test(text) ? ' ' : ''}{${key}}`.slice(0, 4000))}>{label}</Button>)}</div>
+          <p className="text-xs text-muted-foreground">Toque em um campo acima para inseri-lo no texto. Os valores são preenchidos ao abrir o lembrete. Se houver uma chave PIX cadastrada, ela será incluída mesmo sem o campo {'{pix}'}.</p>
+          <details className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">Prévia com dados de exemplo</summary><p className="mt-2 whitespace-pre-wrap break-words text-xs text-muted-foreground">{renderLoanReminder(messageDraft, { name: 'Cliente exemplo', principal: 'R$ 200,00', agreed_amount: 'R$ 500,00', due_date: formatBrDate(today), late_days: '0', late_interest: 'R$ 0,00', total: 'R$ 500,00', today: formatBrDate(today) }, 'chave-pix-exemplo')}</p></details>
+          <Button type="button" variant="link" className="h-auto px-0 text-xs" onClick={() => setMessageDraft(DEFAULT_LOAN_REMINDER)}>Usar mensagem padrão</Button>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => setMessageOpen(false)}>Cancelar</Button><Button type="submit" disabled={!messageDraft.trim()}>Salvar mensagem</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
     <Dialog open={!!detail} onOpenChange={value => { if (!value) setDetailId(null); }}>
       <DialogContent className="max-h-[90dvh] gap-4 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] [&>div]:shrink-0 sm:max-w-lg sm:p-6">
         <DialogHeader className="pr-8 text-left"><DialogTitle>Detalhes do empréstimo</DialogTitle><DialogDescription>{detail?.item.name}</DialogDescription></DialogHeader>

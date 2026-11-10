@@ -74,3 +74,32 @@ export function writeLoanPixKey(message: string | null | undefined, key: string)
   if (pix.length > 140) throw Error("A chave PIX deve ter no máximo 140 caracteres.");
   return pix ? `${clean}\n<!--AXLOANPIX:${encodeURIComponent(pix)}-->`.trim() : clean;
 }
+
+export const DEFAULT_LOAN_REMINDER = `Olá, {name}! Segue o lembrete do seu empréstimo.
+
+Valor emprestado: {principal}
+Valor combinado: {agreed_amount}
+Vencimento: {due_date}
+Dias em atraso: {late_days}
+Juros de atraso: {late_interest}
+Total atualizado em {today}: {total}
+
+Se já realizou o pagamento, por favor envie o comprovante.`;
+const reminderMarker = /<!--AXLOANREMINDER:([\s\S]*?)-->/g;
+export function readLoanReminder(message?: string | null): string {
+  try {
+    const encoded = [...(message || "").matchAll(reminderMarker)][0]?.[1];
+    return encoded ? decodeURIComponent(encoded) || DEFAULT_LOAN_REMINDER : DEFAULT_LOAN_REMINDER;
+  } catch { return DEFAULT_LOAN_REMINDER; }
+}
+export function writeLoanReminder(message: string | null | undefined, template: string): string {
+  const text = template.trim();
+  if (!text || text.length > 4000) throw Error("Escreva uma mensagem de até 4.000 caracteres.");
+  const clean = (message || "").replace(reminderMarker, "").trim();
+  return `${clean}\n<!--AXLOANREMINDER:${encodeURIComponent(text)}-->`.trim();
+}
+export function renderLoanReminder(template: string, values: Record<string, string>, pixKey = ""): string {
+  // Substituição única: nomes e chaves PIX que contenham chaves não viram comandos.
+  const message = template.replace(/\{([a-z_]+)\}/g, (match, key) => key === "pix" ? pixKey : values[key] ?? match);
+  return pixKey && !template.includes("{pix}") ? `${message}\n\nChave PIX para pagamento:\n${pixKey}` : message;
+}
