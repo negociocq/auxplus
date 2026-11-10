@@ -140,7 +140,18 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     <div className="flex flex-wrap gap-2"><Input className="w-full sm:max-w-xs" aria-label="Buscar cliente ou telefone" placeholder="Buscar cliente ou telefone" value={query} onChange={e => setQuery(e.target.value)} /><select aria-label="Filtrar empréstimos" className="h-10 rounded-md border bg-background px-3 text-sm" value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Em aberto ({pending.length})</option><option value="far">Longe do vencimento</option><option value="near">Perto do vencimento</option><option value="late">Em atraso</option><option value="paid">Quitados</option><option value="all">Todos</option></select></div>
     {!visible.length ? <div className="rounded-xl border border-dashed p-8 text-center"><Wallet className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p>Nenhum empréstimo nesta seleção.</p><p className="text-sm text-muted-foreground">Cadastre o cliente e as condições combinadas para acompanhar.</p></div> : <ul className="grid gap-3 lg:grid-cols-2">{visible.map(({ item, loan, balance, dueStatus }) => <li key={item.id} className={`min-w-0 rounded-xl border border-l-4 bg-card p-4 ${loan && !loan.paidAt ? dueColors[dueStatus] : "border-l-muted"}`}>
       <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h2 className="break-words font-semibold">{item.name}</h2><p className="text-sm text-muted-foreground">{displayPhone(item.phone) || "Sem telefone"}</p></div>{loan && !loan.paidAt ? <StatusBadge status={dueStatus} className="shrink-0" /> : <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs">{loan?.paidAt ? "Quitado" : "Configurar"}</span>}</div>
-      {loan && balance ? <div className="my-3 flex items-end justify-between gap-3"><div><p className="text-xs text-muted-foreground">Vencimento</p><p className="text-sm font-medium">{formatBrDate(loan.dueDate)}</p></div><div className="text-right"><p className="text-xs text-muted-foreground">{loan.paidAt ? "Valor pago" : "Total a pagar"}</p><p className="text-lg font-semibold">{money(balance.total)}</p></div></div> : <p className="my-3 text-sm text-muted-foreground">Configure as condições do empréstimo.</p>}
+      {loan && balance ? (
+        <div className="my-3 space-y-2.5">
+          <dl className="grid grid-cols-2 gap-3 rounded-lg bg-background/50 px-3 py-2">
+            <div className="min-w-0"><dt className="text-[11px] text-muted-foreground">Valor emprestado</dt><dd className="break-words text-sm font-semibold tabular-nums">{money(loan.principal)}</dd></div>
+            <div className="min-w-0 border-l pl-3"><dt className="text-[11px] text-muted-foreground">Juros totais</dt><dd className="break-words text-sm font-semibold tabular-nums">{money(balance.agreedInterest + balance.lateInterest)}</dd></div>
+          </dl>
+          <div className="flex items-end justify-between gap-3 px-0.5">
+            <div className="min-w-0"><p className="text-[11px] text-muted-foreground">Vencimento</p><p className="text-sm font-medium">{formatBrDate(loan.dueDate)}</p></div>
+            <div className="min-w-0 text-right"><p className="text-[11px] text-muted-foreground">{loan.paidAt ? "Valor pago" : "Total a pagar"}</p><p className="break-words text-lg font-semibold tabular-nums text-primary">{money(balance.total)}</p></div>
+          </div>
+        </div>
+      ) : <p className="my-3 text-sm text-muted-foreground">Configure as condições do empréstimo.</p>}
 
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setDetailId(item.id)}><Eye className="h-4 w-4" />Detalhes</Button>{!loan?.paidAt && <><Button size="sm" variant="ghost" aria-label="Editar" onClick={() => edit(item)}><Pencil className="h-4 w-4" /></Button>{loan && <Button size="sm" variant="outline" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button>}</>}</div>
     </li>)}</ul>}
