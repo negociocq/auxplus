@@ -87,17 +87,34 @@ Total atualizado em {today}: {total}
 
 Se já realizou o pagamento, por favor envie o comprovante.`;
 const reminderMarker = /<!--AXLOANREMINDER:([\s\S]*?)-->/g;
-export function readLoanReminder(message?: string | null): string {
+export type LoanReminderKind = "before" | "onday";
+export function defaultLoanReminder(kind?: LoanReminderKind): string {
+  if (!kind) return DEFAULT_LOAN_REMINDER;
+  return kind === "before"
+    ? `Olá, {name}! Seu empréstimo vence em 2 dias, em {due_date}.\n\nValor para pagamento: {total}\n\nSe já pagou, por favor envie o comprovante.`
+    : `Olá, {name}! Hoje é o vencimento do seu empréstimo ({due_date}).\n\nValor para pagamento: {total}\n\nSe já pagou, por favor envie o comprovante.`;
+}
+function stageMarker(kind: LoanReminderKind) {
+  return new RegExp(`<!--AXLOANREMINDER${kind === "before" ? "BEFORE" : "ONDAY"}:([\\s\\S]*?)-->`, "g");
+}
+export function readLoanReminder(message?: string | null, kind?: LoanReminderKind): string {
+  if (kind) {
+    try {
+      const encoded = [...(message || "").matchAll(stageMarker(kind))][0]?.[1];
+      if (encoded) return decodeURIComponent(encoded) || defaultLoanReminder(kind);
+    } catch { /* Preserva a mensagem anterior quando uma configuração está inválida. */ }
+  }
   try {
     const encoded = [...(message || "").matchAll(reminderMarker)][0]?.[1];
-    return encoded ? decodeURIComponent(encoded) || DEFAULT_LOAN_REMINDER : DEFAULT_LOAN_REMINDER;
-  } catch { return DEFAULT_LOAN_REMINDER; }
+    return encoded ? decodeURIComponent(encoded) || defaultLoanReminder(kind) : defaultLoanReminder(kind);
+  } catch { return defaultLoanReminder(kind); }
 }
-export function writeLoanReminder(message: string | null | undefined, template: string): string {
+export function writeLoanReminder(message: string | null | undefined, template: string, kind?: LoanReminderKind): string {
   const text = template.trim();
   if (!text || text.length > 4000) throw Error("Escreva uma mensagem de até 4.000 caracteres.");
-  const clean = (message || "").replace(reminderMarker, "").trim();
-  return `${clean}\n<!--AXLOANREMINDER:${encodeURIComponent(text)}-->`.trim();
+  const clean = (message || "").replace(kind ? stageMarker(kind) : reminderMarker, "").trim();
+  const suffix = kind === "before" ? "BEFORE" : kind === "onday" ? "ONDAY" : "";
+  return `${clean}\n<!--AXLOANREMINDER${suffix}:${encodeURIComponent(text)}-->`.trim();
 }
 export function renderLoanReminder(template: string, values: Record<string, string>, pixKey = ""): string {
   // Substituição única: nomes e chaves PIX que contenham chaves não viram comandos.

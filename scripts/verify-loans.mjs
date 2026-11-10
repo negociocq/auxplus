@@ -62,4 +62,12 @@ assert.deepEqual(readLoanAutoSettings(autoMessage), { enabled: true, sendTime: '
 assert.equal(readLoanReminder(autoMessage), customTemplate);
 assert.equal(readLoanPixKey(autoMessage), 'pix+teste@example.com');
 assert.throws(() => writeLoanAutoSettings('', { enabled: true, sendTime: '25:90' }));
+const staged = writeLoanReminder(writeLoanReminder(autoMessage, 'Antes {name}', 'before'), 'Hoje {name}', 'onday');
+assert.equal(readLoanReminder(staged, 'before'), 'Antes {name}');
+assert.equal(readLoanReminder(staged, 'onday'), 'Hoje {name}');
+assert.equal(readLoanReminder(staged), customTemplate, 'legacy/manual message is preserved');
+assert.equal(readLoanReminder(configured, 'before'), customTemplate, 'existing customized text is preserved until edited');
+assert.equal(readLoanReminder(configured, 'onday'), customTemplate);
+assert.equal(readLoanPixKey(staged), 'pix+teste@example.com');
+assert.equal(readLoanAutoSettings(staged).enabled, true);
 console.log('PASS: due-day boundary, daily/monthly simple interest, leap days, zero rate, paid balance freeze, persisted terms, duplicate-marker removal and invalid terms.');

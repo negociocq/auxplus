@@ -17,10 +17,13 @@ assert.equal(loanReminderCandidate(folder,item,'2026-11-14','10:00'),null);
 assert.equal(loanReminderCandidate({...folder,type:'Cliente'},item,'2026-11-11','10:00'),null);
 assert.equal(loanReminderCandidate({...folder,whatsapp_message:''},item,'2026-11-11','10:00'),null);
 assert.equal(loanReminderCandidate(folder,{...item,notes:writeLoan('',{...terms,paidAt:'2026-11-11T10:00:00Z',paidAmount:500})},'2026-11-11','10:00'),null);
+folder.whatsapp_message=writeLoanReminder(writeLoanReminder(folder.whatsapp_message,'ANTES {name}: {total}','before'),'HOJE {name}: {total}','onday');
+assert.ok(loanReminderCandidate(folder,item,'2026-11-11','10:00').text.startsWith('ANTES'));
+assert.ok(loanReminderCandidate(folder,item,'2026-11-13','10:00').text.startsWith('HOJE'));
 
 // Exercise the real server handler with an atomic in-memory settings store and mocked Evolution.
 const records=new Map([['evolution_api',{key:'evolution_api',value:{apiBaseUrl:'https://fixture.invalid',apiKey:'fixture',instancePrefix:'auxplus'}}]]);
-let sends=0,handler;
+let sends=0,handler;const sentTexts=[];
 class Query {
  constructor(table){this.table=table;this.filters=[];this.action='select';}
  select(){return this;}eq(k,v){this.filters.push(r=>String(r[k])===String(v));return this;}
@@ -42,7 +45,7 @@ globalThis.Date=class extends RealDate {constructor(...args){super(...(args.leng
 globalThis.__loanClientFactory=()=>({from:table=>new Query(table)});
 globalThis.Deno={env:{get:key=>({AUXPLUS_LOAN_CRON_SECRET:'secret',SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture'})[key]},serve:fn=>{handler=fn;}};
 globalThis.setTimeout=fn=>{queueMicrotask(fn);return 0;};
-globalThis.fetch=async url=>{if(url.includes('connectionState'))return Response.json({instance:{state:'open'}});sends++;return Response.json({key:{id:'fixture'}});};
+globalThis.fetch=async (url,init)=>{if(url.includes('connectionState'))return Response.json({instance:{state:'open'}});sends++;sentTexts.push(JSON.parse(init.body).text);return Response.json({key:{id:'fixture'}});};
 try{
  let source=fs.readFileSync('supabase/functions/loan-reminders/index.ts','utf8').replace(/import \{ createClient \} from "[^"]+";/,'const createClient = globalThis.__loanClientFactory;').replace('"../_shared/loanReminderQueue.ts"',JSON.stringify(queueUrl));
  await import(moduleUrl(source));
@@ -54,6 +57,7 @@ try{
  assert.equal(sends,1,'concurrent runs may send only once');
  await handler(request());assert.equal(sends,1,'subsequent runs must not replay');
  clock='2026-11-13T13:00:00Z';await handler(request());assert.equal(sends,2,'due-day has its own single delivery');
+ assert.ok(sentTexts[0].startsWith('ANTES'));assert.ok(sentTexts[1].startsWith('HOJE'));
  item.notes=writeLoan('',{...terms,paidAt:'2026-11-13T12:00:00Z',paidAmount:500});
  await handler(request());assert.equal(sends,2,'paid loans do not send');
  item.id='3';item.notes=writeLoan('',terms);

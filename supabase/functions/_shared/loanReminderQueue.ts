@@ -15,6 +15,6 @@ export function loanReminderCandidate(folder: Record<string, unknown>, item: Rec
   return {
     key: `loan_reminder_${folder.user_id}_${item.id}_${loan.dueDate}_${kind}`,
     kind, dueDate: loan.dueDate, phone,
-    text: buildLoanReminderMessage(readLoanReminder(message), String(item.name || ""), loan, today, readLoanPixKey(message)),
+    text: buildLoanReminderMessage(readLoanReminder(message, kind), String(item.name || ""), loan, today, readLoanPixKey(message)),
   };
 }
