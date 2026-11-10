@@ -16,10 +16,11 @@ export interface LoanTerms {
   receipts?: LoanReceipt[];
   registeredAt?: string;
   initialDueDate?: string;
+  balanceState?: { asOf: string; principal: number; agreedAmount: number; lateInterest: number };
 }
 export interface LoanReceipt {
   id: string;
-  kind: "interest" | "full";
+  kind: "interest" | "full" | "partial";
   paidAt: string;
   amount: number;
   principalPaid: number;
@@ -58,11 +59,16 @@ export function validateLoan(loan: LoanTerms) {
   if (loan.cycleDay != null && (!Number.isInteger(loan.cycleDay) || loan.cycleDay < 1 || loan.cycleDay > 31)) throw Error("Dia do vencimento inválido.");
   if (loan.registeredAt && !Number.isFinite(Date.parse(loan.registeredAt))) throw Error("Data de cadastro inválida.");
   if (loan.initialDueDate) dayNumber(loan.initialDueDate);
+  if (loan.balanceState) {
+    const state = loan.balanceState;
+    dayNumber(state.asOf);
+    if (![state.principal, state.agreedAmount, state.lateInterest].every(Number.isFinite) || state.principal < 0 || state.principal > loan.principal || state.agreedAmount < state.principal || state.lateInterest < 0) throw Error("Saldo do empréstimo inválido.");
+  }
   if (loan.receipts != null) {
     if (!Array.isArray(loan.receipts)) throw Error("Histórico de pagamentos inválido.");
     const ids = new Set<string>();
     for (const receipt of loan.receipts) {
-      if (!receipt.id || ids.has(receipt.id) || !["interest", "full"].includes(receipt.kind) || !Number.isFinite(Date.parse(receipt.paidAt)) || ![receipt.amount, receipt.principalPaid, receipt.interestPaid].every(Number.isFinite) || receipt.amount <= 0 || receipt.principalPaid < 0 || receipt.interestPaid < 0 || Math.round(receipt.amount * 100) !== Math.round((receipt.principalPaid + receipt.interestPaid) * 100)) throw Error("Histórico de pagamentos inválido.");
+      if (!receipt.id || ids.has(receipt.id) || !["interest", "full", "partial"].includes(receipt.kind) || !Number.isFinite(Date.parse(receipt.paidAt)) || ![receipt.amount, receipt.principalPaid, receipt.interestPaid].every(Number.isFinite) || receipt.amount <= 0 || receipt.principalPaid < 0 || receipt.interestPaid < 0 || Math.round(receipt.amount * 100) !== Math.round((receipt.principalPaid + receipt.interestPaid) * 100)) throw Error("Histórico de pagamentos inválido.");
       ids.add(receipt.id); dayNumber(receipt.previousDueDate);
       if (receipt.nextDueDate) dayNumber(receipt.nextDueDate);
     }
@@ -78,11 +84,13 @@ export function loanBalance(loan: LoanTerms, today = localLoanDay()) {
   validateLoan(loan);
   const end = loan.paidAt ? localLoanDay(new Date(loan.paidAt)) : today;
   const daysLate = Math.max(0, dayNumber(end) - dayNumber(loan.dueDate));
-  const agreedCents = Math.round(loan.agreedAmount * 100);
+  const agreedCents = Math.round((loan.balanceState?.agreedAmount ?? loan.agreedAmount) * 100);
+  const principalRemaining = loan.balanceState?.principal ?? loan.principal;
+  const accrualDays = Math.max(0, dayNumber(end) - Math.max(dayNumber(loan.dueDate), dayNumber(loan.balanceState?.asOf || loan.dueDate)));
   const periodCents = loan.lateRateType === "amount" ? loan.lateRate * 100 : agreedCents * loan.lateRate / 100;
-  const lateCents = Math.round(periodCents * daysLate / (loan.latePeriod === "month" ? 30 : 1));
+  const lateCents = Math.round((loan.balanceState?.lateInterest || 0) * 100 + periodCents * accrualDays / (loan.latePeriod === "month" ? 30 : 1));
   const total = loan.paidAt ? loan.paidAmount! : (agreedCents + lateCents) / 100;
-  return { daysLate, lateInterest: lateCents / 100, agreedInterest: Math.round((loan.agreedAmount - loan.principal) * 100) / 100, total, outstanding: loan.paidAt ? 0 : total };
+  return { daysLate, lateInterest: lateCents / 100, agreedInterest: Math.round(agreedCents - principalRemaining * 100) / 100, principalRemaining: loan.paidAt ? 0 : principalRemaining, total, outstanding: loan.paidAt ? 0 : total };
 }
 
 export function nextLoanMonth(dueDate: string, cycleDay = Number(dueDate.slice(8, 10))): string {
@@ -93,21 +101,35 @@ export function nextLoanMonth(dueDate: string, cycleDay = Number(dueDate.slice(8
   month.setUTCDate(Math.min(cycleDay, lastDay));
   return month.toISOString().slice(0, 10);
 }
-export function recordLoanPayment(loan: LoanTerms, payment: { id: string; kind: "interest" | "full"; paidAt: string; nextDueDate?: string }): LoanTerms {
+export function recordLoanPayment(loan: LoanTerms, payment: { id: string; kind: "interest" | "full" | "partial"; paidAt: string; nextDueDate?: string; amount?: number }): LoanTerms {
   validateLoan(loan);
   if (loan.receipts?.some(r => r.id === payment.id)) return loan;
   if (loan.paidAt) throw Error("Este empréstimo já foi quitado.");
   if (!payment.id || !Number.isFinite(Date.parse(payment.paidAt))) throw Error("Pagamento inválido.");
   const today = localLoanDay(new Date(payment.paidAt));
+  if (loan.balanceState && today < loan.balanceState.asOf) throw Error("O pagamento deve ser posterior ao último pagamento registrado.");
   const balance = loanBalance(loan, today);
-  const interest = Math.round((balance.total - loan.principal) * 100) / 100;
+  const principal = balance.principalRemaining;
+  const interest = Math.round((balance.total - principal) * 100) / 100;
+  if (payment.kind === "partial") {
+    const cents = Math.round((payment.amount ?? NaN) * 100);
+    if (!Number.isFinite(cents) || cents <= 0 || cents > Math.round(balance.total * 100)) throw Error("Informe um valor maior que zero e até o saldo atual.");
+    const latePaid = Math.min(cents, Math.round(balance.lateInterest * 100));
+    const agreedInterestPaid = Math.min(cents - latePaid, Math.round(balance.agreedInterest * 100));
+    const principalPaid = cents - latePaid - agreedInterestPaid;
+    const fullyPaid = cents === Math.round(balance.total * 100);
+    const receipt: LoanReceipt = { id: payment.id, kind: fullyPaid ? "full" : "partial", paidAt: payment.paidAt, amount: cents / 100, principalPaid: principalPaid / 100, interestPaid: (latePaid + agreedInterestPaid) / 100, previousDueDate: loan.dueDate };
+    const next: LoanTerms = { ...loan, receipts: [...(loan.receipts || []), receipt], balanceState: { asOf: today, principal: Math.max(0, Math.round(principal * 100) - principalPaid) / 100, agreedAmount: Math.max(0, Math.round((principal + balance.agreedInterest) * 100) - agreedInterestPaid - principalPaid) / 100, lateInterest: Math.max(0, Math.round(balance.lateInterest * 100) - latePaid) / 100 }, ...(fullyPaid ? { paidAt: payment.paidAt, paidAmount: balance.total } : {}) };
+    validateLoan(next);
+    return next;
+  }
   if (payment.kind === "interest" && interest <= 0) throw Error("Este empréstimo não tem juros pendentes. Use a quitação total.");
   if (payment.kind === "interest" && (!payment.nextDueDate || dayNumber(payment.nextDueDate) <= Math.max(dayNumber(loan.dueDate), dayNumber(today)))) throw Error("Escolha um novo vencimento posterior ao atual e à data do pagamento.");
-  const receipt: LoanReceipt = { id: payment.id, kind: payment.kind, paidAt: payment.paidAt, amount: payment.kind === "interest" ? interest : balance.total, principalPaid: payment.kind === "interest" ? 0 : loan.principal, interestPaid: interest, previousDueDate: loan.dueDate, ...(payment.kind === "interest" ? { nextDueDate: payment.nextDueDate } : {}) };
+  const receipt: LoanReceipt = { id: payment.id, kind: payment.kind, paidAt: payment.paidAt, amount: payment.kind === "interest" ? interest : balance.total, principalPaid: payment.kind === "interest" ? 0 : principal, interestPaid: interest, previousDueDate: loan.dueDate, ...(payment.kind === "interest" ? { nextDueDate: payment.nextDueDate } : {}) };
   const receipts = [...(loan.receipts || []), receipt];
   const next: LoanTerms = payment.kind === "full"
     ? { ...loan, paidAt: payment.paidAt, paidAmount: balance.total, receipts }
-    : { ...loan, dueDate: payment.nextDueDate!, cycleDay: payment.nextDueDate === nextLoanMonth(loan.dueDate, loan.cycleDay) ? loan.cycleDay || Number(loan.dueDate.slice(8, 10)) : Number(payment.nextDueDate!.slice(8, 10)), receipts };
+    : { ...loan, dueDate: payment.nextDueDate!, ...(loan.balanceState ? { balanceState: { asOf: today, principal, agreedAmount: Math.round((principal + loan.agreedAmount - loan.principal) * 100) / 100, lateInterest: 0 } } : {}), cycleDay: payment.nextDueDate === nextLoanMonth(loan.dueDate, loan.cycleDay) ? loan.cycleDay || Number(loan.dueDate.slice(8, 10)) : Number(payment.nextDueDate!.slice(8, 10)), receipts };
   validateLoan(next);
   return next;
 }

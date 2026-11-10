@@ -26,4 +26,14 @@ const blank=item('blank','f1',first,'');const otherBlank=item('blank-other','f1'
 assert.equal(buildLoanClientHistory(blank,[blank,otherBlank],['f1'],'2026-11-01').loanCount,1,'names and empty phone numbers cannot merge unrelated customers');
 assert.equal(loanClientPhone(phone),loanClientPhone('551199990001'));
 assert.notEqual(loanClientPhone(phone),loanClientPhone('5521999990001'));
+const partialTerms=recordLoanPayment(first,{id:'partial-history',kind:'partial',amount:150,paidAt:'2026-11-13T12:00:00Z'});
+const partialItem=item('partial','f1',partialTerms);
+const partialHistory=buildLoanClientHistory(partialItem,[partialItem],['f1'],'2026-11-13');
+assert.equal(partialHistory.totalLent,200);
+assert.equal(partialHistory.totalReceived,150);
+assert.equal(partialHistory.principalReceived,50);
+assert.equal(partialHistory.interestReceived,100);
+assert.equal(partialHistory.principalOutstanding,150);
+assert.equal(partialHistory.outstanding,150);
+assert.equal(partialHistory.openCount,1);
 console.log('PASS: multiple loans and folders, phone aliases, account/phone isolation, interest/full history totals, legacy known payment fallback, missing registration dates and initial due dates.');

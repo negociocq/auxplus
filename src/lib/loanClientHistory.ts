@@ -31,7 +31,7 @@ export function buildLoanClientHistory(selected: Item, items: Item[], allowedFol
     totalReceived: sum(receipts.map(r => r.amount)),
     principalReceived: sum(receipts.map(r => r.principalPaid)),
     interestReceived: sum(receipts.map(r => r.interestPaid)),
-    principalOutstanding: sum(entries.filter(e => !e.loan.paidAt).map(e => e.loan.principal)),
+    principalOutstanding: sum(entries.filter(e => !e.loan.paidAt).map(e => e.balance.principalRemaining)),
     outstanding: sum(entries.map(e => e.balance.outstanding)),
     paymentCount: receipts.length,
     firstLoanAt: entries.map(e => e.loan.lentAt).sort()[0] || null,
