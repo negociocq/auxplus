@@ -101,9 +101,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { RenewalSummary } from "@/components/dashboard/RenewalSummary";
+import { FolderTypeTabs } from "@/components/dashboard/FolderTypeTabs";
 import { toast } from "sonner";
 
 export default function Dashboard() {
@@ -648,11 +649,7 @@ export default function Dashboard() {
           value={workspace}
           onValueChange={(v) => setWorkspace(v as FolderType)}
         >
-          <TabsList className="bg-background/80">
-            <TabsTrigger value="Cliente">Clientes</TabsTrigger>
-            <TabsTrigger value="Produto">Empréstimos</TabsTrigger>
-            <TabsTrigger value="Dívida">Dívidas</TabsTrigger>
-          </TabsList>
+          <FolderTypeTabs userId={user?.id} onInitialTab={setWorkspace} />
           {(["Cliente", "Produto", "Dívida"] as FolderType[]).map((t) => (
             <TabsContent key={t} value={t} className="mt-2">
               {byType[t].length === 0 ? (
