@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Bell, CheckCircle2, Eye, Info, MessageSquareText, Pencil, Plus, Trash2, Wallet } from "lucide-react";
+import { ArrowLeft, Bell, CheckCircle2, Eye, History, Info, MessageSquareText, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
 import { createItem, deleteItem, updateItem } from "@/lib/storage";
@@ -23,6 +23,7 @@ import { readLoanReminder, renderLoanReminder, writeLoanReminder } from "@/lib/l
 import { readLoanAutoSettings, writeLoanAutoSettings, buildLoanReminderMessage } from "@/lib/loans";
 import { defaultLoanReminder, loanReminderKind, type LoanReminderKind } from "@/lib/loans";
 import { nextLoanMonth, recordLoanPayment } from "@/lib/loans";
+import { LoanClientHistory } from "@/components/loan/LoanClientHistory";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
@@ -45,6 +46,8 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const [form, setForm] = useState(blank);
   const [confirm, setConfirm] = useState<{ item: Item; action: "pay" | "interest" | "delete"; receiptId?: string; snapshot?: string; nextDueDate?: string } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
+  const historyFolders = useMemo(() => data.folders.filter(f => f.userId === folder.userId && f.type === "Produto"), [data.folders, folder.userId]);
   const currentFolder = data.folders.find(f => f.id === folder.id) || folder;
   const pixKey = readLoanPixKey(currentFolder.whatsappMessage);
   const [pixDraft, setPixDraft] = useState(pixKey);
@@ -115,13 +118,13 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     e.preventDefault();
     try {
       if (!form.name.trim()) throw Error("Informe o nome do cliente.");
-      const loan: LoanTerms = { version: 1, principal: Math.round(decimal(form.principal) * 100) / 100, agreedAmount: Math.round(decimal(form.agreedAmount) * 100) / 100, lentAt: form.lentAt, dueDate: form.dueDate, lateRate: decimal(form.lateRate), latePeriod: form.latePeriod };
+      const loan: LoanTerms = { version: 1, principal: Math.round(decimal(form.principal) * 100) / 100, agreedAmount: Math.round(decimal(form.agreedAmount) * 100) / 100, lentAt: form.lentAt, dueDate: form.dueDate, lateRate: decimal(form.lateRate), latePeriod: form.latePeriod, ...(!editing ? { registeredAt: new Date().toISOString(), initialDueDate: form.dueDate } : {}) };
       const notes = writeLoan(form.notes, loan);
       setData(prev => {
         const current = editing && prev.items.find(i => i.id === editing.id && i.folderId === folder.id);
         if (editing && (!current || readLoan(current)?.paidAt)) return prev;
         // Lembretes de assinaturas não se aplicam a empréstimos; o envio é manual, com saldo atualizado.
-        const input = { folderId: folder.id, itemId: current?.itemId || "", name: form.name.trim(), phone: form.phone.trim(), price: loan.agreedAmount, dueDate: loan.dueDate, createdAt: current?.createdAt || `${loan.lentAt}T12:00:00`, notes, payments: [], isActive: false };
+        const input = { folderId: folder.id, itemId: current?.itemId || "", name: form.name.trim(), phone: form.phone.trim(), price: loan.agreedAmount, dueDate: loan.dueDate, createdAt: current?.createdAt || new Date().toISOString(), notes, payments: [], isActive: false };
         // A alteração do vencimento de empréstimos não registra renovação de assinatura.
         if (current) {
           const next = updateItem(prev, { ...current, ...input });
@@ -266,6 +269,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
             </details>}
             {loan && !loan.paidAt && balance?.daysLate ? <p className="text-sm text-destructive">{balance.daysLate} dias em atraso</p> : null}
             <div className="space-y-2 border-t pt-3">
+              <Button variant="outline" className="h-10 w-full" onClick={() => { setDetailId(null); setHistoryId(item.id); }}><History className="h-4 w-4" />Histórico do cliente</Button>
               {loan && balance && !loan.paidAt && <div className="grid grid-cols-2 gap-2">
                 <Button variant="outline" className="h-auto min-h-14 min-w-0 flex-col gap-0.5 px-2 py-2 text-xs" disabled={balance.total <= loan.principal} onClick={() => openPayment(item, "interest")}><span>Somente juros</span><span className="font-semibold tabular-nums">{money(balance.total - loan.principal)}</span></Button>
                 <Button className="h-auto min-h-14 min-w-0 flex-col gap-0.5 px-2 py-2 text-xs" onClick={() => openPayment(item, "pay")}><span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Quitar tudo</span><span className="font-semibold tabular-nums">{money(balance.total)}</span></Button>
@@ -281,6 +285,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
         })() : null}
       </DialogContent>
     </Dialog>
+    <LoanClientHistory selected={data.items.find(item => item.id === historyId && historyFolders.some(f => f.id === item.folderId)) || null} items={data.items} folders={historyFolders} today={today} onClose={() => setHistoryId(null)} />
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90dvh] gap-4 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] [&>div]:shrink-0 [&>form]:shrink-0 sm:max-w-lg sm:p-6"><DialogHeader className="pr-8 text-left"><DialogTitle>{editing ? "Editar empréstimo" : "Novo empréstimo"}</DialogTitle><DialogDescription>Informe as condições combinadas com o cliente.</DialogDescription></DialogHeader><form onSubmit={save} className="space-y-4">
       <div className="grid grid-cols-2 gap-x-3 gap-y-2">{([['name', 'Nome do cliente', 'text'], ['phone', 'WhatsApp com DDI', 'tel'], ['principal', 'Valor emprestado (R$)', 'text'], ['agreedAmount', 'Valor a pagar no vencimento (R$)', 'text'], ['lentAt', 'Data do empréstimo', 'date'], ['dueDate', 'Vencimento', 'date']] as const).map(([key, label, type]) => <div key={key} className={`min-w-0 space-y-1 ${key === 'name' || key === 'phone' ? 'col-span-2 sm:col-span-1' : ''}`}><Label className="flex min-h-8 items-end text-xs leading-tight" htmlFor={`loan-${key}`}>{label}</Label><Input className="min-w-0" id={`loan-${key}`} type={type} inputMode={key === 'principal' || key === 'agreedAmount' ? 'decimal' : undefined} required={key !== 'phone'} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} /></div>)}</div>
       <div className="rounded-lg border p-3">

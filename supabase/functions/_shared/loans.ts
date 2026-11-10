@@ -13,6 +13,8 @@ export interface LoanTerms {
   paidAmount?: number;
   cycleDay?: number;
   receipts?: LoanReceipt[];
+  registeredAt?: string;
+  initialDueDate?: string;
 }
 export interface LoanReceipt {
   id: string;
@@ -52,6 +54,8 @@ export function validateLoan(loan: LoanTerms) {
   if (dayNumber(loan.dueDate) < dayNumber(loan.lentAt)) throw Error("O vencimento deve ser igual ou posterior à data do empréstimo.");
   if (loan.paidAt && (!Number.isFinite(Date.parse(loan.paidAt)) || !Number.isFinite(loan.paidAmount) || loan.paidAmount! < 0)) throw Error("Pagamento inválido.");
   if (loan.cycleDay != null && (!Number.isInteger(loan.cycleDay) || loan.cycleDay < 1 || loan.cycleDay > 31)) throw Error("Dia do vencimento inválido.");
+  if (loan.registeredAt && !Number.isFinite(Date.parse(loan.registeredAt))) throw Error("Data de cadastro inválida.");
+  if (loan.initialDueDate) dayNumber(loan.initialDueDate);
   if (loan.receipts != null) {
     if (!Array.isArray(loan.receipts)) throw Error("Histórico de pagamentos inválido.");
     const ids = new Set<string>();
