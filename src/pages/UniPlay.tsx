@@ -2642,13 +2642,17 @@ export default function UniPlay() {
                           </p>
                         ) : null}
 </div>
-                      <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.5rem_2.5rem_2.5rem] items-center gap-1 sm:flex sm:w-auto sm:shrink-0 sm:gap-1.5">
-                        <Button type="button" size="sm" variant="secondary" className="order-1 h-10 gap-1 px-2 text-xs sm:h-9"
+                      <div className="grid w-full grid-cols-4 items-center justify-items-center gap-1 sm:flex sm:w-auto sm:shrink-0 sm:gap-1.5">
+                        <Button type="button" size="sm" variant="outline" className="order-3 h-10 w-10 p-0 sm:order-none sm:h-9"
+                          title="Detalhes do cliente" aria-label="Detalhes do cliente" onClick={() => openClientDetail(item.id)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" size="sm" variant="secondary" className="order-1 col-span-2 h-10 w-full gap-1 px-2 text-xs sm:h-9 sm:w-auto"
                           disabled={!item.itemId?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
                           onClick={() => fillActivateFromClient(item.id)}>
                           <Smartphone className="h-4 w-4" /><span className="sm:hidden">App</span><span className="hidden sm:inline">Ativar app</span>
                         </Button>
-                        <Button type="button" size="sm" variant="outline" className="order-3 h-10 w-10 p-0 sm:h-9"
+                        <Button type="button" size="sm" variant="outline" className="order-4 h-10 w-10 p-0 sm:h-9"
                           disabled={!item.itemId?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
                           title="Editar cliente" aria-label="Editar cliente" onClick={() => setEditingPanelUser({ username: item.itemId, phone: item.phone || "" })}><Pencil className="h-4 w-4" /></Button>
                         <Button
@@ -2657,7 +2661,7 @@ export default function UniPlay() {
                           variant="outline"
                           title={clientOnOff[item.id] === true ? "On: bloquear cliente" : clientOnOff[item.id] === false ? "Off: desbloquear cliente" : "Alterar On/Off"}
                           aria-label={clientOnOff[item.id] === true ? "Bloquear cliente" : clientOnOff[item.id] === false ? "Desbloquear cliente" : "Alterar On/Off"}
-                          className="order-4 h-10 w-10 p-0 sm:h-9"
+                          className="order-5 h-10 w-10 p-0 sm:h-9"
                           disabled={togglingClientId !== null || (!bearer.trim() && !(panelUser.trim() && panelPass))}
                           onClick={async () => {
                             if (!window.confirm(`Alterar On/Off de ${item.itemId} no painel UniPlay?`)) return;
@@ -2689,7 +2693,7 @@ export default function UniPlay() {
                               type="button"
                               size="sm"
                               variant="default"
-                              className="order-2 h-10 gap-1 px-2 text-xs sm:h-9"
+                              className="order-2 col-span-2 h-10 w-full gap-1 px-2 text-xs sm:h-9 sm:w-auto"
                               disabled={!bearer.trim() || busyId === item.id}
                               onClick={() => {
                                 if (showRecreate) {
@@ -2720,7 +2724,7 @@ export default function UniPlay() {
                               type="button"
                               size="sm"
                               variant="ghost"
-                              className="order-5 h-10 w-10 p-0 sm:h-9"
+                              className="order-6 h-10 w-10 p-0 sm:h-9"
                               aria-label="Mais opções do cliente"
                             >
                               <MoreVertical className="h-4 w-4" />
