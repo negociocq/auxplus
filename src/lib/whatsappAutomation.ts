@@ -1053,6 +1053,12 @@ export async function fetchEvolutionConnectedProfile(
           ? [raw]
           : [];
     for (const row of list) {
+      if (row && typeof row === "object") {
+        const obj = row as Record<string, unknown>;
+        const nested = obj.instance && typeof obj.instance === "object" ? obj.instance as Record<string, unknown> : obj;
+        const actualName = String(nested.instanceName || nested.name || obj.instanceName || obj.name || "").toLowerCase();
+        if (actualName && actualName !== name.toLowerCase()) continue;
+      }
       const picked = pickConnectedProfile(row);
       if (picked) return picked;
     }

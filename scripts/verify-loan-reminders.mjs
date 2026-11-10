@@ -3,6 +3,8 @@ import ts from 'typescript';
 import assert from 'node:assert/strict';
 const moduleUrl = code => `data:text/javascript;base64,${Buffer.from(ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText).toString('base64')}`;
 const loansUrl=moduleUrl(fs.readFileSync('supabase/functions/_shared/loans.ts','utf8'));
+const connectionUrl=moduleUrl(fs.readFileSync('supabase/functions/_shared/waLoanConnection.ts','utf8'));
+const {loanInstanceName}=await import(connectionUrl);
 const queueUrl=moduleUrl(fs.readFileSync('supabase/functions/_shared/loanReminderQueue.ts','utf8').replace('"./loans.ts"',JSON.stringify(loansUrl)));
 const {writeLoanAutoSettings,writeLoanReminder,writeLoanPixKey,writeLoan,recordLoanPayment}=await import(loansUrl);
 const {loanReminderCandidate}=await import(queueUrl);
@@ -37,7 +39,7 @@ assert.ok(loanReminderCandidate(folder,item,'2026-11-13','10:00').text.startsWit
 
 // Exercise the real server handler with an atomic in-memory settings store and mocked Evolution.
 const records=new Map([['evolution_api',{key:'evolution_api',value:{apiBaseUrl:'https://fixture.invalid',apiKey:'fixture',instancePrefix:'auxplus'}}]]);
-let sends=0,handler;const sentTexts=[];
+let sends=0,handler,offline=true;const sentTexts=[];
 class Query {
  constructor(table){this.table=table;this.filters=[];this.action='select';}
  select(){return this;}eq(k,v){this.filters.push(r=>String(r[k])===String(v));return this;}
@@ -59,13 +61,15 @@ globalThis.Date=class extends RealDate {constructor(...args){super(...(args.leng
 globalThis.__loanClientFactory=()=>({from:table=>new Query(table)});
 globalThis.Deno={env:{get:key=>({AUXPLUS_LOAN_CRON_SECRET:'secret',SUPABASE_URL:'https://fixture.invalid',SUPABASE_SERVICE_ROLE_KEY:'fixture'})[key]},serve:fn=>{handler=fn;}};
 globalThis.setTimeout=fn=>{queueMicrotask(fn);return 0;};
-globalThis.fetch=async (url,init)=>{if(url.includes('connectionState'))return Response.json({instance:{state:'open'}});sends++;sentTexts.push(JSON.parse(init.body).text);return Response.json({key:{id:'fixture'}});};
+globalThis.fetch=async (url,init)=>{assert.ok(url.endsWith(loanInstanceName('auxplus','1','1')),'all connection checks and sends must use the dedicated loan instance');if(url.includes('connectionState'))return Response.json({instance:{state:offline?'close':'open'}});sends++;sentTexts.push(JSON.parse(init.body).text);return Response.json({key:{id:'fixture'}});};
 try{
- let source=fs.readFileSync('supabase/functions/loan-reminders/index.ts','utf8').replace(/import \{ createClient \} from "[^"]+";/,'const createClient = globalThis.__loanClientFactory;').replace('"../_shared/loanReminderQueue.ts"',JSON.stringify(queueUrl));
+ let source=fs.readFileSync('supabase/functions/loan-reminders/index.ts','utf8').replace(/import \{ createClient \} from "[^"]+";/,'const createClient = globalThis.__loanClientFactory;').replace('"../_shared/loanReminderQueue.ts"',JSON.stringify(queueUrl)).replace('"../_shared/waLoanConnection.ts"',JSON.stringify(connectionUrl));
  await import(moduleUrl(source));
  const request=(body={})=>new Request('https://fixture.invalid',{method:'POST',headers:{'x-loan-cron':'secret','Content-Type':'application/json'},body:JSON.stringify(body)});
  assert.equal((await handler(new Request('https://fixture.invalid',{method:'POST'}))).status,401);
  const dry=await (await handler(request({dryRun:true}))).json();assert.equal(dry.eligible,1);assert.equal(sends,0);
+ await handler(request());assert.equal(sends,0,'disconnected loan WhatsApp must never fall back to IPTV');
+ offline=false;
  const results=await Promise.all([handler(request()),handler(request())]);
  for(const r of results)assert.equal(r.status,200);
  assert.equal(sends,1,'concurrent runs may send only once');

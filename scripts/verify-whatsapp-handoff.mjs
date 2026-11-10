@@ -5,6 +5,7 @@ import { webcrypto } from "node:crypto";
 import ts from "typescript";
 import * as conversationExports from '../supabase/functions/_shared/waConversationState.ts';
 import * as trialExports from '../supabase/functions/_shared/waTrialHistory.ts';
+import * as loanConnectionExports from '../supabase/functions/_shared/waLoanConnection.ts';
 
 const compile = (path) => ts.transpileModule(fs.readFileSync(path, "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
@@ -96,6 +97,7 @@ const context = {
     if (path.includes("waBotGuard")) return guardExports;
     if (path.includes("waConversationState")) return conversationExports;
     if (path.includes("waTrialHistory")) return trialExports;
+    if (path.includes("waLoanConnection")) return loanConnectionExports;
     if (path.includes("itemDue")) return dueExports;
     if (path.includes("waInbound")) return inboundExports;
     if (path.includes("waReminderReply")) return reminderExports;
@@ -115,10 +117,10 @@ const context = {
 };
 vm.runInNewContext(compile("supabase/functions/evolution-webhook/index.ts"), context);
 let nextId = 0;
-async function receive(text, { fromMe = false, id = String(++nextId), media = false, targetPhone = phone } = {}) {
+async function receive(text, { fromMe = false, id = String(++nextId), media = false, targetPhone = phone, instanceName = "test" } = {}) {
   const response = await handler(new Request("https://webhook.invalid", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ event: "messages.upsert", instance: "test", data: {
+    body: JSON.stringify({ event: "messages.upsert", instance: instanceName, data: {
       key: { id, remoteJid: `${targetPhone}@s.whatsapp.net`, fromMe },
       message: media ? { imageMessage: { mimetype: "image/jpeg" } } : { conversation: text },
     } }),
@@ -391,3 +393,8 @@ assert.equal(state().sessions[releasedPhone].testClientName,'Wallisson');
 assert.equal((await receive('Celular',{targetPhone:releasedPhone})).action,'test_ask_phone_os','pending release must preserve the device step');
 assert.equal(state().sessions[releasedPhone].testDevice,'phone');
 console.log('PASS: durable owner release survives stale browser writes and starts a clean name/device flow.');
+const loanInstance=loanConnectionExports.loanInstanceName('auxplus','1','folder');
+db.setting(`wa_instance_${loanInstance}`,{userId:'1'});
+const beforeLoanInbound=sent.length;
+assert.equal((await receive('teste',{instanceName:loanInstance})).skipped,'loan_connection');
+assert.equal(sent.length,beforeLoanInbound,'loan connection must never run IPTV bot, even with an incorrect mapping');

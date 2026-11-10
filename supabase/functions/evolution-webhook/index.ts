@@ -15,6 +15,7 @@ import { partnerActivationRequest } from "../_shared/partnerAppContract.ts";
 import { isReminderRenewalReply, quotedReminderUsername } from "../_shared/waReminderReply.ts";
 import { persistConversationState } from "../_shared/waConversationState.ts";
 import { loadTrialUse, claimTrialUse, finishTrialUse, releaseTrialUse, trialActivationExpired } from "../_shared/waTrialHistory.ts";
+import { isLoanWhatsappInstance } from "../_shared/waLoanConnection.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;
@@ -2361,6 +2362,7 @@ Deno.serve(async (req) => {
         (payload as { instanceName?: string }).instanceName ||
         "",
     ).trim();
+    if (isLoanWhatsappInstance(instance)) return json({ ok: true, skipped: "loan_connection" });
     const data = normalizeMessageData(payload);
     const skippedInbound = skipAttendantEvent(event, data);
     if (skippedInbound) return json({ ok: true, skipped: skippedInbound });

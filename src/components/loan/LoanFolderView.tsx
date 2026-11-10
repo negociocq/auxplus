@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Bell, CheckCircle2, Eye, History, Info, MessageSquareText, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +24,9 @@ import { readLoanAutoSettings, writeLoanAutoSettings, buildLoanReminderMessage }
 import { defaultLoanReminder, loanReminderKind, type LoanReminderKind } from "@/lib/loans";
 import { nextLoanMonth, recordLoanPayment } from "@/lib/loans";
 import { LoanClientHistory } from "@/components/loan/LoanClientHistory";
+import { LoanWhatsappConnection } from "@/components/loan/LoanWhatsappConnection";
+import { useLoanWhatsappConnection } from "@/hooks/useLoanWhatsappConnection";
+import { fetchEvolutionStatus, sendEvolutionText } from "@/lib/whatsappAutomation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
@@ -36,7 +39,12 @@ const dueColors: Record<ItemStatus, string> = {
   "Sem Vencimento": "border-l-muted",
 };
 export function LoanFolderView({ folder }: { folder: Folder }) {
-  const { data, setData } = useApp();
+  const { data, setData, user } = useApp();
+  const loanWa = useLoanWhatsappConnection(user?.id, folder.id);
+  const [manualReminder, setManualReminder] = useState<{ itemId: string; instance: string; phone: string; text: string; snapshot: string } | null>(null);
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const sendingReminderRef = useRef(false);
+  useEffect(() => { setManualReminder(null); }, [folder.id]);
   const { money, phone: displayPhone } = useHideBalance();
   const [today, setToday] = useState(localLoanDay());
   const [query, setQuery] = useState("");
@@ -66,7 +74,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     try {
       writeLoanAutoSettings(currentFolder.whatsappMessage, autoDraft);
       setData(prev => ({ ...prev, folders: prev.folders.map(f => f.id === folder.id ? { ...f, whatsappMessage: writeLoanAutoSettings(f.whatsappMessage, autoDraft) } : f) }));
-      toast.success(autoDraft.enabled ? "Envio automático agendado nesta pasta" : "Envio automático desligado nesta pasta");
+      toast.success(autoDraft.enabled ? loanWa.status === "open" ? "Envio automático agendado nesta pasta" : "Agendamento salvo. Conecte o WhatsApp desta pasta para enviar." : "Envio automático desligado nesta pasta");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Confira o horário."); }
   };
   const saveMessage = (event: FormEvent) => {
@@ -142,9 +150,24 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     const phone = item.phone.replace(/\D/g, "");
     if (!phone || phone.length < 10) { toast.error("Cadastre o telefone com DDI para enviar o lembrete."); return; }
     if (!loan || loan.paidAt) return;
+    if (!loanWa.runtime || loanWa.status !== "open") { toast.error("Conecte o WhatsApp de empréstimos desta pasta antes de enviar o lembrete."); return; }
     const kind = loanReminderKind(loan, localLoanDay());
     const withPix = buildLoanReminderMessage(kind ? readLoanReminder(currentFolder.whatsappMessage, kind) : reminderTemplate, item.name, loan, localLoanDay(), pixKey);
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(withPix)}`, "_blank", "noopener,noreferrer");
+    setDetailId(null);
+    setManualReminder({ itemId: item.id, instance: loanWa.runtime.instanceName, phone, text: withPix, snapshot: JSON.stringify(loan) });
+  };
+  const sendManualReminder = async () => {
+    if (sendingReminderRef.current || !manualReminder || !loanWa.runtime) return;
+    const currentItem = data.items.find(item => item.id === manualReminder.itemId && item.folderId === folder.id);
+    const loan = readLoan(currentItem || {});
+    if (!loan || loan.paidAt || currentItem?.phone.replace(/\D/g, "") !== manualReminder.phone || JSON.stringify(loan) !== manualReminder.snapshot || manualReminder.instance !== loanWa.runtime.instanceName) { toast.error("Os dados ou a conexão mudaram. Abra o lembrete novamente para conferir."); setManualReminder(null); return; }
+    sendingReminderRef.current = true; setSendingReminder(true);
+    try {
+      if (await fetchEvolutionStatus(loanWa.runtime) !== "open") throw Error("O WhatsApp desta pasta está desconectado.");
+      await sendEvolutionText(loanWa.runtime, manualReminder.phone, manualReminder.text, 0);
+      setManualReminder(null); toast.success("Lembrete enviado pelo WhatsApp desta pasta");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível confirmar o envio. Confira o WhatsApp antes de tentar novamente."); }
+    finally { sendingReminderRef.current = false; setSendingReminder(false); }
   };
   const openPayment = (item: Item, action: "pay" | "interest") => {
     const loan = readLoan(item);
@@ -179,6 +202,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <div><Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" />Voltar</Link><h1 className="text-2xl font-semibold">{folder.name}</h1><p className="text-sm text-muted-foreground">Empréstimos · valores e juros atualizados diariamente</p></div>
       <Button onClick={() => edit()}><Plus className="h-4 w-4" />Novo empréstimo</Button>
     </div>
+    <LoanWhatsappConnection connection={loanWa} />
     <details className="rounded-xl border bg-card">
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium">PIX dos lembretes <span className="ml-2 text-xs font-normal text-muted-foreground">{pixKey ? "Chave cadastrada" : "Cadastrar chave"}</span></summary>
     <form onSubmit={savePix} className="space-y-2 border-t p-4">
@@ -203,7 +227,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
         </div>
         <p className="text-xs text-muted-foreground">Marque uma opção ou as duas. Desmarque ambas para desligar os envios automáticos desta pasta.</p>
         <div className="flex flex-wrap items-end gap-2"><div className="space-y-1"><Label htmlFor="loan-auto-time">Horário de Brasília</Label><Input id="loan-auto-time" type="time" required value={autoDraft.sendTime} onChange={e => setAutoDraft(s => ({ ...s, sendTime: e.target.value }))} /></div><Button type="submit">Salvar agendamento</Button></div>
-        <p className="text-xs text-muted-foreground">Usa a mensagem salva em Editar lembrete e a chave PIX desta pasta. Funciona com o AuxPlus fechado e exige WhatsApp conectado. A fila é conferida a cada 5 minutos após o horário escolhido. Empréstimos quitados não recebem cobrança.</p>
+        <p className="text-xs text-muted-foreground">Usa a mensagem e a chave PIX desta pasta. Funciona com o AuxPlus fechado e exige o WhatsApp de empréstimos conectado aqui. A fila é conferida a cada 5 minutos após o horário escolhido. Empréstimos quitados não recebem cobrança.</p>
       </form>
     </details>
     <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
@@ -235,6 +259,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       </div>
       <div className="grid grid-cols-2 gap-2 border-t border-foreground/10 bg-background/40 px-3 py-2"><Button type="button" variant="outline" className={`h-9 gap-1.5 text-xs ${!loan || loan.paidAt ? "col-span-2" : ""}`} onClick={() => setDetailId(item.id)}><Eye className="h-4 w-4" />Detalhes</Button>{loan && !loan.paidAt && <Button type="button" className="h-9 gap-1.5 text-xs" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button>}</div>
     </li>)}</ul>}
+    <Dialog open={!!manualReminder} onOpenChange={open => { if (!open && !sendingReminder) setManualReminder(null); }}><DialogContent><DialogHeader><DialogTitle>Enviar lembrete</DialogTitle><DialogDescription>Será enviado pelo WhatsApp desta pasta{loanWa.connectedProfile?.phone ? ` (${displayPhone(loanWa.connectedProfile.phone)})` : ""} para {displayPhone(manualReminder?.phone)}.</DialogDescription></DialogHeader><div className="space-y-2"><Label htmlFor="loan-manual-reminder">Confira a mensagem</Label><Textarea id="loan-manual-reminder" className="min-h-52" value={manualReminder?.text || ""} disabled={sendingReminder} onChange={e => setManualReminder(value => value ? { ...value, text: e.target.value } : null)} /></div><DialogFooter><Button variant="outline" disabled={sendingReminder} onClick={() => setManualReminder(null)}>Cancelar</Button><Button disabled={sendingReminder || !manualReminder?.text.trim()} onClick={() => void sendManualReminder()}>{sendingReminder ? "Enviando…" : "Enviar lembrete"}</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={messageOpen} onOpenChange={setMessageOpen}>
       <DialogContent>
         <DialogHeader><DialogTitle>Mensagens dos lembretes</DialogTitle><DialogDescription>Edite cada etapa separadamente. O agendamento usa o texto de 2 dias antes e, no vencimento, o texto do próprio dia.</DialogDescription></DialogHeader>

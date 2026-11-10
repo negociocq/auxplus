@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { loanReminderCandidate } from "../_shared/loanReminderQueue.ts";
+import { loanInstanceName } from "../_shared/waLoanConnection.ts";
 
 const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 Deno.serve(async req => {
@@ -29,6 +30,7 @@ Deno.serve(async req => {
       return result.json();
     }
     let attempts = 0;
+    const connectionStates = new Map<string, boolean>();
     for (const user of userResult.data || []) {
       if (attempts >= 3) break;
       const folders = (folderResult.data || []).filter(f => String(f.user_id) === String(user.id));
@@ -38,12 +40,6 @@ Deno.serve(async req => {
       const candidates = (result.data || []).map(item => ({ item, folder: folders.find(f => String(f.id) === String(item.folder_id))! })).filter(({ item, folder }) => loanReminderCandidate(folder, item, today, time));
       summary.eligible += candidates.length;
       if (body.dryRun || !candidates.length) continue;
-      const prefix = String(evo.instancePrefix || "auxplus").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24);
-      const id = String(user.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16);
-      const name = String(user.username || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
-      const instance = `${prefix}-${name || "u"}${id}`.slice(0, 60);
-      const state = await evolution(`/instance/connectionState/${encodeURIComponent(instance)}`).catch(() => null);
-      if (String(state?.instance?.state || state?.state).toLowerCase() !== "open") { summary.skipped += candidates.length; continue; }
       // Limite conservador: no máximo três tentativas por execução, dez por hora e trinta por dia por conta.
       const counts = await client.from("platform_settings").select("updated_at").like("key", String.raw`loan\_reminder\_${user.id}\_%`).gte("updated_at", `${today}T03:00:00Z`);
       if (counts.error) throw Error("Falha ao conferir limites de envio.");
@@ -59,6 +55,13 @@ Deno.serve(async req => {
         if (freshItem.error || freshFolder.error) { summary.skipped++; continue; }
         const current = freshItem.data && freshFolder.data && loanReminderCandidate(freshFolder.data, freshItem.data, today, time);
         if (!current || String(freshFolder.data!.user_id) !== String(user.id)) { summary.skipped++; continue; }
+        const instance = loanInstanceName(String(evo.instancePrefix || "auxplus"), String(user.id), String(freshFolder.data!.id));
+        if (!connectionStates.has(instance)) {
+          const state = await evolution(`/instance/connectionState/${encodeURIComponent(instance)}`).catch(() => null);
+          connectionStates.set(instance, String(state?.instance?.state || state?.state).toLowerCase() === "open");
+        }
+        // A disconnected loan number never falls back to the IPTV number.
+        if (!connectionStates.get(instance)) { summary.skipped++; continue; }
         // Chave única no banco: execuções simultâneas e novas aberturas do site não repetem uma tentativa.
         const claim = await client.from("platform_settings").insert({ key: current.key, value: { status: "attempted", kind: current.kind, itemId: item.id, dueDate: current.dueDate }, updated_at: new Date().toISOString() });
         if (claim.error?.code === "23505") { summary.duplicate++; continue; }
