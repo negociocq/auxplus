@@ -2722,7 +2722,6 @@ export default function UniPlay() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openClientDetail(item.id)}><Eye className="mr-2 h-4 w-4" />Detalhes do cliente</DropdownMenuItem>
                             {(isClientStillActive(item.dueDate) || panelUsernames.has(item.itemId)) && (
                               <>
                                 <DropdownMenuItem
@@ -3671,6 +3670,19 @@ export default function UniPlay() {
               <DialogFooter className="gap-2 border-t pt-4">
                 <Button
                   type="button"
+                  className="h-10 w-full sm:w-auto"
+                  disabled={!detailClient.itemId?.trim()}
+                  onClick={() => {
+                    fillActivateFromClient(detailClient.id);
+                    setDetailClientId(null);
+                    setClientDetailAccess(null);
+                  }}
+                >
+                  <Smartphone className="h-4 w-4" />
+                  Ativar app
+                </Button>
+                <Button
+                  type="button"
                   variant="secondary"
                   className="h-10 w-full sm:w-auto"
                   disabled={!bearer.trim() || busyId === detailClient.id}
@@ -3830,6 +3842,18 @@ export default function UniPlay() {
                 );
               })()}
               <DialogFooter className="grid grid-cols-1 gap-2 border-t pt-4 [&>button]:min-h-11 sm:flex sm:flex-row sm:gap-2 sm:space-x-0">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!detailJob.panelUsername?.trim()}
+                  onClick={() => {
+                    fillActivateFromTest({ ...detailJob, panelPassword: detailJobAccess?.password || "" });
+                    setDetailJobId(null);
+                  }}
+                >
+                  <Smartphone className="h-4 w-4" />
+                  Ativar app
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
