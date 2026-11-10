@@ -2633,17 +2633,17 @@ export default function UniPlay() {
                           </p>
                         ) : null}
 </div>
-                      <div className="grid w-full grid-cols-4 items-center justify-items-center gap-1 sm:flex sm:w-auto sm:shrink-0 sm:gap-1.5">
-                        <Button type="button" size="sm" variant="outline" className="order-3 h-10 w-10 p-0 sm:order-none sm:h-9"
+                      <div className="grid w-full grid-cols-[1.75rem_1.75rem_minmax(0,1fr)_1.75rem_1.75rem_1.75rem] items-center gap-0.5 min-[360px]:grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_2rem_2rem_2rem] min-[360px]:gap-1 sm:flex sm:w-auto sm:shrink-0 sm:gap-1.5">
+                        <Button type="button" size="sm" variant="outline" className="order-1 h-8 w-7 p-0 min-[360px]:w-8 sm:h-9 sm:w-10"
                           title="Detalhes do cliente" aria-label="Detalhes do cliente" onClick={() => openClientDetail(item.id)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button type="button" size="sm" variant="secondary" className="order-1 col-span-2 h-10 w-full gap-1 px-2 text-xs sm:h-9 sm:w-auto"
+                        <Button type="button" size="sm" variant="secondary" className="order-2 h-8 min-w-0 gap-1 px-1 text-[11px] min-[360px]:text-xs sm:h-9 sm:px-2"
                           disabled={!item.itemId?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
                           onClick={() => fillActivateFromClient(item.id)}>
-                          <Smartphone className="h-4 w-4" /><span className="sm:hidden">App</span><span className="hidden sm:inline">Ativar app</span>
+                          <Smartphone className="h-4 w-4" /><span className="hidden min-[360px]:inline sm:hidden">App</span><span className="hidden sm:inline">Ativar app</span>
                         </Button>
-                        <Button type="button" size="sm" variant="outline" className="order-4 h-10 w-10 p-0 sm:h-9"
+                        <Button type="button" size="sm" variant="outline" className="order-4 h-8 w-7 p-0 min-[360px]:w-8 sm:h-9 sm:w-10"
                           disabled={!item.itemId?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
                           title="Editar cliente" aria-label="Editar cliente" onClick={() => setEditingPanelUser({ username: item.itemId, phone: item.phone || "" })}><Pencil className="h-4 w-4" /></Button>
                         <Button
@@ -2652,7 +2652,7 @@ export default function UniPlay() {
                           variant="outline"
                           title={clientOnOff[item.id] === true ? "On: bloquear cliente" : clientOnOff[item.id] === false ? "Off: desbloquear cliente" : "Alterar On/Off"}
                           aria-label={clientOnOff[item.id] === true ? "Bloquear cliente" : clientOnOff[item.id] === false ? "Desbloquear cliente" : "Alterar On/Off"}
-                          className="order-5 h-10 w-10 p-0 sm:h-9"
+                          className="order-5 h-8 w-7 p-0 min-[360px]:w-8 sm:h-9 sm:w-10"
                           disabled={togglingClientId !== null || (!bearer.trim() && !(panelUser.trim() && panelPass))}
                           onClick={async () => {
                             if (!window.confirm(`Alterar On/Off de ${item.itemId} no painel UniPlay?`)) return;
@@ -2684,7 +2684,7 @@ export default function UniPlay() {
                               type="button"
                               size="sm"
                               variant="default"
-                              className="order-2 col-span-2 h-10 w-full gap-1 px-2 text-xs sm:h-9 sm:w-auto"
+                              className="order-3 h-8 min-w-0 gap-1 px-1 text-[11px] min-[360px]:text-xs sm:h-9 sm:px-2"
                               disabled={!bearer.trim() || busyId === item.id}
                               onClick={() => {
                                 if (showRecreate) {
@@ -2703,7 +2703,7 @@ export default function UniPlay() {
                               ) : (
                                 <RefreshCw className="hidden h-3.5 w-3.5 sm:block" />
                               )}
-                              <span className="sm:ml-1">
+                              <span className="truncate sm:ml-1">
                                 {extend ? "Estender" : showRecreate ? "Recriar" : "Renovar"}
                               </span>
                             </Button>
@@ -2715,7 +2715,7 @@ export default function UniPlay() {
                               type="button"
                               size="sm"
                               variant="ghost"
-                              className="order-6 h-10 w-10 p-0 sm:h-9"
+                              className="order-6 h-8 w-7 p-0 min-[360px]:w-8 sm:h-9 sm:w-10"
                               aria-label="Mais opções do cliente"
                             >
                               <MoreVertical className="h-4 w-4" />
