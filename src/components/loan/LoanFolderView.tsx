@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { readLoanReminder, renderLoanReminder, writeLoanReminder } from "@/lib/loans";
 import { readLoanAutoSettings, writeLoanAutoSettings, buildLoanReminderMessage } from "@/lib/loans";
 import { defaultLoanReminder, loanReminderKind, type LoanReminderKind } from "@/lib/loans";
+import { nextLoanMonth, recordLoanPayment } from "@/lib/loans";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
@@ -42,7 +43,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [form, setForm] = useState(blank);
-  const [confirm, setConfirm] = useState<{ item: Item; action: "pay" | "delete" } | null>(null);
+  const [confirm, setConfirm] = useState<{ item: Item; action: "pay" | "interest" | "delete"; receiptId?: string; snapshot?: string; nextDueDate?: string } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const currentFolder = data.folders.find(f => f.id === folder.id) || folder;
   const pixKey = readLoanPixKey(currentFolder.whatsappMessage);
@@ -98,6 +99,8 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const pending = rows.filter(r => r.loan && !r.loan.paidAt);
   const dueToday = pending.filter(r => r.loan!.dueDate === today);
   const detail = rows.find(r => r.item.id === detailId);
+  const paymentLoan = confirm && confirm.action !== "delete" ? readLoan(confirm.item) : null;
+  const paymentBalance = paymentLoan ? loanBalance(paymentLoan, today) : null;
   const visible = rows.filter(({ item, loan, dueStatus }) =>
     (!query || normSearch(`${item.name} ${item.phone}`).includes(normSearch(query))) &&
     (filter === "all" || (filter === "paid" ? !!loan?.paidAt : !loan?.paidAt && (filter === "open" || dueStatus === (filter === "late" ? "Já Vencido" : filter === "near" ? "Perto de Vencer" : "Longe de Vencer"))))
@@ -122,7 +125,9 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
         // A alteração do vencimento de empréstimos não registra renovação de assinatura.
         if (current) {
           const next = updateItem(prev, { ...current, ...input });
-          return { ...next, items: next.items.map(i => i.id === current.id ? { ...i, payments: [], notes: writeLoan(cleanNotes(i.notes), loan) } : i) };
+          const previousLoan = readLoan(current);
+          const preservedLoan = { ...previousLoan, ...loan, ...(previousLoan?.dueDate !== loan.dueDate ? { cycleDay: Number(loan.dueDate.slice(8, 10)) } : {}) };
+          return { ...next, items: next.items.map(i => i.id === current.id ? { ...i, payments: [], notes: writeLoan(cleanNotes(i.notes), preservedLoan) } : i) };
         }
         return createItem(prev, input);
       });
@@ -138,19 +143,33 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     const withPix = buildLoanReminderMessage(kind ? readLoanReminder(currentFolder.whatsappMessage, kind) : reminderTemplate, item.name, loan, localLoanDay(), pixKey);
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(withPix)}`, "_blank", "noopener,noreferrer");
   };
+  const openPayment = (item: Item, action: "pay" | "interest") => {
+    const loan = readLoan(item);
+    if (!loan || loan.paidAt) return;
+    setDetailId(null);
+    setConfirm({ item, action, receiptId: crypto.randomUUID(), snapshot: JSON.stringify(loan), ...(action === "interest" ? { nextDueDate: nextLoanMonth(loan.dueDate, loan.cycleDay) } : {}) });
+  };
   const confirmAction = () => {
     if (!confirm) return;
     const { item, action } = confirm;
+    const currentItem = data.items.find(i => i.id === item.id && i.folderId === folder.id);
+    const currentLoan = currentItem && readLoan(currentItem);
+    let paid: LoanTerms | null = null;
+    if (action !== "delete") {
+      if (!currentLoan || JSON.stringify(currentLoan) !== confirm.snapshot) { toast.error("Os dados do empréstimo mudaram. Abra os detalhes novamente para conferir."); setConfirm(null); return; }
+      try { paid = recordLoanPayment(currentLoan, { id: confirm.receiptId!, kind: action === "interest" ? "interest" : "full", paidAt: new Date().toISOString(), nextDueDate: confirm.nextDueDate }); }
+      catch (error) { toast.error(error instanceof Error ? error.message : "Confira o pagamento."); return; }
+    }
     setData(prev => {
       const current = prev.items.find(i => i.id === item.id && i.folderId === folder.id);
       if (!current) return prev;
       if (action === "delete") return deleteItem(prev, current.id);
       const loan = readLoan(current);
-      if (!loan || loan.paidAt) return prev;
-      const paid = { ...loan, paidAt: new Date().toISOString(), paidAmount: loanBalance(loan, localLoanDay()).total };
-      return updateItem(prev, { ...current, payments: [], notes: writeLoan(current.notes, paid) });
+      if (!loan || loan.paidAt || JSON.stringify(loan) !== confirm.snapshot || !paid) return prev;
+      const next = updateItem(prev, { ...current, dueDate: paid.dueDate, payments: [], notes: writeLoan(current.notes, paid) });
+      return { ...next, items: next.items.map(i => i.id === current.id ? { ...i, payments: [], notes: writeLoan(cleanNotes(i.notes), paid!) } : i) };
     });
-    setConfirm(null); toast.success(action === "pay" ? "Pagamento registrado. Os juros foram encerrados." : "Empréstimo excluído");
+    setConfirm(null); toast.success(action === "pay" ? "Empréstimo quitado. Os juros foram encerrados." : action === "interest" ? "Juros recebidos. Capital mantido e vencimento prorrogado." : "Empréstimo excluído");
   };
   return <div className="space-y-3 sm:space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -236,9 +255,21 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
             <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-muted-foreground">{displayPhone(item.phone) || "Sem telefone"}</p>{loan && !loan.paidAt ? <StatusBadge status={dueStatus} /> : <span className="text-sm">{loan?.paidAt ? "Quitado" : "Configurar"}</span>}</div>
       {loan && balance ? <><dl className="my-4 grid grid-cols-2 gap-3 text-sm">{[['Emprestado', money(loan.principal)], ['Combinado no vencimento', money(loan.agreedAmount)], ['Data do empréstimo', formatBrDate(loan.lentAt)], ['Vencimento', formatBrDate(loan.dueDate)], ['Juros combinados', money(balance.agreedInterest)], ['Juros de atraso', money(balance.lateInterest)]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}</dl><div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">{loan.paidAt ? `Pago em ${formatBrDate(loan.paidAt)}` : `Total atualizado · ${formatBrDate(today)}`}</p><p className="text-xl font-semibold">{money(balance.total)}</p><p className="mt-1 text-xs text-muted-foreground">{loan.lateRate ? `Atraso: ${loan.lateRate}% ao ${loan.latePeriod === "day" ? "dia" : "mês (30 dias)"}, juros simples.` : "Sem juros por atraso."}</p></div></> : <p className="my-4 text-sm text-muted-foreground">Registro anterior preservado. Edite para definir as condições do empréstimo.</p>}
       {cleanNotes(item.notes) ? <p className="mt-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{cleanNotes(item.notes)}</p> : null}
+            {!!loan?.receipts?.length && <details className="rounded-lg border p-3">
+              <summary className="cursor-pointer text-sm font-medium">Histórico de pagamentos ({loan.receipts.length})</summary>
+              <p className="mt-2 text-xs text-muted-foreground">Total recebido: {money(loan.receipts.reduce((sum, receipt) => sum + receipt.amount, 0))}</p>
+              <ul className="mt-2 divide-y">{[...loan.receipts].reverse().map(receipt => <li key={receipt.id} className="space-y-1 py-2 text-xs">
+                <div className="flex justify-between gap-2"><span className="font-medium">{receipt.kind === "interest" ? "Somente juros" : "Quitação total"}</span><span className="font-semibold tabular-nums">{money(receipt.amount)}</span></div>
+                <p className="text-muted-foreground">{formatBrDate(receipt.paidAt)} · Capital pago: {money(receipt.principalPaid)} · Juros: {money(receipt.interestPaid)}</p>
+                {receipt.nextDueDate && <p className="text-muted-foreground">Vencimento prorrogado de {formatBrDate(receipt.previousDueDate)} para {formatBrDate(receipt.nextDueDate)}</p>}
+              </li>)}</ul>
+            </details>}
             {loan && !loan.paidAt && balance?.daysLate ? <p className="text-sm text-destructive">{balance.daysLate} dias em atraso</p> : null}
             <div className="space-y-2 border-t pt-3">
-              {loan && !loan.paidAt && <Button className="h-11 w-full" onClick={() => { setDetailId(null); setConfirm({ item, action: "pay" }); }}><CheckCircle2 className="h-4 w-4" />Registrar pagamento</Button>}
+              {loan && balance && !loan.paidAt && <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" className="h-auto min-h-14 min-w-0 flex-col gap-0.5 px-2 py-2 text-xs" disabled={balance.total <= loan.principal} onClick={() => openPayment(item, "interest")}><span>Somente juros</span><span className="font-semibold tabular-nums">{money(balance.total - loan.principal)}</span></Button>
+                <Button className="h-auto min-h-14 min-w-0 flex-col gap-0.5 px-2 py-2 text-xs" onClick={() => openPayment(item, "pay")}><span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Quitar tudo</span><span className="font-semibold tabular-nums">{money(balance.total)}</span></Button>
+              </div>}
               <div className="grid grid-cols-2 gap-2">
                 {!loan?.paidAt && <Button className="h-10 w-full" variant="outline" onClick={() => { setDetailId(null); edit(item); }}><Pencil className="h-4 w-4" />Editar</Button>}
                 {loan && !loan.paidAt && <Button className="h-10 w-full" variant="outline" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button>}
@@ -285,6 +316,19 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       </div>
       <div className="space-y-1"><Label htmlFor="loan-notes">Observações</Label><Textarea id="loan-notes" value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} /></div><DialogFooter className="grid grid-cols-2 gap-2 border-t pt-3 sm:grid sm:grid-cols-2 sm:space-x-0"><Button className="h-11 w-full px-2 text-xs sm:text-sm" type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button className="h-11 w-full px-2 text-xs sm:text-sm" type="submit">Salvar empréstimo</Button></DialogFooter>
     </form></DialogContent></Dialog>
-    <Dialog open={!!confirm} onOpenChange={v => { if (!v) setConfirm(null); }}><DialogContent className="max-h-[90dvh] gap-4 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-6"><DialogHeader className="pr-8 text-left"><DialogTitle className="leading-snug">{confirm?.action === "pay" ? "Confirmar pagamento integral" : "Excluir empréstimo?"}</DialogTitle><DialogDescription>{confirm?.action === "pay" ? `Confirme somente após receber o total de ${money(loanBalance(readLoan(confirm.item)!, today).total)} de ${confirm.item.name}. A quitação congela o valor e encerra os juros.` : "O registro será removido. Esta ação não pode ser desfeita."}</DialogDescription></DialogHeader><DialogFooter className="grid grid-cols-2 gap-2 border-t pt-3 sm:grid sm:grid-cols-2 sm:space-x-0"><Button className="h-11 w-full" variant="outline" onClick={() => setConfirm(null)}>Cancelar</Button><Button className="h-11 w-full" variant={confirm?.action === "delete" ? "destructive" : "default"} onClick={confirmAction}>Confirmar</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={!!confirm} onOpenChange={v => { if (!v) setConfirm(null); }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{confirm?.action === "interest" ? "Receber somente os juros" : confirm?.action === "pay" ? "Quitar o empréstimo" : "Excluir empréstimo?"}</DialogTitle><DialogDescription>{confirm?.action === "delete" ? "O registro será removido. Esta ação não pode ser desfeita." : `${confirm?.item.name} · Confirme somente depois de receber o pagamento.`}</DialogDescription></DialogHeader>
+        {paymentLoan && paymentBalance && <div className="space-y-3">
+          <div className="rounded-lg border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">{confirm?.action === "interest" ? "Juros a receber agora" : "Total a receber — capital + juros"}</p><p className="mt-1 text-xl font-semibold tabular-nums">{money(confirm?.action === "interest" ? paymentBalance.total - paymentLoan.principal : paymentBalance.total)}</p>{paymentBalance.lateInterest > 0 && <p className="mt-1 text-xs text-muted-foreground">Inclui {money(paymentBalance.lateInterest)} de juros por atraso.</p>}</div>
+          {confirm?.action === "interest" ? <>
+            <p className="text-sm">O capital de <strong>{money(paymentLoan.principal)}</strong> continua em aberto. No próximo período, o valor combinado será <strong>{money(paymentLoan.agreedAmount)}</strong>, com os mesmos juros do período.</p>
+            <div className="space-y-1"><Label htmlFor="loan-payment-next-due">Novo vencimento</Label><Input id="loan-payment-next-due" type="date" required value={confirm.nextDueDate || ""} onChange={e => setConfirm(value => value ? { ...value, nextDueDate: e.target.value } : null)} /></div>
+            <p className="text-xs text-muted-foreground">Sugerido: um mês após o vencimento atual. Você pode ajustar a data antes de confirmar. Este pagamento será registrado como juros, sem abater o capital.</p>
+          </> : <p className="text-sm text-muted-foreground">A quitação paga o capital e os juros atuais, encerra os juros futuros e os lembretes automáticos. O histórico dos pagamentos anteriores será mantido.</p>}
+        </div>}
+        <DialogFooter><Button variant="outline" onClick={() => setConfirm(null)}>Cancelar</Button><Button variant={confirm?.action === "delete" ? "destructive" : "default"} disabled={confirm?.action === "interest" && (!confirm.nextDueDate || confirm.nextDueDate <= today || confirm.nextDueDate <= (paymentLoan?.dueDate || ""))} onClick={confirmAction}>Confirmar</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>;
 }

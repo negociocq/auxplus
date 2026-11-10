@@ -11,6 +11,18 @@ export interface LoanTerms {
   latePeriod: "day" | "month";
   paidAt?: string;
   paidAmount?: number;
+  cycleDay?: number;
+  receipts?: LoanReceipt[];
+}
+export interface LoanReceipt {
+  id: string;
+  kind: "interest" | "full";
+  paidAt: string;
+  amount: number;
+  principalPaid: number;
+  interestPaid: number;
+  previousDueDate: string;
+  nextDueDate?: string;
 }
 
 const marker = /<!--AXLOAN:([\s\S]*?)-->/g;
@@ -39,6 +51,16 @@ export function validateLoan(loan: LoanTerms) {
     || !["day", "month"].includes(loan.latePeriod)) throw Error("Confira os valores e a taxa de juros do empréstimo.");
   if (dayNumber(loan.dueDate) < dayNumber(loan.lentAt)) throw Error("O vencimento deve ser igual ou posterior à data do empréstimo.");
   if (loan.paidAt && (!Number.isFinite(Date.parse(loan.paidAt)) || !Number.isFinite(loan.paidAmount) || loan.paidAmount! < 0)) throw Error("Pagamento inválido.");
+  if (loan.cycleDay != null && (!Number.isInteger(loan.cycleDay) || loan.cycleDay < 1 || loan.cycleDay > 31)) throw Error("Dia do vencimento inválido.");
+  if (loan.receipts != null) {
+    if (!Array.isArray(loan.receipts)) throw Error("Histórico de pagamentos inválido.");
+    const ids = new Set<string>();
+    for (const receipt of loan.receipts) {
+      if (!receipt.id || ids.has(receipt.id) || !["interest", "full"].includes(receipt.kind) || !Number.isFinite(Date.parse(receipt.paidAt)) || ![receipt.amount, receipt.principalPaid, receipt.interestPaid].every(Number.isFinite) || receipt.amount <= 0 || receipt.principalPaid < 0 || receipt.interestPaid < 0 || Math.round(receipt.amount * 100) !== Math.round((receipt.principalPaid + receipt.interestPaid) * 100)) throw Error("Histórico de pagamentos inválido.");
+      ids.add(receipt.id); dayNumber(receipt.previousDueDate);
+      if (receipt.nextDueDate) dayNumber(receipt.nextDueDate);
+    }
+  }
 }
 export function writeLoan(notes: string | undefined, loan: LoanTerms): string {
   validateLoan(loan);
@@ -54,6 +76,33 @@ export function loanBalance(loan: LoanTerms, today = localLoanDay()) {
   const lateCents = Math.round(agreedCents * loan.lateRate / 100 * daysLate / (loan.latePeriod === "month" ? 30 : 1));
   const total = loan.paidAt ? loan.paidAmount! : (agreedCents + lateCents) / 100;
   return { daysLate, lateInterest: lateCents / 100, agreedInterest: Math.round((loan.agreedAmount - loan.principal) * 100) / 100, total, outstanding: loan.paidAt ? 0 : total };
+}
+
+export function nextLoanMonth(dueDate: string, cycleDay = Number(dueDate.slice(8, 10))): string {
+  dayNumber(dueDate);
+  const month = new Date(`${dueDate.slice(0, 7)}-01T12:00:00Z`);
+  month.setUTCMonth(month.getUTCMonth() + 1);
+  const lastDay = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0)).getUTCDate();
+  month.setUTCDate(Math.min(cycleDay, lastDay));
+  return month.toISOString().slice(0, 10);
+}
+export function recordLoanPayment(loan: LoanTerms, payment: { id: string; kind: "interest" | "full"; paidAt: string; nextDueDate?: string }): LoanTerms {
+  validateLoan(loan);
+  if (loan.receipts?.some(r => r.id === payment.id)) return loan;
+  if (loan.paidAt) throw Error("Este empréstimo já foi quitado.");
+  if (!payment.id || !Number.isFinite(Date.parse(payment.paidAt))) throw Error("Pagamento inválido.");
+  const today = localLoanDay(new Date(payment.paidAt));
+  const balance = loanBalance(loan, today);
+  const interest = Math.round((balance.total - loan.principal) * 100) / 100;
+  if (payment.kind === "interest" && interest <= 0) throw Error("Este empréstimo não tem juros pendentes. Use a quitação total.");
+  if (payment.kind === "interest" && (!payment.nextDueDate || dayNumber(payment.nextDueDate) <= Math.max(dayNumber(loan.dueDate), dayNumber(today)))) throw Error("Escolha um novo vencimento posterior ao atual e à data do pagamento.");
+  const receipt: LoanReceipt = { id: payment.id, kind: payment.kind, paidAt: payment.paidAt, amount: payment.kind === "interest" ? interest : balance.total, principalPaid: payment.kind === "interest" ? 0 : loan.principal, interestPaid: interest, previousDueDate: loan.dueDate, ...(payment.kind === "interest" ? { nextDueDate: payment.nextDueDate } : {}) };
+  const receipts = [...(loan.receipts || []), receipt];
+  const next: LoanTerms = payment.kind === "full"
+    ? { ...loan, paidAt: payment.paidAt, paidAmount: balance.total, receipts }
+    : { ...loan, dueDate: payment.nextDueDate!, cycleDay: payment.nextDueDate === nextLoanMonth(loan.dueDate, loan.cycleDay) ? loan.cycleDay || Number(loan.dueDate.slice(8, 10)) : Number(payment.nextDueDate!.slice(8, 10)), receipts };
+  validateLoan(next);
+  return next;
 }
 
 export function loanDueStatus(dueDate: string, today = localLoanDay(), nearDays = 3): ItemStatus {
