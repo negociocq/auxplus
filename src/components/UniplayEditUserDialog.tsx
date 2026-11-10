@@ -12,8 +12,8 @@ import { editIptvUser, ensureIptvToken, fetchIptvEditPackages, findIptvUserByUse
 
 export type EditedUniplayUser = { username: string; phone: string; nota: string };
 
-export function UniplayEditUserDialog({ username, creds, onClose, onToken, onSaved }: {
-  username: string; creds: IptvPanelCreds; onClose: () => void;
+export function UniplayEditUserDialog({ username, initialPhone, creds, onClose, onToken, onSaved }: {
+  username: string; initialPhone?: string; creds: IptvPanelCreds; onClose: () => void;
   onToken: (token: string) => void;
   onSaved: (original: string, updated: EditedUniplayUser) => void;
 }) {
@@ -43,7 +43,9 @@ export function UniplayEditUserDialog({ username, creds, onClose, onToken, onSav
         if (!user) throw new Error("Usuário não encontrado no painel UniPlay");
         setRemote(user);
         setLogin(user.username || username);
-        setPhone(String(user.whatsapp ?? user.phone ?? "").replace(/\D/g, "").replace(/^0$/, ""));
+        // Keep the selected row's phone, including an intentionally empty value.
+        // The panel is a fallback only when no AuxPlus phone was supplied.
+        setPhone(String(initialPhone ?? user.whatsapp ?? user.phone ?? "").replace(/\D/g, "").replace(/^0$/, ""));
         setNota(String(user.nota ?? ""));
         const options = await Promise.allSettled([fetchIptvEditPackages(auth, true), fetchIptvEditPackages(auth, false)]);
         if (cancelled) return;

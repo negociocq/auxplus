@@ -254,7 +254,7 @@ export default function UniPlay() {
   const [panelUsernames, setPanelUsernames] = useState<Set<string>>(new Set());
   const [clientOnOff, setClientOnOff] = useState<Record<string, boolean | undefined>>({});
   const [togglingClientId, setTogglingClientId] = useState<string | null>(null);
-  const [editingPanelUsername, setEditingPanelUsername] = useState<string | null>(null);
+  const [editingPanelUser, setEditingPanelUser] = useState<{ username: string; phone?: string } | null>(null);
   const [cleaningTestRange, setCleaningTestRange] = useState<IptvTestCleanupRange | null>(null);
   const emptyActivateForm = (): ActivateAppForm => ({
     appId: "zuxo",
@@ -2650,7 +2650,7 @@ export default function UniPlay() {
                         </Button>
                         <Button type="button" size="sm" variant="outline" className="order-3 h-10 w-10 p-0 sm:h-9"
                           disabled={!item.itemId?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
-                          title="Editar cliente" aria-label="Editar cliente" onClick={() => setEditingPanelUsername(item.itemId)}><Pencil className="h-4 w-4" /></Button>
+                          title="Editar cliente" aria-label="Editar cliente" onClick={() => setEditingPanelUser({ username: item.itemId, phone: item.phone || "" })}><Pencil className="h-4 w-4" /></Button>
                         <Button
                           type="button"
                           size="sm"
@@ -3100,7 +3100,7 @@ export default function UniPlay() {
                         <Button type="button" size="sm" variant="outline" className="order-3 h-10 w-10 p-0 sm:h-9"
                           title="Editar teste" aria-label="Editar teste"
                           disabled={!job.panelUsername?.trim() || (!bearer.trim() && !(panelUser.trim() && panelPass))}
-                          onClick={() => setEditingPanelUsername(job.panelUsername!)}><Pencil className="h-4 w-4" /></Button>
+                          onClick={() => setEditingPanelUser({ username: job.panelUsername!, phone: job.phone })}><Pencil className="h-4 w-4" /></Button>
                         <Button
                           type="button"
                           size="sm"
@@ -3518,12 +3518,13 @@ export default function UniPlay() {
         </DialogContent>
       </Dialog>
 
-      {editingPanelUsername ? <UniplayEditUserDialog
-        key={editingPanelUsername}
-        username={editingPanelUsername}
+      {editingPanelUser ? <UniplayEditUserDialog
+        key={editingPanelUser.username}
+        username={editingPanelUser.username}
+        initialPhone={editingPanelUser.phone}
         creds={panelCreds()}
         onToken={persistToken}
-        onClose={() => setEditingPanelUsername(null)}
+        onClose={() => setEditingPanelUser(null)}
         onSaved={(original, updated) => {
           const matches = (value?: string) => value?.trim().toLowerCase() === original.trim().toLowerCase();
           setData((prev) => {
