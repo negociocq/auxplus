@@ -64,6 +64,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     return { item, loan, balance: loan ? loanBalance(loan, today) : null, dueStatus: loan ? loanDueStatus(loan.dueDate, today, nearDays) : "Sem Vencimento" as ItemStatus };
   }), [data.items, folder.id, today, nearDays]);
   const pending = rows.filter(r => r.loan && !r.loan.paidAt);
+  const dueToday = pending.filter(r => r.loan!.dueDate === today);
   const detail = rows.find(r => r.item.id === detailId);
   const visible = rows.filter(({ item, loan, dueStatus }) =>
     (!query || normSearch(`${item.name} ${item.phone}`).includes(normSearch(query))) &&
@@ -138,8 +139,8 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     </form>
     </details>
     <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-      <div className="min-w-0 rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">A receber hoje</p><p className="mt-1 break-words text-sm font-semibold tabular-nums text-primary sm:text-lg">{money(pending.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></div>
-      <div className="min-w-0 rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Capital aberto</p><p className="mt-1 break-words text-sm font-semibold tabular-nums sm:text-lg">{money(pending.reduce((s, r) => s + r.loan!.principal, 0))}</p></div>
+      <div className="min-w-0 rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Total a receber</p><p className="mt-1 break-words text-sm font-semibold tabular-nums text-primary sm:text-lg">{money(pending.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></div>
+      <div className="min-w-0 rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Vence hoje</p><p className="mt-1 break-words text-sm font-semibold tabular-nums sm:text-lg">{money(dueToday.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></div>
       <div className="min-w-0 rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Juros de atraso</p><p className="mt-1 break-words text-sm font-semibold tabular-nums sm:text-lg">{money(pending.reduce((s, r) => s + r.balance!.lateInterest, 0))}</p></div>
     </div>
     <div className="flex flex-wrap gap-2"><Input className="w-full sm:max-w-xs" aria-label="Buscar cliente ou telefone" placeholder="Buscar cliente ou telefone" value={query} onChange={e => setQuery(e.target.value)} /><select aria-label="Filtrar empréstimos" className="h-10 rounded-md border bg-background px-3 text-sm" value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Em aberto ({pending.length})</option><option value="far">Longe do vencimento</option><option value="near">Perto do vencimento</option><option value="late">Em atraso</option><option value="paid">Quitados</option><option value="all">Todos</option></select></div>
@@ -167,8 +168,8 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <div className="grid grid-cols-2 gap-2 border-t border-foreground/10 bg-background/40 px-3 py-2"><Button type="button" variant="outline" className={`h-9 gap-1.5 text-xs ${!loan || loan.paidAt ? "col-span-2" : ""}`} onClick={() => setDetailId(item.id)}><Eye className="h-4 w-4" />Detalhes</Button>{loan && !loan.paidAt && <Button type="button" className="h-9 gap-1.5 text-xs" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button>}</div>
     </li>)}</ul>}
     <Dialog open={!!detail} onOpenChange={value => { if (!value) setDetailId(null); }}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle>Detalhes do empréstimo</DialogTitle><DialogDescription>{detail?.item.name}</DialogDescription></DialogHeader>
+      <DialogContent className="max-h-[90dvh] gap-4 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] [&>div]:shrink-0 sm:max-w-lg sm:p-6">
+        <DialogHeader className="pr-8 text-left"><DialogTitle>Detalhes do empréstimo</DialogTitle><DialogDescription>{detail?.item.name}</DialogDescription></DialogHeader>
         {detail ? (() => {
           const { item, loan, balance, dueStatus } = detail;
           return <div className="space-y-3">
@@ -176,31 +177,38 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       {loan && balance ? <><dl className="my-4 grid grid-cols-2 gap-3 text-sm">{[['Emprestado', money(loan.principal)], ['Combinado no vencimento', money(loan.agreedAmount)], ['Data do empréstimo', formatBrDate(loan.lentAt)], ['Vencimento', formatBrDate(loan.dueDate)], ['Juros combinados', money(balance.agreedInterest)], ['Juros de atraso', money(balance.lateInterest)]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}</dl><div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">{loan.paidAt ? `Pago em ${formatBrDate(loan.paidAt)}` : `Total atualizado · ${formatBrDate(today)}`}</p><p className="text-xl font-semibold">{money(balance.total)}</p><p className="mt-1 text-xs text-muted-foreground">{loan.lateRate ? `Atraso: ${loan.lateRate}% ao ${loan.latePeriod === "day" ? "dia" : "mês (30 dias)"}, juros simples.` : "Sem juros por atraso."}</p></div></> : <p className="my-4 text-sm text-muted-foreground">Registro anterior preservado. Edite para definir as condições do empréstimo.</p>}
       {cleanNotes(item.notes) ? <p className="mt-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{cleanNotes(item.notes)}</p> : null}
             {loan && !loan.paidAt && balance?.daysLate ? <p className="text-sm text-destructive">{balance.daysLate} dias em atraso</p> : null}
-            <div className="flex flex-wrap gap-2 border-t pt-3"><Button variant="outline" onClick={() => setDetailId(null)}>Fechar</Button></div>
-      <div className="mt-4 flex flex-wrap gap-2">{!loan?.paidAt && <><Button size="sm" variant="outline" onClick={() => { setDetailId(null); edit(item); }}><Pencil className="h-4 w-4" />Editar</Button>{loan && <><Button size="sm" variant="outline" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button><Button size="sm" onClick={() => { setDetailId(null); setConfirm({ item, action: "pay" }); }}><CheckCircle2 className="h-4 w-4" />Registrar pagamento</Button></>}</>}<Button size="sm" variant="ghost" aria-label={`Excluir empréstimo de ${item.name}`} onClick={() => { setDetailId(null); setConfirm({ item, action: "delete" }); }}><Trash2 className="h-4 w-4" /></Button></div>
+            <div className="space-y-2 border-t pt-3">
+              {loan && !loan.paidAt && <Button className="h-11 w-full" onClick={() => { setDetailId(null); setConfirm({ item, action: "pay" }); }}><CheckCircle2 className="h-4 w-4" />Registrar pagamento</Button>}
+              <div className="grid grid-cols-2 gap-2">
+                {!loan?.paidAt && <Button className="h-10 w-full" variant="outline" onClick={() => { setDetailId(null); edit(item); }}><Pencil className="h-4 w-4" />Editar</Button>}
+                {loan && !loan.paidAt && <Button className="h-10 w-full" variant="outline" onClick={() => remind(item)}><Bell className="h-4 w-4" />Lembrete</Button>}
+                <Button className="h-10 w-full text-destructive hover:text-destructive" variant="outline" aria-label={`Excluir empréstimo de ${item.name}`} onClick={() => { setDetailId(null); setConfirm({ item, action: "delete" }); }}><Trash2 className="h-4 w-4" />Excluir</Button>
+                <Button className="h-10 w-full" variant="outline" onClick={() => setDetailId(null)}>Fechar</Button>
+              </div>
+            </div>
           </div>;
         })() : null}
       </DialogContent>
     </Dialog>
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"><DialogHeader><DialogTitle>{editing ? "Editar empréstimo" : "Novo empréstimo"}</DialogTitle><DialogDescription>Informe as condições combinadas com o cliente.</DialogDescription></DialogHeader><form onSubmit={save} className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2">{([['name', 'Nome do cliente', 'text'], ['phone', 'WhatsApp com DDI', 'tel'], ['principal', 'Valor emprestado (R$)', 'text'], ['agreedAmount', 'Valor a pagar no vencimento (R$)', 'text'], ['lentAt', 'Data do empréstimo', 'date'], ['dueDate', 'Vencimento', 'date']] as const).map(([key, label, type]) => <div key={key} className="space-y-1"><Label htmlFor={`loan-${key}`}>{label}</Label><Input id={`loan-${key}`} type={type} inputMode={key === 'principal' || key === 'agreedAmount' ? 'decimal' : undefined} required={key !== 'phone'} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} /></div>)}</div>
+    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90dvh] gap-4 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] [&>div]:shrink-0 [&>form]:shrink-0 sm:max-w-lg sm:p-6"><DialogHeader className="pr-8 text-left"><DialogTitle>{editing ? "Editar empréstimo" : "Novo empréstimo"}</DialogTitle><DialogDescription>Informe as condições combinadas com o cliente.</DialogDescription></DialogHeader><form onSubmit={save} className="space-y-4">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2">{([['name', 'Nome do cliente', 'text'], ['phone', 'WhatsApp com DDI', 'tel'], ['principal', 'Valor emprestado (R$)', 'text'], ['agreedAmount', 'Valor a pagar no vencimento (R$)', 'text'], ['lentAt', 'Data do empréstimo', 'date'], ['dueDate', 'Vencimento', 'date']] as const).map(([key, label, type]) => <div key={key} className={`min-w-0 space-y-1 ${key === 'name' || key === 'phone' ? 'col-span-2 sm:col-span-1' : ''}`}><Label className="flex min-h-8 items-end text-xs leading-tight" htmlFor={`loan-${key}`}>{label}</Label><Input className="min-w-0" id={`loan-${key}`} type={type} inputMode={key === 'principal' || key === 'agreedAmount' ? 'decimal' : undefined} required={key !== 'phone'} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} /></div>)}</div>
       <div className="rounded-lg border p-3">
         <p className="mb-2 text-sm font-medium">Juros após o vencimento (opcional)</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label htmlFor="loan-rate">Taxa (%)</Label>
+            <Label className="flex h-8 items-center text-xs" htmlFor="loan-rate">Taxa (%)</Label>
             <Input id="loan-rate" inputMode="decimal" required value={form.lateRate} onChange={e => setForm(p => ({ ...p, lateRate: e.target.value }))} />
           </div>
           <div className="space-y-1">
-            <div className="flex items-center gap-1">
-              <Label htmlFor="loan-period">Período da taxa</Label>
+            <div className="flex h-8 items-center gap-1">
+              <Label className="text-xs" htmlFor="loan-period">Período da taxa</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <button type="button" aria-label="Como funcionam os juros ao mês e ao dia" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <Info className="h-4 w-4" />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)] space-y-3 text-sm">
+                <PopoverContent align="end" className="max-h-[65dvh] w-80 max-w-[calc(100vw-2rem)] space-y-3 overflow-y-auto text-sm">
                   <p className="font-semibold">Como escolher o período?</p>
                   <p><strong>Ao mês:</strong> a taxa informada vale para 30 dias de atraso. O sistema divide esse valor por 30 para calcular cada dia.</p>
                   <p>Exemplo: valor combinado de <strong>R$ 1.000</strong>, com <strong>3% ao mês</strong>, gera R$ 30 em 30 dias — ou <strong>R$ 1 por dia de atraso</strong>. Em 5 dias, o total será R$ 1.005.</p>
@@ -215,8 +223,8 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
         </div>
         <p className="mt-2 text-xs text-muted-foreground">Use 0 para não cobrar juros por atraso. Toque no ícone de informação para ver exemplos.</p>
       </div>
-      <div className="space-y-1"><Label htmlFor="loan-notes">Observações</Label><Textarea id="loan-notes" value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} /></div><DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit">Salvar empréstimo</Button></DialogFooter>
+      <div className="space-y-1"><Label htmlFor="loan-notes">Observações</Label><Textarea id="loan-notes" value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} /></div><DialogFooter className="grid grid-cols-2 gap-2 border-t pt-3 sm:grid sm:grid-cols-2 sm:space-x-0"><Button className="h-11 w-full px-2 text-xs sm:text-sm" type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button className="h-11 w-full px-2 text-xs sm:text-sm" type="submit">Salvar empréstimo</Button></DialogFooter>
     </form></DialogContent></Dialog>
-    <Dialog open={!!confirm} onOpenChange={v => { if (!v) setConfirm(null); }}><DialogContent><DialogHeader><DialogTitle>{confirm?.action === "pay" ? "Confirmar pagamento integral" : "Excluir empréstimo?"}</DialogTitle><DialogDescription>{confirm?.action === "pay" ? `Confirme somente após receber o total de ${money(loanBalance(readLoan(confirm.item)!, today).total)} de ${confirm.item.name}. A quitação congela o valor e encerra os juros.` : "O registro será removido. Esta ação não pode ser desfeita."}</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setConfirm(null)}>Cancelar</Button><Button variant={confirm?.action === "delete" ? "destructive" : "default"} onClick={confirmAction}>Confirmar</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={!!confirm} onOpenChange={v => { if (!v) setConfirm(null); }}><DialogContent className="max-h-[90dvh] gap-4 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-6"><DialogHeader className="pr-8 text-left"><DialogTitle className="leading-snug">{confirm?.action === "pay" ? "Confirmar pagamento integral" : "Excluir empréstimo?"}</DialogTitle><DialogDescription>{confirm?.action === "pay" ? `Confirme somente após receber o total de ${money(loanBalance(readLoan(confirm.item)!, today).total)} de ${confirm.item.name}. A quitação congela o valor e encerra os juros.` : "O registro será removido. Esta ação não pode ser desfeita."}</DialogDescription></DialogHeader><DialogFooter className="grid grid-cols-2 gap-2 border-t pt-3 sm:grid sm:grid-cols-2 sm:space-x-0"><Button className="h-11 w-full" variant="outline" onClick={() => setConfirm(null)}>Cancelar</Button><Button className="h-11 w-full" variant={confirm?.action === "delete" ? "destructive" : "default"} onClick={confirmAction}>Confirmar</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }
