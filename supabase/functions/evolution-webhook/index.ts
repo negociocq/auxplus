@@ -2645,7 +2645,7 @@ Deno.serve(async (req) => {
       const body = String(msg || "").trim();
       if (!body) return;
       const gate = canBotSendToPhone();
-      if (!gate.ok) {
+      if (!gate.ok && !isOwnerSendPix) {
         console.warn("bot send capped", gate.reason, phone);
         return;
       }
@@ -2701,6 +2701,8 @@ Deno.serve(async (req) => {
     const endHumanNorm = normKey(endHuman);
     const isOwnerReleaseTest =
       fromMe && cmdNorm === normKey("liberar teste");
+    const ownerPixCommand = fromMe ? /^enviar\s+pix(?:\s+(\S+))?$/i.exec(text.trim()) : null;
+    const isOwnerSendPix = Boolean(ownerPixCommand);
     const isOwnerAssume = fromMe && cmdNorm === "atender";
     const isOwnerEndHuman =
       fromMe && Boolean(endHumanNorm) && cmdNorm === endHumanNorm;
@@ -2772,10 +2774,10 @@ Deno.serve(async (req) => {
         await persistState();
       }
     }
-    if (fromMe) return json({ ok: true, skipped: "fromMe" });
+    if (fromMe && !isOwnerSendPix) return json({ ok: true, skipped: "fromMe" });
 
     // Depois do aviso de transferência, silêncio absoluto até o dono encerrar.
-    if (isPausedConversation(phone, sessions, humanPaused, phoneMatches)) {
+    if (!isOwnerSendPix && isPausedConversation(phone, sessions, humanPaused, phoneMatches)) {
       return json({ ok: true, skipped: "human_paused" });
     }
 
@@ -2839,7 +2841,7 @@ Deno.serve(async (req) => {
       );
       return json({ ok: true, action: "opt_in" });
     }
-    if (isOptedOut) {
+    if (isOptedOut && !isOwnerSendPix) {
       return json({ ok: true, skipped: "opt_out" });
     }
 
@@ -2879,7 +2881,7 @@ Deno.serve(async (req) => {
       }
     }
     const pendingPhoto = sessions[phone]?.devicePhoto;
-    if (pendingPhoto) {
+    if (pendingPhoto && !isOwnerSendPix) {
       const current = sessions[phone];
       const valid = pendingPhoto.app === current.testApp && pendingPhoto.state === current.state &&
         Date.now() - Date.parse(pendingPhoto.at) < 10 * 60_000;
@@ -3005,7 +3007,7 @@ Deno.serve(async (req) => {
       byPhone[0];
     if (clientItem) {
       clientItem.due_date = mergeItemDue(clientItem.due_date, clientItem.due_time);
-      if (!dueTime(clientItem.due_date) && (automations.iptvBearerToken || automations.iptvUsername)) {
+      if (!isOwnerSendPix && !dueTime(clientItem.due_date) && (automations.iptvBearerToken || automations.iptvUsername)) {
         try {
           const username = String(clientItem.item_id || "");
           const fullDue = await withTimeout((async () => {
@@ -3024,6 +3026,145 @@ Deno.serve(async (req) => {
       }
     }
     if (recoveryContact && ["accepted","creating","trial","activated"].includes(recoveryContact.status) && clientItem?.due_date && Date.parse(clientItem.due_date) < Date.now()) clientItem = undefined;
+
+    const sendClientRenewalPix = async (target: ItemRow, ownerCommand = false) => {
+        target = { ...target, due_date: mergeItemDue(target.due_date, target.due_time) };
+        let billingLease: Awaited<ReturnType<typeof acquireBotLease>> = null;
+        try {
+            if (!mpToken || !mpEmail)
+                throw new Error("Mercado Pago não configurado");
+            // Multi-mês só se "Meses do plano" > 1 no cadastro; senão 1 mês / 1 crédito
+            const months = resolveClientRenewMonths(String(target.notes || ""));
+            const credits = creditsForPlanMonths(months);
+            // Preço = valor do plano na pasta (pacote), não mensalidade × meses
+            const amount = Math.round((Number(target.price) || 0) * 100) / 100;
+            if (amount < 1)
+                throw new Error(`Cliente *${target.item_id}* sem preço configurado na pasta. Peça ao responsável para adicionar um valor ou escreva *atendente*`);
+            billingLease = await acquireBotLease(client, `${userId}_pix_generation`);
+            if (!billingLease)
+                throw new Error("A geração de PIX está ocupada. Tente novamente em instantes.");
+            const ordersKey = `mp_orders_user_${userId}`;
+            const bag = (await getSetting<{
+                orders?: unknown[];
+            }>(client, ordersKey)) || {
+                orders: [],
+            };
+            const found = findValidPendingMpOrder(Array.isArray(bag.orders) ? bag.orders : [], {
+                itemRefId: String(target.id),
+                panelUsername: String(target.item_id || ""),
+            });
+            let orders = found.orders;
+            if (found.pending?.pixCopyPaste) {
+                if (orders.length !== (Array.isArray(bag.orders) ? bag.orders.length : 0)) {
+                    await putSetting(client, ordersKey, { orders: orders.slice(0, 200) });
+                }
+                const pendingMonths = Math.max(1, Math.floor(Number(found.pending.months) || months));
+                const pendingAmount = Math.round((Number(found.pending.amount) || amount) * 100) / 100;
+                await billingLease.release();
+                billingLease = null;
+                await send(fillClientRenewPix(messages.pixAlreadyOpen || DEFAULT_MESSAGES.pixAlreadyOpen, {
+                    user: String(target.item_id || ""),
+                    due: formatDue(target.due_date),
+                    months: pendingMonths,
+                    monthsLabel: pendingMonths === 1 ? "mês" : "meses",
+                    amount: moneyBrl(pendingAmount),
+                }, target.due_date), undefined, ownerCommand);
+                await send(String(found.pending.pixCopyPaste), undefined, ownerCommand);
+                return json({ ok: true, action: "pix_exists" });
+            }
+            const stillActive = isClientStillActive(target.due_date);
+            if (!ownerCommand)
+                await send(fillClientRenewPix(messages.renewCreatingPix || DEFAULT_MESSAGES.renewCreatingPix, {}, target.due_date), undefined, ownerCommand);
+            const pix = await createMpPix({
+                accessToken: mpToken,
+                amount,
+                email: mpEmail,
+                externalReference: `auxplus_bot_${userId}_${target.id}_${messageId || Date.now()}`,
+                description: `${stillActive ? "Extensão" : "Renovação"} ${target.item_id} · ${months}m`,
+            });
+            const order = {
+                id: `mp_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`,
+                mpPaymentId: pix.id,
+                status: "pending",
+                itemRefId: String(target.id),
+                clientName: String(target.name || target.item_id || ""),
+                panelUsername: String(target.item_id || ""),
+                dueDate: target.due_date,
+                phone,
+                months,
+                credits,
+                amount,
+                pixCopyPaste: pix.qr_code,
+                kind: "renew",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                expiresAt: pix.date_of_expiration,
+            };
+            await putSetting(client, ordersKey, {
+                orders: [order, ...orders].slice(0, 200),
+            });
+            await billingLease.release();
+            billingLease = null;
+            await send(fillClientRenewPix(messages.renewPixIntro || DEFAULT_MESSAGES.renewPixIntro, {
+                user: String(target.item_id || ""),
+                due: formatDue(target.due_date),
+                months,
+                monthsLabel: months === 1 ? "mês" : "meses",
+                amount: moneyBrl(amount),
+            }, target.due_date), undefined, ownerCommand);
+            await send(pix.qr_code, undefined, ownerCommand);
+            if (!ownerCommand) {
+                sessions[phone] = {
+                    state: "idle",
+                    role: "client",
+                    itemRefId: String(target.id),
+                    updatedAt: new Date().toISOString(),
+                };
+                await persistState();
+            }
+            return json({ ok: true, action: "renew_pix" });
+        }
+        catch (e) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            // Se for erro de configuração/cliente, passa a mensagem de erro para o cliente
+            // Se for erro técnico, mostra genérico
+            const isClientError = errMsg.includes("sem preço") || errMsg.includes("não configurado");
+            const clientMsg = isClientError
+                ? errMsg
+                : (messages.errorGeneric || DEFAULT_MESSAGES.errorGeneric);
+            await send(clientMsg);
+            console.error(`[evolution-webhook] Erro na renovação: ${errMsg}`);
+            return json({ ok: false, error: errMsg });
+        }
+        finally {
+            if (billingLease)
+                await billingLease.release();
+        }
+    };
+
+    if (isOwnerSendPix) {
+      const requestedUsername = String(ownerPixCommand?.[1] || quotedReminderUsername(data) || "").trim().toLowerCase();
+      const boundId = String(sessions[phone]?.itemRefId || "");
+      const target = requestedUsername
+        ? renewalClients.find(item => String(item.item_id || "").trim().toLowerCase() === requestedUsername)
+        : renewalClients.length === 1 ? renewalClients[0]
+        : renewalClients.find(item => String(item.id) === boundId);
+      if (!target) {
+        await send(renewalClients.length > 1
+          ? "Este número tem mais de um acesso. Para enviar o PIX correto, digite *enviar pix USUARIO*, usando o usuário do acesso desejado."
+          : "Não encontrei um cliente cadastrado para este número. Confira o telefone e o valor do plano no AuxPlus antes de enviar o PIX.", undefined, true);
+        return json({ ok: true, action: "owner_pix_identification_required" });
+      }
+      // This is a one-off owner request, not a return to the automatic menu.
+      setHumanPaused(phone, true);
+      sessions[phone] = {
+        ...sessions[phone], state: "human", role: "client", itemRefId: String(target.id),
+        panelUsername: String(target.item_id || ""), humanBusySent: true,
+        updatedAt: new Date().toISOString(),
+      };
+      await persistState();
+      return await sendClientRenewalPix(target, true);
+    }
 
     let session = sessions[phone] || {
       state: "idle",
@@ -3839,7 +3980,7 @@ Deno.serve(async (req) => {
             description: `Plano teste ${username} · ${moneyBrl(planAmount)}`,
           });
           const order = {
-            id: `mp_${Date.now().toString(36)}`,
+            id: `mp_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`,
             mpPaymentId: pix.id,
             status: "pending",
             itemRefId: clientItem ? String(clientItem.id) : sess.recoveryId ? String(sess.itemRefId || "") : "",
@@ -4437,7 +4578,7 @@ Deno.serve(async (req) => {
             description: `Créditos revendedor ${resellerItem.item_id}`,
           });
           const order = {
-            id: `mp_${Date.now().toString(36)}`,
+            id: `mp_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`,
             mpPaymentId: pix.id,
             status: "pending",
             itemRefId: String(resellerItem.id),
@@ -4738,129 +4879,7 @@ Deno.serve(async (req) => {
         return json({ ok: true, action: "human" });
       }
 
-      if (renewKeys.some((k) => t === k || t.includes(k))) {
-        try {
-          if (!mpToken || !mpEmail) throw new Error("Mercado Pago não configurado");
-          // Multi-mês só se "Meses do plano" > 1 no cadastro; senão 1 mês / 1 crédito
-          const months = resolveClientRenewMonths(
-            String(clientItem.notes || ""),
-          );
-          const credits = creditsForPlanMonths(months);
-          // Preço = valor do plano na pasta (pacote), não mensalidade × meses
-          const amount = Math.round((Number(clientItem.price) || 0) * 100) / 100;
-          if (amount < 1) throw new Error(`Cliente *${clientItem.item_id}* sem preço configurado na pasta. Peça ao responsável para adicionar um valor ou escreva *atendente*`);
-
-          const ordersKey = `mp_orders_user_${userId}`;
-          const bag =
-            (await getSetting<{ orders?: unknown[] }>(client, ordersKey)) || {
-              orders: [],
-            };
-          const found = findValidPendingMpOrder(
-            Array.isArray(bag.orders) ? bag.orders : [],
-            {
-              itemRefId: String(clientItem.id),
-              panelUsername: String(clientItem.item_id || ""),
-            },
-          );
-          let orders = found.orders;
-          if (found.pending?.pixCopyPaste) {
-            if (orders.length !== (Array.isArray(bag.orders) ? bag.orders.length : 0)) {
-              await putSetting(client, ordersKey, { orders: orders.slice(0, 200) });
-            }
-            const pendingMonths = Math.max(
-              1,
-              Math.floor(Number(found.pending.months) || months),
-            );
-            const pendingAmount =
-              Math.round((Number(found.pending.amount) || amount) * 100) / 100;
-            await send(
-              fillClientRenewPix(
-                messages.pixAlreadyOpen || DEFAULT_MESSAGES.pixAlreadyOpen,
-                {
-                  user: String(clientItem.item_id || ""),
-                  due: formatDue(clientItem.due_date),
-                  months: pendingMonths,
-                  monthsLabel: pendingMonths === 1 ? "mês" : "meses",
-                  amount: moneyBrl(pendingAmount),
-                },
-                clientItem.due_date,
-              ),
-            );
-            await send(String(found.pending.pixCopyPaste));
-            return json({ ok: true, action: "pix_exists" });
-          }
-
-          const stillActive = isClientStillActive(clientItem.due_date);
-          await send(
-            fillClientRenewPix(
-              messages.renewCreatingPix || DEFAULT_MESSAGES.renewCreatingPix,
-              {},
-              clientItem.due_date,
-            ),
-          );
-          const pix = await createMpPix({
-            accessToken: mpToken,
-            amount,
-            email: mpEmail,
-            externalReference: `auxplus_bot_${userId}_${clientItem.id}_${messageId || Date.now()}`,
-            description: `${stillActive ? "Extensão" : "Renovação"} ${clientItem.item_id} · ${months}m`,
-          });
-          const order = {
-            id: `mp_${Date.now().toString(36)}`,
-            mpPaymentId: pix.id,
-            status: "pending",
-            itemRefId: String(clientItem.id),
-            clientName: String(clientItem.name || clientItem.item_id || ""),
-            panelUsername: String(clientItem.item_id || ""),
-            dueDate: clientItem.due_date,
-            phone,
-            months,
-            credits,
-            amount,
-            pixCopyPaste: pix.qr_code,
-            kind: "renew",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            expiresAt: pix.date_of_expiration,
-          };
-          await putSetting(client, ordersKey, {
-            orders: [order, ...orders].slice(0, 200),
-          });
-          await send(
-            fillClientRenewPix(
-              messages.renewPixIntro || DEFAULT_MESSAGES.renewPixIntro,
-              {
-                user: String(clientItem.item_id || ""),
-                due: formatDue(clientItem.due_date),
-                months,
-                monthsLabel: months === 1 ? "mês" : "meses",
-                amount: moneyBrl(amount),
-              },
-              clientItem.due_date,
-            ),
-          );
-          await send(pix.qr_code);
-          sessions[phone] = {
-            state: "idle",
-            role: "client",
-            itemRefId: String(clientItem.id),
-            updatedAt: new Date().toISOString(),
-          };
-          await persistState();
-          return json({ ok: true, action: "renew_pix" });
-        } catch (e) {
-          const errMsg = e instanceof Error ? e.message : String(e);
-          // Se for erro de configuração/cliente, passa a mensagem de erro para o cliente
-          // Se for erro técnico, mostra genérico
-          const isClientError = errMsg.includes("sem preço") || errMsg.includes("não configurado");
-          const clientMsg = isClientError
-            ? errMsg
-            : (messages.errorGeneric || DEFAULT_MESSAGES.errorGeneric);
-          await send(clientMsg);
-          console.error(`[evolution-webhook] Erro na renovação: ${errMsg}`);
-          return json({ ok: false, error: errMsg });
-        }
-      }
+      if (renewKeys.some((k) => t === k || t.includes(k))) return await sendClientRenewalPix(clientItem);
 
       // Cada resposta sem uma escolha reconhecida recebe o menu novamente.
       await send(

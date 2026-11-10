@@ -73,7 +73,7 @@ const sent = [];
 let beforeSend;
 let handler;
 const context = {
-  exports: {}, console, Request, Response, URL, AbortSignal, crypto: webcrypto, structuredClone,
+  exports: {}, console, Request, Response, URL, AbortSignal, crypto: webcrypto, structuredClone, TextEncoder, Uint8Array,
   setTimeout, clearTimeout, setInterval, clearInterval,
   Deno: { env: { get: () => "fixture" }, serve: (fn) => { handler = fn; } },
   require: (path) => {
@@ -255,3 +255,80 @@ assert.equal(state().sessions['5511987654321'].state, 'human');
 assert.ok(state().recentMsgIds['slow-owner-command']);
 assert.ok(state().recentMsgIds['independent-chat-command']);
 console.log('PASS: independent chat responds while another network send is held; both states and message IDs survive.');
+
+// Owner billing shortcut must retain human service, even when automatic caps apply.
+auto.value = { mpAccessToken: 'fixture-token', mpPayerEmail: 'fixture@example.invalid' };
+db.tables.platform_settings.find(row => row.key === 'mp_orders_user_1').value.orders = [];
+db.tables.items = [{ id: 'customer', folder_id: 'folder', item_id: 'sample', phone, name: 'Fixture customer', price: 25, is_active: true, due_date: '2026-11-19', due_time: '19:54:31' }];
+state().sessions[phone] = { state: 'human', role: 'client', itemRefId: 'customer', updatedAt: new Date().toISOString() };
+state().humanPaused[phone] = true;
+state().botSendLog = Array.from({ length: 40 }, (_, i) => ({ phone, at: new Date(Date.now() - i * 1000).toISOString() }));
+state().recentRepliesByPhone = {};
+const paymentRequests = [];
+context.fetch = async (url, init) => {
+  if (String(url).startsWith('https://api.mercadopago.com/')) {
+    paymentRequests.push(JSON.parse(init.body));
+    return Response.json({ id: `fixture-payment-${paymentRequests.length}`, transactions: { payments: [{ payment_method: { qr_code: `fixture-pix-${paymentRequests.length}` }, date_of_expiration: new Date(Date.now() + 3600000).toISOString() }] } });
+  }
+  return workingFetch(url, init);
+};
+const untouched = structuredClone(db.tables.items[0]);
+const beforePix = sent.length;
+assert.equal((await receive('enviar pix', { fromMe: true, id: 'owner-pix-one' })).action, 'renew_pix');
+assert.equal(paymentRequests.length, 1); assert.equal(paymentRequests[0].total_amount, '25.00');
+assert.equal(sent.length - beforePix, 2, 'owner shortcut sends the intro and copy/paste code without automatic menus');
+assert.equal(sent.at(-1), 'fixture-pix-1');
+assert.equal(state().sessions[phone].state, 'human'); assert.equal(state().humanPaused[phone], true);
+assert.deepEqual(db.tables.items[0], untouched, 'creating PIX must not renew or change the client');
+assert.equal((await receive('enviar pix', { fromMe: true, id: 'owner-pix-one' })).skipped, 'dup_message');
+const beforeManualPixRepeat = sent.length;
+assert.equal((await receive('ENVIAR PIX', { fromMe: true, id: 'owner-pix-two' })).action, 'pix_exists');
+assert.equal(paymentRequests.length, 1); assert.equal(sent.length - beforeManualPixRepeat, 2, 'explicit owner resend reuses the valid invoice');
+assert.equal((await receive('enviar pix', { id: 'customer-cannot-authorize-pix' })).skipped, 'human_paused');
+assert.equal(paymentRequests.length, 1);
+
+const beforeUnknown = paymentRequests.length;
+assert.equal((await receive('enviar pix', { fromMe: true, targetPhone: '5511987654321' })).action, 'owner_pix_identification_required');
+assert.equal(paymentRequests.length, beforeUnknown);
+db.tables.items.push({ ...untouched, id: 'customer-two', item_id: 'sample-two', price: 30 });
+state().sessions[phone] = { state: 'human', updatedAt: new Date().toISOString() };
+assert.equal((await receive('enviar pix', { fromMe: true })).action, 'owner_pix_identification_required');
+assert.equal(paymentRequests.length, 1, 'ambiguous access cannot generate a charge');
+assert.equal((await receive('enviar pix sample-two', { fromMe: true })).action, 'renew_pix');
+assert.equal(paymentRequests.at(-1).total_amount, '30.00');
+const invoices = () => db.tables.platform_settings.find(row => row.key === 'mp_orders_user_1').value.orders;
+assert.equal(invoices().find(row => row.mpPaymentId === 'fixture-payment-2').itemRefId, 'customer-two');
+assert.equal(new Set(invoices().map(row => row.id)).size, invoices().length);
+assert.equal(state().sessions[phone].state, 'human');
+
+// The original customer renewal route still creates PIX and returns to idle.
+db.tables.items = [untouched];
+db.tables.platform_settings.find(row => row.key === 'mp_orders_user_1').value.orders = [];
+state().sessions[phone] = { state: 'idle' }; state().humanPaused = {};
+state().botSendLog = []; state().recentRepliesByPhone = {};
+assert.equal((await receive('1')).action, 'renew_pix');
+assert.equal(paymentRequests.length, 3); assert.equal(state().sessions[phone].state, 'idle');
+console.log('PASS: owner PIX shortcut during human service, exact owner authorization, saved price, reuse/dedup, ambiguity handling, retained human pause and unchanged customer renewal route. All payments and sends mocked.');
+
+// Two staff commands in different chats must not overwrite each other's invoices.
+db.tables.platform_settings.find(row => row.key === 'mp_orders_user_1').value.orders = [];
+db.tables.items.push({ ...untouched, id: 'parallel-customer', item_id: 'parallel-user', phone: '5511977654321', price: 40 });
+const paymentFetch = context.fetch;
+let releasePayment, paymentEntered;
+const heldPayment = new Promise(resolve => { releasePayment = resolve; });
+const paymentStarted = new Promise(resolve => { paymentEntered = resolve; });
+context.fetch = async (url, init) => {
+  if (String(url).startsWith('https://api.mercadopago.com/') && JSON.parse(init.body).external_reference.includes('invoice-parallel-a')) {
+    paymentEntered(); await heldPayment;
+  }
+  return paymentFetch(url, init);
+};
+const firstInvoice = receive('enviar pix', { fromMe: true, id: 'invoice-parallel-a' });
+await paymentStarted;
+const secondInvoice = receive('enviar pix', { fromMe: true, id: 'invoice-parallel-b', targetPhone: '5511977654321' });
+releasePayment();
+assert.equal((await firstInvoice).action, 'renew_pix');
+assert.equal((await secondInvoice).action, 'renew_pix');
+assert.deepEqual(invoices().map(row => row.itemRefId).sort(), ['customer', 'parallel-customer']);
+assert.equal(db.tables.platform_private_secrets.length, 0);
+console.log('PASS: simultaneous owner PIX commands preserve both invoices and release billing locks; no real payments.');
