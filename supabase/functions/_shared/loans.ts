@@ -29,6 +29,9 @@ export interface LoanReceipt {
   nextDueDate?: string;
 }
 
+/** Equivalent daily rate for legacy monthly contracts, without changing their balance. */
+export const dailyLoanRate = (loan: Pick<LoanTerms, "lateRate" | "latePeriod">) => loan.lateRate / (loan.latePeriod === "month" ? 30 : 1);
+
 const marker = /<!--AXLOAN:([\s\S]*?)-->/g;
 export const stripLoan = (notes = "") => notes.replace(marker, "").trim();
 export function readLoan(item: Pick<Item, "notes">): LoanTerms | null {

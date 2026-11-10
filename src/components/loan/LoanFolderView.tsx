@@ -22,7 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { readLoanReminder, renderLoanReminder, writeLoanReminder } from "@/lib/loans";
 import { readLoanAutoSettings, writeLoanAutoSettings, buildLoanReminderMessage } from "@/lib/loans";
 import { defaultLoanReminder, loanReminderKind, type LoanReminderKind } from "@/lib/loans";
-import { nextLoanMonth, recordLoanPayment } from "@/lib/loans";
+import { dailyLoanRate, nextLoanMonth, recordLoanPayment } from "@/lib/loans";
 import { LoanClientHistory } from "@/components/loan/LoanClientHistory";
 import { LoanWhatsappConnection } from "@/components/loan/LoanWhatsappConnection";
 import { useLoanWhatsappConnection } from "@/hooks/useLoanWhatsappConnection";
@@ -30,10 +30,10 @@ import { fetchEvolutionStatus, sendEvolutionText } from "@/lib/whatsappAutomatio
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
-const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", lateRateType: "percent" as NonNullable<LoanTerms["lateRateType"]>, latePeriod: "month" as LoanTerms["latePeriod"], notes: "" });
+const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", lateRateType: "percent" as NonNullable<LoanTerms["lateRateType"]>, latePeriod: "day" as LoanTerms["latePeriod"], notes: "" });
 const decimal = (value: string) => Number(value.trim().replace(",", "."));
 const loanFinancialFields = ["principal", "agreedAmount", "lentAt", "dueDate", "lateRate", "latePeriod", "lateRateType"] as const;
-const sameLoanConditions = (a: LoanTerms, b: LoanTerms) => loanFinancialFields.every(key => (a[key] ?? (key === "lateRateType" ? "percent" : undefined)) === (b[key] ?? (key === "lateRateType" ? "percent" : undefined)));
+const sameLoanConditions = (a: LoanTerms, b: LoanTerms) => dailyLoanRate(a) === dailyLoanRate(b) && loanFinancialFields.filter(key => key !== "lateRate" && key !== "latePeriod").every(key => (a[key] ?? (key === "lateRateType" ? "percent" : undefined)) === (b[key] ?? (key === "lateRateType" ? "percent" : undefined)));
 const dueColors: Record<ItemStatus, string> = {
   "Longe de Vencer": "border-l-success bg-[linear-gradient(90deg,hsl(var(--success)_/_0.12)_0%,hsl(var(--success)_/_0.04)_35%,transparent_70%)]",
   "Perto de Vencer": "border-l-warning bg-[linear-gradient(90deg,hsl(var(--warning)_/_0.14)_0%,hsl(var(--warning)_/_0.05)_35%,transparent_70%)]",
@@ -54,7 +54,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [form, setForm] = useState(blank);
-  const [confirm, setConfirm] = useState<{ item: Item; action: "pay" | "interest" | "partial" | "delete"; amount?: string; receiptId?: string; snapshot?: string; nextDueDate?: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ item: Item; action: "pay" | "interest" | "delete"; receiptId?: string; snapshot?: string; nextDueDate?: string } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
   const historyFolders = useMemo(() => data.folders.filter(f => f.userId === folder.userId && f.type === "Produto"), [data.folders, folder.userId]);
@@ -121,7 +121,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const edit = (item?: Item) => {
     const loan = item && readLoan(item);
     setEditing(item || null);
-    setForm(item ? { name: item.name, phone: item.phone, principal: String(loan?.principal || item.price || ""), agreedAmount: String(loan?.agreedAmount || item.price || ""), lentAt: loan?.lentAt || today, dueDate: loan?.dueDate || item.dueDate?.slice(0, 10) || "", lateRate: String(loan?.lateRate || 0), lateRateType: loan?.lateRateType || "percent", latePeriod: loan?.latePeriod || "month", notes: cleanNotes(item.notes) } : blank());
+    setForm(item ? { name: item.name, phone: item.phone, principal: String(loan?.principal || item.price || ""), agreedAmount: String(loan?.agreedAmount || item.price || ""), lentAt: loan?.lentAt || today, dueDate: loan?.dueDate || item.dueDate?.slice(0, 10) || "", lateRate: String(loan ? dailyLoanRate(loan) : 0), lateRateType: loan?.lateRateType || "percent", latePeriod: "day", notes: cleanNotes(item.notes) } : blank());
     setOpen(true);
   };
   const save = (e: FormEvent) => {
@@ -142,7 +142,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
           const previousLoan = readLoan(current);
           if (previousLoan?.balanceState && !sameLoanConditions(previousLoan, loan)) return prev;
           const next = updateItem(prev, { ...current, ...input });
-          const preservedLoan = { ...previousLoan, ...loan, ...(previousLoan?.dueDate !== loan.dueDate ? { cycleDay: Number(loan.dueDate.slice(8, 10)) } : {}) };
+          const preservedLoan = { ...previousLoan, ...loan, ...(previousLoan && dailyLoanRate(previousLoan) === dailyLoanRate(loan) ? { lateRate: previousLoan.lateRate, latePeriod: previousLoan.latePeriod } : {}), ...(previousLoan?.dueDate !== loan.dueDate ? { cycleDay: Number(loan.dueDate.slice(8, 10)) } : {}) };
           return { ...next, items: next.items.map(i => i.id === current.id ? { ...i, payments: [], notes: writeLoan(cleanNotes(i.notes), preservedLoan) } : i) };
         }
         return createItem(prev, input);
@@ -174,7 +174,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível confirmar o envio. Confira o WhatsApp antes de tentar novamente."); }
     finally { sendingReminderRef.current = false; setSendingReminder(false); }
   };
-  const openPayment = (item: Item, action: "pay" | "interest" | "partial") => {
+  const openPayment = (item: Item, action: "pay" | "interest") => {
     const loan = readLoan(item);
     if (!loan || loan.paidAt) return;
     setDetailId(null);
@@ -188,7 +188,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     let paid: LoanTerms | null = null;
     if (action !== "delete") {
       if (!currentLoan || JSON.stringify(currentLoan) !== confirm.snapshot) { toast.error("Os dados do empréstimo mudaram. Abra os detalhes novamente para conferir."); setConfirm(null); return; }
-      try { paid = recordLoanPayment(currentLoan, { id: confirm.receiptId!, kind: action === "interest" ? "interest" : action === "partial" ? "partial" : "full", amount: decimal(confirm.amount || "0"), paidAt: new Date().toISOString(), nextDueDate: confirm.nextDueDate }); }
+      try { paid = recordLoanPayment(currentLoan, { id: confirm.receiptId!, kind: action === "interest" ? "interest" : "full", paidAt: new Date().toISOString(), nextDueDate: confirm.nextDueDate }); }
       catch (error) { toast.error(error instanceof Error ? error.message : "Confira o pagamento."); return; }
     }
     setData(prev => {
@@ -200,7 +200,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       const next = updateItem(prev, { ...current, dueDate: paid.dueDate, payments: [], notes: writeLoan(current.notes, paid) });
       return { ...next, items: next.items.map(i => i.id === current.id ? { ...i, payments: [], notes: writeLoan(cleanNotes(i.notes), paid!) } : i) };
     });
-    setConfirm(null); toast.success(action === "pay" ? "Empréstimo quitado. Os juros foram encerrados." : action === "interest" ? "Juros recebidos. Capital mantido e vencimento prorrogado." : action === "partial" ? "Pagamento registrado. Saldo atualizado." : "Empréstimo excluído");
+    setConfirm(null); toast.success(action === "pay" ? "Empréstimo quitado. Os juros foram encerrados." : action === "interest" ? "Juros recebidos. Capital mantido e vencimento prorrogado." : "Empréstimo excluído");
   };
   return <div className="space-y-3 sm:space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -255,7 +255,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
             <div className="min-w-0 pl-2 text-right"><dt className="text-[10px] text-muted-foreground">{loan.paidAt ? "Pago" : "Total a pagar"}</dt><dd className="mt-0.5 break-words text-xs font-bold tabular-nums text-primary min-[360px]:text-sm">{money(balance.total)}</dd></div>
           </dl>
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-            <p>{loan.lateRate ? `Taxa de atraso: ${loan.lateRateType === "amount" ? money(loan.lateRate) : `${loan.lateRate}%`} ${loan.latePeriod === "day" ? "ao dia" : "ao mês (30 dias)"}` : "Sem juros por atraso"}</p>
+            <p>{loan.lateRate ? `Taxa de atraso: ${loan.lateRateType === "amount" ? money(dailyLoanRate(loan)) : `${Number(dailyLoanRate(loan).toFixed(8))}%`} ao dia` : "Sem juros por atraso"}</p>
             <p>{!loan.paidAt && balance.daysLate > 0 ? <><span className="font-medium text-destructive">Vencido há {balance.daysLate} {balance.daysLate === 1 ? "dia" : "dias"}</span><span> · </span></> : "Vence: "}<span className="font-medium text-foreground">{formatBrDate(loan.dueDate)}</span></p>
           </div>
         </div>
@@ -286,7 +286,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
           const { item, loan, balance, dueStatus } = detail;
           return <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-muted-foreground">{displayPhone(item.phone) || "Sem telefone"}</p>{loan && !loan.paidAt ? <StatusBadge status={dueStatus} /> : <span className="text-sm">{loan?.paidAt ? "Quitado" : "Configurar"}</span>}</div>
-      {loan && balance ? <><dl className="my-4 grid grid-cols-2 gap-3 text-sm">{[['Emprestado', money(loan.principal)], ['Combinado no vencimento', money(loan.agreedAmount)], ['Data do empréstimo', formatBrDate(loan.lentAt)], ['Vencimento', formatBrDate(loan.dueDate)], ['Juros combinados', money(balance.agreedInterest)], ['Juros de atraso', money(balance.lateInterest)], ['Capital restante', money(balance.principalRemaining)]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}</dl><div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">{loan.paidAt ? `Pago em ${formatBrDate(loan.paidAt)}` : `Total atualizado · ${formatBrDate(today)}`}</p><p className="text-xl font-semibold">{money(balance.total)}</p><p className="mt-1 text-xs text-muted-foreground">{loan.lateRate ? `Atraso: ${loan.lateRateType === "amount" ? money(loan.lateRate) : `${loan.lateRate}%`} ao ${loan.latePeriod === "day" ? "dia" : "mês (30 dias)"}, juros simples.` : "Sem juros por atraso."}</p></div></> : <p className="my-4 text-sm text-muted-foreground">Registro anterior preservado. Edite para definir as condições do empréstimo.</p>}
+      {loan && balance ? <><dl className="my-4 grid grid-cols-2 gap-3 text-sm">{[['Emprestado', money(loan.principal)], ['Combinado no vencimento', money(loan.agreedAmount)], ['Data do empréstimo', formatBrDate(loan.lentAt)], ['Vencimento', formatBrDate(loan.dueDate)], ['Juros combinados', money(balance.agreedInterest)], ['Juros de atraso', money(balance.lateInterest)], ['Capital restante', money(balance.principalRemaining)]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}</dl><div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">{loan.paidAt ? `Pago em ${formatBrDate(loan.paidAt)}` : `Total atualizado · ${formatBrDate(today)}`}</p><p className="text-xl font-semibold">{money(balance.total)}</p><p className="mt-1 text-xs text-muted-foreground">{loan.lateRate ? `Atraso: ${loan.lateRateType === "amount" ? money(dailyLoanRate(loan)) : `${Number(dailyLoanRate(loan).toFixed(8))}%`} ao dia, juros simples.` : "Sem juros por atraso."}</p></div></> : <p className="my-4 text-sm text-muted-foreground">Registro anterior preservado. Edite para definir as condições do empréstimo.</p>}
       {cleanNotes(item.notes) ? <p className="mt-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{cleanNotes(item.notes)}</p> : null}
             {!!loan?.receipts?.length && <details className="rounded-lg border p-3">
               <summary className="cursor-pointer text-sm font-medium">Histórico de pagamentos ({loan.receipts.length})</summary>
@@ -303,7 +303,6 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
               {loan && balance && !loan.paidAt && <div className="grid grid-cols-2 gap-2">
                 <Button variant="outline" className="h-auto min-h-14 min-w-0 flex-col gap-0.5 px-2 py-2 text-xs" disabled={balance.total <= balance.principalRemaining} onClick={() => openPayment(item, "interest")}><span>Somente juros</span><span className="font-semibold tabular-nums">{money(balance.total - balance.principalRemaining)}</span></Button>
                 <Button className="h-auto min-h-14 min-w-0 flex-col gap-0.5 px-2 py-2 text-xs" onClick={() => openPayment(item, "pay")}><span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Quitar tudo</span><span className="font-semibold tabular-nums">{money(balance.total)}</span></Button>
-                <Button variant="outline" className="col-span-2 h-10 text-xs" onClick={() => openPayment(item, "partial")}>Pagamento parcial · informar valor</Button>
               </div>}
               <div className="grid grid-cols-2 gap-2">
                 {!loan?.paidAt && <Button className="h-10 w-full" variant="outline" onClick={() => { setDetailId(null); edit(item); }}><Pencil className="h-4 w-4" />Editar</Button>}
@@ -336,23 +335,20 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
               <Label className="text-xs" htmlFor="loan-period">Período da taxa</Label>
               <Popover>
                 <PopoverTrigger asChild>
-                  <button type="button" aria-label="Como funcionam os juros ao mês e ao dia" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <button type="button" aria-label="Como funcionam os juros ao dia" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <Info className="h-4 w-4" />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="max-h-[65dvh] w-80 max-w-[calc(100vw-2rem)] space-y-3 overflow-y-auto text-sm">
-                  <p className="font-semibold">Como escolher a taxa e o período?</p>
+                  <p className="font-semibold">Como funcionam os juros ao dia?</p>
                   <p><strong>Porcentagem:</strong> calculada sobre o valor combinado no vencimento. <strong>Valor em reais:</strong> acrescenta o valor informado por período, independentemente do saldo.</p>
-                  <p>Exemplo em reais: <strong>R$ 30 ao mês</strong> equivale a R$ 1 por dia de atraso. <strong>R$ 5 ao dia</strong> acrescenta R$ 25 em 5 dias.</p>
-                  <p><strong>Ao mês:</strong> a taxa informada vale para 30 dias de atraso. O sistema divide esse valor por 30 para calcular cada dia.</p>
-                  <p>Exemplo: valor combinado de <strong>R$ 1.000</strong>, com <strong>3% ao mês</strong>, gera R$ 30 em 30 dias — ou <strong>R$ 1 por dia de atraso</strong>. Em 5 dias, o total será R$ 1.005.</p>
-                  <p><strong>Ao dia:</strong> a taxa informada é cobrada a cada dia de atraso.</p>
-                  <p>Exemplo: valor combinado de <strong>R$ 1.000</strong>, com <strong>1% ao dia</strong>, gera <strong>R$ 10 por dia de atraso</strong>. Em 5 dias, o total será R$ 1.050.</p>
+                  <p><strong>Valor em reais:</strong> R$ 5 ao dia acrescenta R$ 25 em 5 dias de atraso.</p>
+                  <p><strong>Porcentagem:</strong> 1% ao dia sobre R$ 1.000 acrescenta R$ 10 por dia. Em 5 dias, o total será R$ 1.050.</p>
                   <p className="border-t pt-2 text-xs text-muted-foreground">Os juros começam no dia seguinte ao vencimento e não acumulam juros sobre juros. Na opção porcentagem, a base é sempre o valor combinado no vencimento. Com taxa 0, o valor não aumenta após vencer.</p>
                 </PopoverContent>
               </Popover>
             </div>
-            <select id="loan-period" disabled={!!(editing && readLoan(editing)?.balanceState)} className="h-10 w-full rounded-md border bg-background px-2 text-sm" value={form.latePeriod} onChange={e => setForm(p => ({ ...p, latePeriod: e.target.value as LoanTerms['latePeriod'] }))}><option value="month">Ao mês (30 dias)</option><option value="day">Ao dia</option></select>
+            <Input id="loan-period" value="Ao dia" readOnly />
           </div>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">Use 0 para não cobrar juros por atraso. Toque no ícone de informação para ver exemplos.</p>
@@ -361,20 +357,16 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     </form></DialogContent></Dialog>
     <Dialog open={!!confirm} onOpenChange={v => { if (!v) setConfirm(null); }}>
       <DialogContent>
-        <DialogHeader><DialogTitle>{confirm?.action === "interest" ? "Receber somente os juros" : confirm?.action === "partial" ? "Registrar pagamento parcial" : confirm?.action === "pay" ? "Quitar o empréstimo" : "Excluir empréstimo?"}</DialogTitle><DialogDescription>{confirm?.action === "delete" ? "O registro será removido. Esta ação não pode ser desfeita." : `${confirm?.item.name} · Confirme somente depois de receber o pagamento.`}</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{confirm?.action === "interest" ? "Receber somente os juros" : confirm?.action === "pay" ? "Quitar o empréstimo" : "Excluir empréstimo?"}</DialogTitle><DialogDescription>{confirm?.action === "delete" ? "O registro será removido. Esta ação não pode ser desfeita." : `${confirm?.item.name} · Confirme somente depois de receber o pagamento.`}</DialogDescription></DialogHeader>
         {paymentLoan && paymentBalance && <div className="space-y-3">
           <div className="rounded-lg border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">{confirm?.action === "interest" ? "Juros a receber agora" : "Total a receber — capital + juros"}</p><p className="mt-1 text-xl font-semibold tabular-nums">{money(confirm?.action === "interest" ? paymentBalance.total - paymentBalance.principalRemaining : paymentBalance.total)}</p>{paymentBalance.lateInterest > 0 && <p className="mt-1 text-xs text-muted-foreground">Inclui {money(paymentBalance.lateInterest)} de juros por atraso.</p>}</div>
-          {confirm?.action === "partial" ? <>
-            <div className="space-y-1"><Label htmlFor="loan-partial-amount">Valor recebido (R$)</Label><Input id="loan-partial-amount" inputMode="decimal" autoFocus value={confirm.amount || ""} onChange={e => setConfirm(value => value ? { ...value, amount: e.target.value } : null)} /></div>
-            <p className="text-sm">Saldo após pagamento: <strong>{money(Math.max(0, paymentBalance.total - (Number.isFinite(decimal(confirm.amount || "0")) ? decimal(confirm.amount || "0") : 0)))}</strong></p>
-            <p className="text-xs text-muted-foreground">Abate primeiro os juros de atraso, depois os juros combinados e por último o capital. O vencimento permanece igual. Os juros futuros incidem sobre o saldo restante; taxas em reais mantêm o valor por período. Se pagar todo o saldo, o empréstimo será quitado.</p>
-          </> : confirm?.action === "interest" ? <>
+          {confirm?.action === "interest" ? <>
             <p className="text-sm">O capital de <strong>{money(paymentBalance.principalRemaining)}</strong> continua em aberto. No próximo período, o valor combinado será <strong>{money(paymentBalance.principalRemaining + paymentLoan.agreedAmount - paymentLoan.principal)}</strong>, com os mesmos juros do período.</p>
             <div className="space-y-1"><Label htmlFor="loan-payment-next-due">Novo vencimento</Label><Input id="loan-payment-next-due" type="date" required value={confirm.nextDueDate || ""} onChange={e => setConfirm(value => value ? { ...value, nextDueDate: e.target.value } : null)} /></div>
             <p className="text-xs text-muted-foreground">Sugerido: um mês após o vencimento atual. Você pode ajustar a data antes de confirmar. Este pagamento será registrado como juros, sem abater o capital.</p>
           </> : <p className="text-sm text-muted-foreground">A quitação paga o capital e os juros atuais, encerra os juros futuros e os lembretes automáticos. O histórico dos pagamentos anteriores será mantido.</p>}
         </div>}
-        <DialogFooter><Button variant="outline" onClick={() => setConfirm(null)}>Cancelar</Button><Button variant={confirm?.action === "delete" ? "destructive" : "default"} disabled={(confirm?.action === "partial" && (!Number.isFinite(decimal(confirm.amount || "0")) || decimal(confirm.amount || "0") <= 0 || decimal(confirm.amount || "0") > (paymentBalance?.total || 0))) || confirm?.action === "interest" && (!confirm.nextDueDate || confirm.nextDueDate <= today || confirm.nextDueDate <= (paymentLoan?.dueDate || ""))} onClick={confirmAction}>Confirmar</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={() => setConfirm(null)}>Cancelar</Button><Button variant={confirm?.action === "delete" ? "destructive" : "default"} disabled={confirm?.action === "interest" && (!confirm.nextDueDate || confirm.nextDueDate <= today || confirm.nextDueDate <= (paymentLoan?.dueDate || ""))} onClick={confirmAction}>Confirmar</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;

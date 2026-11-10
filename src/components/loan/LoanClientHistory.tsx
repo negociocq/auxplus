@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { Folder, Item } from "@/types";
+import { dailyLoanRate } from "@/lib/loans";
 import { buildLoanClientHistory } from "@/lib/loanClientHistory";
 import { formatBrDate } from "@/lib/format";
 import { useHideBalance } from "@/hooks/useHideBalance";
@@ -26,7 +27,7 @@ export function LoanClientHistory({ selected, items, folders, today, onClose }: 
         <div className="mt-1 flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2"><div className="min-w-0"><p className="text-xs font-medium">{loan.paidAt ? "Tudo pago" : "Falta pagar"}</p>{!loan.paidAt && <p className="mt-0.5 text-[11px] text-muted-foreground">Vencimento: {formatBrDate(loan.dueDate)}</p>}</div><span className="shrink-0 text-sm font-semibold tabular-nums">{money(balance.outstanding)}</span></div>
         <details className="group mt-3 text-xs"><summary className="cursor-pointer text-muted-foreground"><span className="group-open:hidden">Mais informações</span><span className="hidden group-open:inline">Menos informações</span></summary>
         <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
-          {[['Valor emprestado', money(loan.principal)], ['Valor combinado do período', money(loan.agreedAmount)], ['Data do empréstimo', formatBrDate(loan.lentAt)], ['Cadastro no sistema', registeredAt ? formatBrDate(registeredAt) : 'Não registrado nos dados antigos'], ['Vencimento inicial', initialDueDate ? formatBrDate(initialDueDate) : 'Não registrado separadamente'], ['Vencimento atual', formatBrDate(loan.dueDate)], ['Taxa por atraso', loan.lateRate ? `${loan.lateRateType === "amount" ? money(loan.lateRate) : `${loan.lateRate}%`} ${loan.latePeriod === 'day' ? 'ao dia' : 'ao mês (30 dias)'}` : 'Sem juros por atraso'], ['Saldo atual', money(balance.outstanding)]].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className="mt-0.5 break-words font-medium">{value}</dd></div>)}
+          {[['Valor emprestado', money(loan.principal)], ['Valor combinado do período', money(loan.agreedAmount)], ['Data do empréstimo', formatBrDate(loan.lentAt)], ['Cadastro no sistema', registeredAt ? formatBrDate(registeredAt) : 'Não registrado nos dados antigos'], ['Vencimento inicial', initialDueDate ? formatBrDate(initialDueDate) : 'Não registrado separadamente'], ['Vencimento atual', formatBrDate(loan.dueDate)], ['Taxa por atraso', loan.lateRate ? `${loan.lateRateType === "amount" ? money(dailyLoanRate(loan)) : `${Number(dailyLoanRate(loan).toFixed(8))}%`} ao dia` : 'Sem juros por atraso'], ['Saldo atual', money(balance.outstanding)]].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className="mt-0.5 break-words font-medium">{value}</dd></div>)}
         </dl>
 
         <p className="mt-3 text-xs text-muted-foreground">Capital pago: {money(receipts.reduce((sum, receipt) => sum + receipt.principalPaid, 0))} · Juros pagos: {money(receipts.reduce((sum, receipt) => sum + receipt.interestPaid, 0))}</p>
