@@ -161,6 +161,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { DebtFolderView } from "@/components/debt/DebtFolderView";
+import { LoanFolderView } from "@/components/loan/LoanFolderView";
 import { isExpenseFolderType } from "@/types";
 import {
   isUniplayConnected,
@@ -725,6 +726,8 @@ export default function FolderItems() {
   }, [folder?.type, folderItems]);
 
   if (!folder || !user) return <Navigate to="/dashboard" replace />;
+
+  if (folder.type === "Produto") return <LoanFolderView folder={folder} />;
 
   const debtFolder =
     isExpenseFolderType(folder.type) ||

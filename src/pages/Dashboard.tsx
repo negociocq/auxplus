@@ -62,6 +62,7 @@ import {
 import type { Folder, FolderType, ItemStatus } from "@/types";
 import { isExpenseFolderType, isRevenueFolderType } from "@/types";
 import { formatBrDate } from "@/lib/format";
+import { loanBalance, readLoan } from "@/lib/loans";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import {
   isUniplayConnected,
@@ -274,17 +275,24 @@ export default function Dashboard() {
     return Object.fromEntries(
       folders.map((folder) => {
         const items = myItems.filter((i) => i.folderId === folder.id);
-        const overdue = items.filter((i) => i.status === "Já Vencido").length;
-        // Cliente/Produto: valor só de quem ainda não venceu (lucro ativo)
+        const overdue = items.filter((i) => i.status === "Já Vencido" && (folder.type !== "Produto" || !readLoan(i)?.paidAt)).length;
+        // Clientes: valor ativo. Empréstimos: saldo a receber, inclusive em atraso.
         // Dívida: soma os gastos em aberto (também sem já vencidos na conta “ativa”)
-        const activeItems = items.filter((i) => i.status !== "Já Vencido");
+        const activeItems = folder.type === "Produto"
+          ? items.filter(i => !readLoan(i)?.paidAt)
+          : items.filter((i) => i.status !== "Já Vencido");
         return [
           folder.id,
           {
             count: items.length,
             activeCount: activeItems.length,
             total:
-              folder.id === resellersFolderId
+              folder.type === "Produto"
+                ? activeItems.reduce((sum, item) => {
+                    const loan = readLoan(item);
+                    return sum + (loan ? loanBalance(loan).outstanding : 0);
+                  }, 0)
+                : folder.id === resellersFolderId
                 ? resellerMonthData?.userId === chartUserId && resellerMonthData.day === chartToday
                   ? summarizeReceivedOperations(items, `${chartToday.slice(0, 7)}-01`, chartToday, resellerMonthData.data, resellersFolderId, folder.id).creditTotal
                   : 0
@@ -642,7 +650,7 @@ export default function Dashboard() {
         >
           <TabsList className="bg-background/80">
             <TabsTrigger value="Cliente">Clientes</TabsTrigger>
-            <TabsTrigger value="Produto">Produtos</TabsTrigger>
+            <TabsTrigger value="Produto">Empréstimos</TabsTrigger>
             <TabsTrigger value="Dívida">Dívidas</TabsTrigger>
           </TabsList>
           {(["Cliente", "Produto", "Dívida"] as FolderType[]).map((t) => (
@@ -653,7 +661,7 @@ export default function Dashboard() {
                   title={
                     t === "Dívida"
                       ? "Sem pastas de dívidas"
-                      : `Sem pastas de ${t.toLowerCase()}`
+                      : t === "Produto" ? "Sem pastas de empréstimos" : `Sem pastas de ${t.toLowerCase()}`
                   }
                   description={
                     t === "Dívida"
@@ -1094,7 +1102,7 @@ export default function Dashboard() {
               value={num(byType.Cliente.length + byType.Produto.length)}
               icon={FolderKanban}
               hint={text(
-                `${byType.Cliente.length} clientes · ${byType.Produto.length} produtos`,
+                `${byType.Cliente.length} clientes · ${byType.Produto.length} empréstimos`,
               )}
               delay={0.02}
             />
@@ -1414,7 +1422,7 @@ export default function Dashboard() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Cliente">Cliente</SelectItem>
-                  <SelectItem value="Produto">Produto</SelectItem>
+                  <SelectItem value="Produto">Empréstimo</SelectItem>
                   <SelectItem value="Dívida">Dívida</SelectItem>
                 </SelectContent>
               </Select>
@@ -1428,6 +1436,7 @@ export default function Dashboard() {
                 placeholder={
                   type === "Dívida"
                     ? "Ex.: Pessoal, Casa, Cartões…"
+                    : type === "Produto" ? "Ex.: Empréstimos pessoais…"
                     : "Ex.: IPTV, Internet…"
                 }
                 required

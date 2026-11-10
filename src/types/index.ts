@@ -1,8 +1,9 @@
+/** Produto é o identificador legado de Empréstimo no banco, mantido para preservar as pastas. */
 export type FolderType = "Cliente" | "Produto" | "Dívida";
 
-/** Pastas que entram no lucro (receita). Dívida = gasto. */
+/** Receitas de clientes. Empréstimos (tipo legado Produto) têm saldo próprio. */
 export function isRevenueFolderType(type: FolderType): boolean {
-  return type === "Cliente" || type === "Produto";
+  return type === "Cliente";
 }
 
 export function isExpenseFolderType(type: FolderType): boolean {
