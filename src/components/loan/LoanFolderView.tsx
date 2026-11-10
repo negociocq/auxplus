@@ -30,7 +30,7 @@ import { fetchEvolutionStatus, sendEvolutionText } from "@/lib/whatsappAutomatio
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
-const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", latePeriod: "month" as LoanTerms["latePeriod"], notes: "" });
+const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", lateRateType: "percent" as NonNullable<LoanTerms["lateRateType"]>, latePeriod: "month" as LoanTerms["latePeriod"], notes: "" });
 const decimal = (value: string) => Number(value.trim().replace(",", "."));
 const dueColors: Record<ItemStatus, string> = {
   "Longe de Vencer": "border-l-success bg-[linear-gradient(90deg,hsl(var(--success)_/_0.12)_0%,hsl(var(--success)_/_0.04)_35%,transparent_70%)]",
@@ -119,14 +119,14 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const edit = (item?: Item) => {
     const loan = item && readLoan(item);
     setEditing(item || null);
-    setForm(item ? { name: item.name, phone: item.phone, principal: String(loan?.principal || item.price || ""), agreedAmount: String(loan?.agreedAmount || item.price || ""), lentAt: loan?.lentAt || today, dueDate: loan?.dueDate || item.dueDate?.slice(0, 10) || "", lateRate: String(loan?.lateRate || 0), latePeriod: loan?.latePeriod || "month", notes: cleanNotes(item.notes) } : blank());
+    setForm(item ? { name: item.name, phone: item.phone, principal: String(loan?.principal || item.price || ""), agreedAmount: String(loan?.agreedAmount || item.price || ""), lentAt: loan?.lentAt || today, dueDate: loan?.dueDate || item.dueDate?.slice(0, 10) || "", lateRate: String(loan?.lateRate || 0), lateRateType: loan?.lateRateType || "percent", latePeriod: loan?.latePeriod || "month", notes: cleanNotes(item.notes) } : blank());
     setOpen(true);
   };
   const save = (e: FormEvent) => {
     e.preventDefault();
     try {
       if (!form.name.trim()) throw Error("Informe o nome do cliente.");
-      const loan: LoanTerms = { version: 1, principal: Math.round(decimal(form.principal) * 100) / 100, agreedAmount: Math.round(decimal(form.agreedAmount) * 100) / 100, lentAt: form.lentAt, dueDate: form.dueDate, lateRate: decimal(form.lateRate), latePeriod: form.latePeriod, ...(!editing ? { registeredAt: new Date().toISOString(), initialDueDate: form.dueDate } : {}) };
+      const loan: LoanTerms = { version: 1, principal: Math.round(decimal(form.principal) * 100) / 100, agreedAmount: Math.round(decimal(form.agreedAmount) * 100) / 100, lentAt: form.lentAt, dueDate: form.dueDate, lateRate: decimal(form.lateRate), lateRateType: form.lateRateType, latePeriod: form.latePeriod, ...(!editing ? { registeredAt: new Date().toISOString(), initialDueDate: form.dueDate } : {}) };
       const notes = writeLoan(form.notes, loan);
       setData(prev => {
         const current = editing && prev.items.find(i => i.id === editing.id && i.folderId === folder.id);
@@ -250,7 +250,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
             <div className="min-w-0 pl-2 text-right"><dt className="text-[10px] text-muted-foreground">{loan.paidAt ? "Pago" : "Total a pagar"}</dt><dd className="mt-0.5 break-words text-xs font-bold tabular-nums text-primary min-[360px]:text-sm">{money(balance.total)}</dd></div>
           </dl>
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-            <p>{loan.lateRate ? `Taxa de atraso: ${loan.lateRate}% ${loan.latePeriod === "day" ? "ao dia" : "ao mês (30 dias)"}` : "Sem juros por atraso"}</p>
+            <p>{loan.lateRate ? `Taxa de atraso: ${loan.lateRateType === "amount" ? money(loan.lateRate) : `${loan.lateRate}%`} ${loan.latePeriod === "day" ? "ao dia" : "ao mês (30 dias)"}` : "Sem juros por atraso"}</p>
             <p>Vence: <span className="font-medium text-foreground">{formatBrDate(loan.dueDate)}</span></p>
           </div>
         </div>
@@ -281,7 +281,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
           const { item, loan, balance, dueStatus } = detail;
           return <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-muted-foreground">{displayPhone(item.phone) || "Sem telefone"}</p>{loan && !loan.paidAt ? <StatusBadge status={dueStatus} /> : <span className="text-sm">{loan?.paidAt ? "Quitado" : "Configurar"}</span>}</div>
-      {loan && balance ? <><dl className="my-4 grid grid-cols-2 gap-3 text-sm">{[['Emprestado', money(loan.principal)], ['Combinado no vencimento', money(loan.agreedAmount)], ['Data do empréstimo', formatBrDate(loan.lentAt)], ['Vencimento', formatBrDate(loan.dueDate)], ['Juros combinados', money(balance.agreedInterest)], ['Juros de atraso', money(balance.lateInterest)]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}</dl><div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">{loan.paidAt ? `Pago em ${formatBrDate(loan.paidAt)}` : `Total atualizado · ${formatBrDate(today)}`}</p><p className="text-xl font-semibold">{money(balance.total)}</p><p className="mt-1 text-xs text-muted-foreground">{loan.lateRate ? `Atraso: ${loan.lateRate}% ao ${loan.latePeriod === "day" ? "dia" : "mês (30 dias)"}, juros simples.` : "Sem juros por atraso."}</p></div></> : <p className="my-4 text-sm text-muted-foreground">Registro anterior preservado. Edite para definir as condições do empréstimo.</p>}
+      {loan && balance ? <><dl className="my-4 grid grid-cols-2 gap-3 text-sm">{[['Emprestado', money(loan.principal)], ['Combinado no vencimento', money(loan.agreedAmount)], ['Data do empréstimo', formatBrDate(loan.lentAt)], ['Vencimento', formatBrDate(loan.dueDate)], ['Juros combinados', money(balance.agreedInterest)], ['Juros de atraso', money(balance.lateInterest)]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="break-words font-medium">{value}</dd></div>)}</dl><div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">{loan.paidAt ? `Pago em ${formatBrDate(loan.paidAt)}` : `Total atualizado · ${formatBrDate(today)}`}</p><p className="text-xl font-semibold">{money(balance.total)}</p><p className="mt-1 text-xs text-muted-foreground">{loan.lateRate ? `Atraso: ${loan.lateRateType === "amount" ? money(loan.lateRate) : `${loan.lateRate}%`} ao ${loan.latePeriod === "day" ? "dia" : "mês (30 dias)"}, juros simples.` : "Sem juros por atraso."}</p></div></> : <p className="my-4 text-sm text-muted-foreground">Registro anterior preservado. Edite para definir as condições do empréstimo.</p>}
       {cleanNotes(item.notes) ? <p className="mt-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{cleanNotes(item.notes)}</p> : null}
             {!!loan?.receipts?.length && <details className="rounded-lg border p-3">
               <summary className="cursor-pointer text-sm font-medium">Histórico de pagamentos ({loan.receipts.length})</summary>
@@ -316,8 +316,12 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <div className="rounded-lg border p-3">
         <p className="mb-2 text-sm font-medium">Juros após o vencimento (opcional)</p>
         <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2 space-y-1">
+            <Label className="text-xs" htmlFor="loan-rate-type">Tipo da taxa</Label>
+            <select id="loan-rate-type" className="h-10 w-full rounded-md border bg-background px-2 text-sm" value={form.lateRateType} onChange={e => setForm(p => ({ ...p, lateRateType: e.target.value as NonNullable<LoanTerms["lateRateType"]> }))}><option value="percent">Porcentagem (%)</option><option value="amount">Valor em reais (R$)</option></select>
+          </div>
           <div className="space-y-1">
-            <Label className="flex h-8 items-center text-xs" htmlFor="loan-rate">Taxa (%)</Label>
+            <Label className="flex h-8 items-center text-xs" htmlFor="loan-rate">{form.lateRateType === "amount" ? "Taxa (R$)" : "Taxa (%)"}</Label>
             <Input id="loan-rate" inputMode="decimal" required value={form.lateRate} onChange={e => setForm(p => ({ ...p, lateRate: e.target.value }))} />
           </div>
           <div className="space-y-1">
@@ -330,12 +334,14 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="max-h-[65dvh] w-80 max-w-[calc(100vw-2rem)] space-y-3 overflow-y-auto text-sm">
-                  <p className="font-semibold">Como escolher o período?</p>
+                  <p className="font-semibold">Como escolher a taxa e o período?</p>
+                  <p><strong>Porcentagem:</strong> calculada sobre o valor combinado no vencimento. <strong>Valor em reais:</strong> acrescenta o valor informado por período, independentemente do saldo.</p>
+                  <p>Exemplo em reais: <strong>R$ 30 ao mês</strong> equivale a R$ 1 por dia de atraso. <strong>R$ 5 ao dia</strong> acrescenta R$ 25 em 5 dias.</p>
                   <p><strong>Ao mês:</strong> a taxa informada vale para 30 dias de atraso. O sistema divide esse valor por 30 para calcular cada dia.</p>
                   <p>Exemplo: valor combinado de <strong>R$ 1.000</strong>, com <strong>3% ao mês</strong>, gera R$ 30 em 30 dias — ou <strong>R$ 1 por dia de atraso</strong>. Em 5 dias, o total será R$ 1.005.</p>
                   <p><strong>Ao dia:</strong> a taxa informada é cobrada a cada dia de atraso.</p>
                   <p>Exemplo: valor combinado de <strong>R$ 1.000</strong>, com <strong>1% ao dia</strong>, gera <strong>R$ 10 por dia de atraso</strong>. Em 5 dias, o total será R$ 1.050.</p>
-                  <p className="border-t pt-2 text-xs text-muted-foreground">Os juros começam no dia seguinte ao vencimento e são calculados sempre sobre o valor combinado, sem cobrar juros sobre os juros acumulados. Com taxa 0, o valor não aumenta após vencer.</p>
+                  <p className="border-t pt-2 text-xs text-muted-foreground">Os juros começam no dia seguinte ao vencimento e não acumulam juros sobre juros. Na opção porcentagem, a base é sempre o valor combinado no vencimento. Com taxa 0, o valor não aumenta após vencer.</p>
                 </PopoverContent>
               </Popover>
             </div>
