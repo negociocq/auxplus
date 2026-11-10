@@ -229,6 +229,13 @@ export default function UniPlay() {
   const [syncingTests, setSyncingTests] = useState(false);
   const [jobsQ, setJobsQ] = useState("");
   const [detailJobId, setDetailJobId] = useState<string | null>(null);
+  const [detailJobReload, setDetailJobReload] = useState(0);
+  const [detailJobAccessState, setDetailJobAccessState] = useState<{
+    key: string;
+    access: Awaited<ReturnType<typeof fetchIptvUserAccess>> | null;
+    loading: boolean;
+    error: string;
+  } | null>(null);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
   const clientDetailRequest = useRef(0);
   const [clientDetailAccess, setClientDetailAccess] = useState<{
@@ -623,6 +630,39 @@ export default function UniPlay() {
     () => (detailJobId ? jobs.find((j) => j.id === detailJobId) || null : null),
     [detailJobId, jobs],
   );
+  const detailJobAccessKey = detailJob
+    ? [user?.id, detailJob.id, detailJob.panelUsername, detailJob.updatedAt, detailJobReload].join("|")
+    : "";
+  const currentJobAccess = detailJobAccessState?.key === detailJobAccessKey ? detailJobAccessState : null;
+  const detailJobAccess = currentJobAccess?.access || null;
+  const detailJobAccessLoading = Boolean(detailJobAccessKey && (!currentJobAccess || currentJobAccess.loading));
+  const detailJobAccessError = currentJobAccess?.error || "";
+
+  useEffect(() => {
+    if (!detailJobAccessKey) { setDetailJobAccessState(null); return; }
+    let cancelled = false;
+    const key = detailJobAccessKey;
+    const username = detailJob?.panelUsername.trim() || "";
+    setDetailJobAccessState({ key, access: null, loading: true, error: "" });
+    void (async () => {
+      try {
+        if (!username) throw new Error("Teste sem usuário no painel UniPlay.");
+        if (!bearer.trim() && !(panelUser.trim() && panelPass)) throw new Error("Conecte a UniPlay para consultar os dados deste teste.");
+        const ensured = await ensureIptvToken(panelCreds());
+        if (cancelled) return;
+        if (ensured.renewed) persistToken(ensured.token);
+        const access = await fetchIptvUserAccess({ ...panelCreds(), bearerToken: ensured.token }, username);
+        if (!cancelled) setDetailJobAccessState({ key, access, loading: false, error: "" });
+      } catch {
+        if (!cancelled) setDetailJobAccessState({ key, access: null, loading: false,
+          error: "Não foi possível consultar os dados de acesso na UniPlay. Confira a conexão e tente novamente." });
+      }
+    })();
+    return () => { cancelled = true; };
+    // Reopen, record changes and explicit retries fetch fresh panel data. Token
+    // persistence must not restart this request or resurrect another job's links.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailJobAccessKey]);
   const detailClient = useMemo(
     () =>
       detailClientId
@@ -1952,56 +1992,7 @@ export default function UniPlay() {
 
   const openJobDetail = (job: IptvJob) => {
     setDetailJobId(job.id);
-    // Completa senha/M3U ao abrir (teste ou renovação)
-    if (
-      !job.panelUsername.trim() ||
-      (job.panelPassword?.trim() && job.m3u?.trim()) ||
-      (!bearer.trim() && !(panelUser.trim() && panelPass))
-    ) {
-      return;
-    }
-    void (async () => {
-      try {
-        const ensured = await ensureIptvToken(panelCreds());
-        if (ensured.renewed) persistToken(ensured.token);
-        const creds = { ...panelCreds(), bearerToken: ensured.token };
-        let password = job.panelPassword?.trim() || "";
-        if (!password) {
-          password =
-            (await fetchIptvUserPassword(creds, job.panelUsername.trim())) ||
-            "";
-        }
-        if (!password) return;
-        const links = resolveTestAccessLinks({
-          username: job.panelUsername,
-          password,
-          m3u: job.m3u,
-          dnsSmarters: job.dnsSmarters,
-          m3uHost: platform.m3uHost,
-          dnsFallback: platform.dnsSmarters,
-        });
-        persistJobs(
-          patchIptvJob(loadIptvJobs(user.id), job.id, {
-            panelPassword: password,
-            m3u: links.m3u || job.m3u,
-            dnsSmarters: links.dnsSmarters || job.dnsSmarters,
-          }),
-        );
-      } catch {
-        /* ignore */
-      }
-    })();
   };
-
-  const linksForJob = (job: IptvJob) =>
-    resolveTestAccessLinks({
-      username: job.panelUsername,
-      password: job.panelPassword,
-      m3u: job.m3u,
-      dnsSmarters: job.dnsSmarters,
-      m3uHost: platform.m3uHost,
-      dnsFallback: platform.dnsSmarters,
-    });
 
   const completeJob = (job: IptvJob) => {
     setBusyId(job.id);
@@ -3724,9 +3715,12 @@ export default function UniPlay() {
                 </DialogDescription>
               </DialogHeader>
               {(() => {
-                const links = linksForJob(detailJob);
+                const links = detailJobAccess;
                 return (
                   <div className="space-y-3">
+                    {detailJobAccessLoading ? <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Consultando os dados atuais na UniPlay…</p> : null}
+                    {detailJobAccessError ? <div role="alert" className="space-y-2 text-xs text-destructive"><p>{detailJobAccessError}</p><Button type="button" size="sm" variant="outline" onClick={() => setDetailJobReload(value => value + 1)}>Tentar novamente</Button></div> : null}
+                    {links && (!links.m3u || !links.dnsSmarters) ? <p className="text-xs text-muted-foreground">A UniPlay não retornou todos os links deste acesso. Os campos ausentes ficaram vazios.</p> : null}
                     <div className="grid gap-1.5 sm:grid-cols-2">
                       <Button
                         type="button"
@@ -3748,9 +3742,10 @@ export default function UniPlay() {
                         onClick={() =>
                           void copyField(
                             "Senha",
-                            detailJob.panelPassword || "",
+                            links?.password || "",
                           )
                         }
+                        disabled={!links?.password || detailJobAccessLoading}
                       >
                         <ClipboardCopy className="h-3.5 w-3.5" />
                         Copiar senha
@@ -3760,7 +3755,8 @@ export default function UniPlay() {
                         size="sm"
                         variant="secondary"
                         className="h-9 justify-start"
-                        onClick={() => void copyField("Link M3U", links.m3u)}
+                        disabled={!links?.m3u || detailJobAccessLoading}
+                        onClick={() => void copyField("Link M3U", links?.m3u || "")}
                       >
                         <ClipboardCopy className="h-3.5 w-3.5" />
                         Copiar link M3U
@@ -3771,15 +3767,32 @@ export default function UniPlay() {
                         variant="secondary"
                         className="h-9 justify-start"
                         onClick={() =>
-                          void copyField("DNS Smarters", links.dnsSmarters)
+                          void copyField("DNS Smarters", links?.dnsSmarters || "")
                         }
+                        disabled={!links?.dnsSmarters || detailJobAccessLoading}
                       >
                         <ClipboardCopy className="h-3.5 w-3.5" />
                         Copiar DNS Smarters
                       </Button>
+                      <Button type="button" size="sm" variant="secondary" className="h-9 justify-start"
+                        disabled={!links?.webPlayer || detailJobAccessLoading}
+                        onClick={() => void copyField("Web Player", links?.webPlayer || "")}>
+                        <ClipboardCopy className="h-3.5 w-3.5" />Copiar Web Player
+                      </Button>
                     </div>
                     <div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
                       <p>Usuário: {maskUser(detailJob.panelUsername)}</p>
+
+                      <p>
+                        Senha:{" "}
+                        {hideSensitive
+                          ? "••••••••"
+                          : links?.password || "—"}
+                      </p>
+                      <p className="break-all">
+                        M3U:{" "}
+                        {hideSensitive ? "••••••••" : links?.m3u || "—"}
+                      </p>
                       {detailJob.phone ? (
                         <p>
                           Telefone:{" "}
@@ -3793,21 +3806,12 @@ export default function UniPlay() {
                         </p>
                       ) : null}
                       <p>
-                        Senha:{" "}
+                        DNS Smarters:{" "}
                         {hideSensitive
                           ? "••••••••"
-                          : detailJob.panelPassword || "—"}
+                          : links?.dnsSmarters || "—"}
                       </p>
-                      <p className="break-all">
-                        M3U:{" "}
-                        {hideSensitive ? "••••••••" : links.m3u || "—"}
-                      </p>
-                      <p>
-                        DNS:{" "}
-                        {hideSensitive
-                          ? "••••••••"
-                          : links.dnsSmarters || "—"}
-                      </p>
+                      <p className="break-all">Web Player:{" "}{links?.webPlayer ? <a href={links.webPlayer} target="_blank" rel="noopener noreferrer" className="text-primary underline">{links.webPlayer}</a> : "—"}</p>
                       {detailJob.kind === "renew" ? (
                         <p>
                           Plano: +{detailJob.months}{" "}
