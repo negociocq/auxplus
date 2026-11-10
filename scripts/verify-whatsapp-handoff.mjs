@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import ts from "typescript";
 import * as conversationExports from '../supabase/functions/_shared/waConversationState.ts';
+import * as trialExports from '../supabase/functions/_shared/waTrialHistory.ts';
 
 const compile = (path) => ts.transpileModule(fs.readFileSync(path, "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
@@ -24,6 +25,21 @@ vm.runInNewContext(compile("supabase/functions/_shared/partnerTestFlow.ts"), { e
 class Database {
   constructor() { this.tables = { platform_settings: [], platform_private_secrets: [], folders: [], items: [], wa_recovery_contacts: [] }; }
   setting(key, value) { this.tables.platform_settings.push({ key, value: structuredClone(value) }); }
+  async rpc(name, { p_user_id, p_phone }) {
+    const rows = this.tables.wa_trial_history ||= [];
+    let row = rows.find(r => r.user_id === p_user_id && r.phone === p_phone);
+    if (name === 'release_wa_trial') {
+      if (!row) { row = { user_id: p_user_id, phone: p_phone }; rows.push(row); }
+      row.allow_retest = true; return { data: null, error: null };
+    }
+    if (name === 'claim_wa_trial') {
+      if (row && !row.allow_retest) return { data: null, error: null };
+      if (!row) { row = { user_id: p_user_id, phone: p_phone }; rows.push(row); }
+      row.allow_retest = false; row.reservation_id = webcrypto.randomUUID(); row.last_used_at = new Date().toISOString();
+      return { data: row.reservation_id, error: null };
+    }
+    throw Error('Unexpected RPC');
+  }
   from(name) {
     const db = this;
     let mode = "select", values, single = false;
@@ -45,7 +61,7 @@ class Database {
           let rows = table.filter((r) => filters.every((f) => f(r)));
           const primary = name === "platform_private_secrets" ? "name" : "key";
           if (mode === "insert" || mode === "upsert") {
-            const existing = table.find((r) => r[primary] === values[primary]);
+            const existing = table.find((r) => name === "wa_trial_history" ? r.user_id === values.user_id && r.phone === values.phone : r[primary] === values[primary]);
             if (existing && mode === "insert") return Promise.resolve({ data: null, error: { code: "23505" } }).then(resolve, reject);
             if (existing) Object.assign(existing, structuredClone(values));
             else table.push(structuredClone(values));
@@ -79,6 +95,7 @@ const context = {
   require: (path) => {
     if (path.includes("waBotGuard")) return guardExports;
     if (path.includes("waConversationState")) return conversationExports;
+    if (path.includes("waTrialHistory")) return trialExports;
     if (path.includes("itemDue")) return dueExports;
     if (path.includes("waInbound")) return inboundExports;
     if (path.includes("waReminderReply")) return reminderExports;
@@ -332,3 +349,41 @@ assert.equal((await secondInvoice).action, 'renew_pix');
 assert.deepEqual(invoices().map(row => row.itemRefId).sort(), ['customer', 'parallel-customer']);
 assert.equal(db.tables.platform_private_secrets.length, 0);
 console.log('PASS: simultaneous owner PIX commands preserve both invoices and release billing locks; no real payments.');
+
+const previousTester = '5511991111307';
+state().testConsumed ||= {};
+state().testConsumed[previousTester] = { at: aged(7 * 86400000), username: 'old-deleted-trial', name: 'Saulo fixture' };
+state().sessions[previousTester] = { state: 'test_await_mac', testDevice: 'phone', testUsername: 'old-deleted-trial', testPassword: 'fixture', testHours: 6 };
+assert.equal((await receive('teste', { targetPhone: previousTester })).action, 'test_expired_blocked', 'expired legacy session must stop before Android migration or OCR');
+const trialHistoryRow = db.tables.wa_trial_history.find(row => row.phone === previousTester);
+assert.equal(trialHistoryRow.username, 'old-deleted-trial');
+delete state().testConsumed[previousTester];
+state().sessions[previousTester] = { state: 'idle' };
+const beforeBlocked = sent.length;
+await receive('teste', { targetPhone: previousTester });
+assert.ok(sent.slice(beforeBlocked).some(text => /já usou/i.test(text)), 'durable history blocks after browser/session history is removed');
+assert.equal(trialHistoryRow.allow_retest, undefined);
+await receive('liberar teste', { targetPhone: previousTester });
+assert.ok(!trialHistoryRow.allow_retest, 'customer cannot release their own trial');
+assert.equal((await receive('liberar teste', { fromMe: true, targetPhone: previousTester })).action, 'test_released');
+assert.equal(trialHistoryRow.allow_retest, true);
+await trialExports.claimTrialUse(db, '1', previousTester);
+await assert.rejects(trialExports.claimTrialUse(db, '1', previousTester), /já solicitou/);
+console.log('PASS: Saulo expired-session regression, durable history despite deleted state, owner-only release and single-use retest authorization. No real trials or activations.');
+db.tables.platform_settings.find(r => r.key === 'wa_bot_user_1').value.testFlow = { triggerPhrase: 'teste', deviceMenu: { message: 'Aparelho', options: [{ key: '1', label: 'Celular', action: 'phone' }] } };
+const freshIosPhone='5511991111408';
+state().testConsumed[freshIosPhone]={at:new Date().toISOString(),username:'valid-trial',name:'iPhone fixture'};
+state().sessions[freshIosPhone]={state:'test_await_mac',testDevice:'phone',testPhoneOs:'ios',testApp:'zuxo',testUsername:'valid-trial',testPassword:'fixture',testHours:6};
+const beforeMac=sent.length;
+assert.equal((await receive('c6:69:e0:f0:a2:d3',{targetPhone:freshIosPhone})).action,'test_device_retry');
+assert.match(sent[beforeMac],/Recebi o código/,'valid MAC receives immediate acknowledgement');
+assert.match(sent.at(-1),/painel agora/,'provider failure must receive a clear final response');
+assert.equal(state().sessions[freshIosPhone].testPhoneOs,'ios');
+console.log('PASS: valid iPhone MAC acknowledged before provider work, clear provider failure reply and preserved iOS session. No real activation.');
+const releasedPhone='5511991111509';
+assert.equal((await receive('liberar teste',{fromMe:true,targetPhone:releasedPhone})).action,'test_released');
+state().testConsumed[releasedPhone]={at:aged(7*86400000),username:'stale-browser-trial'};
+state().sessions[releasedPhone]={state:'test_await_mac',testUsername:'stale-browser-trial',testPassword:'fixture',testDoneAt:aged(7*86400000),testDevice:'phone'};
+assert.equal((await receive('teste',{targetPhone:releasedPhone})).action,'test_ask_name','owner release must override a stale browser state without reviving its old credentials');
+assert.equal(state().sessions[releasedPhone].testUsername,undefined);
+console.log('PASS: durable owner release survives stale browser writes and starts a clean name/device flow.');

@@ -256,7 +256,7 @@ export function zuxoRemoteInstructions(device: string): string {
     : device === "roku" ? "No Roku, procure *Zuxo Player* na loja de canais, adicione e abra."
     : "Instale e abra o *Zuxo Player* no seu aparelho.";
   const locate = device === "ios"
-    ? "Toque na *engrenagem ⚙️* para abrir as *Configurações*. O *MAC* fica nessa tela. Envie um *print das configurações mostrando o MAC* (se precisar, role a tela para baixo)."
+    ? "Na tela inicial, toque na *engrenagem ⚙️ no canto superior direito* para abrir as *Configurações*. Role a tela para baixo até o campo *MAC* e envie um *print das configurações mostrando o MAC*. Você também pode digitar esse MAC aqui."
     : "O *MAC* aparece logo na *tela inicial* do Zuxo Player, como *ID do aparelho*. Pode *digitar o MAC* ou *mandar uma foto nítida dessa tela*.";
   return `${install}\n\n${locate}\n\nVou adicionar sua lista remotamente.\n\nSe precisar de ajuda, escreva *atendente*.`;
 }

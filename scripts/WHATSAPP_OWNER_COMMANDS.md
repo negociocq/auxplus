@@ -24,3 +24,23 @@ Validation: `node scripts/verify-whatsapp-handoff.mjs` covers human pause, owner
 authorization, saved price, pending-code reuse, event dedup, ambiguous access,
 original customer renewal and concurrent invoice creation. All payments and
 WhatsApp sends in these checks are mocked.
+
+## Trial release
+
+`liberar teste` is accepted only from the connected owner (`fromMe`) in the
+customer's private conversation. It grants one new trial and resets the old
+device-selection state. Customers cannot release their own test.
+
+`wa_trial_history` preserves usage independently of the UniPlay account and
+browser/conversation state. Its claim is reserved atomically before contacting
+UniPlay. An uncertain creation is never retried automatically; a new owner
+release is required. Only the server role can write or grant a release.
+
+Expired legacy activation sessions stop before recovery or photo recognition.
+Unknown mobile OS is requested again instead of assuming Android. iPhone users
+receive the App Store link and Settings/gear instructions for their MAC.
+
+Validation: the handoff check covers the expired legacy-session regression,
+deleted browser state, owner-only one-use release, and MAC acknowledgement/error
+responses. Personal-device and partner checks cover iOS routing and no replay
+of creation/activation through multiple proxies. None creates a real trial.

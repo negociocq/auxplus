@@ -15,7 +15,7 @@ function initializer(name) {
   visit(source); assert(found, name + ' missing'); return found;
 }
 
-const routes=vm.createContext({finishTestPcPhone:async(s,kind)=>({kind,s}),finishTestWithApp:async(s,app)=>({app,s})});
+const routes=vm.createContext({finishTestPcPhone:async(s,kind)=>({kind,s}),finishTestWithApp:async(s,app)=>({app,s}),sessions:{},phone:'fixture',persistState:async()=>{},sendMenu:async()=>{},flowObj:{phoneMenu:{}},defaultPhoneOsMenu:()=>({}),testHours:6,json:v=>v});
 vm.runInContext(ts.transpile('var finishZuxoDevice = '+initializer('finishZuxoDevice')+';var runAction = '+initializer('runTestAction')),routes);
 for(const os of ['android','ios']) {
  const r=await routes.runAction({testTv:'samsung'},'phone_'+os);
@@ -26,6 +26,10 @@ for(const os of ['android','ios']) {
   assert.equal(legacyPhone.app,'zuxo');assert.equal(legacyPhone.s.testDevice,'phone');assert.equal(legacyPhone.s.testPhoneOs,os);
  }
 }
+const unknownPhone=await routes.runAction({testDevice:'phone',testUsername:'existing-trial'},'app_zuxo');
+assert.equal(unknownPhone.action,'test_ask_phone_os','unknown OS must be asked, never silently defaulted to Android');
+assert.equal(routes.sessions.fixture.testUsername,'existing-trial');
+assert.equal(routes.sessions.fixture.testPhoneOs,undefined);
 for(const brand of ['lg','roku','android']) for(const action of ['app_zuxo','app_pixel','app_utm']) {
  const r=await routes.runAction({testTv:brand},action);assert.equal(r.app,action==='app_pixel'?'pixel':'zuxo');assert.equal(r.s.testDevice,'tv');
 }

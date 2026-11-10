@@ -14,6 +14,7 @@ import { skipAttendantEvent } from "../_shared/waInbound.ts";
 import { partnerActivationRequest } from "../_shared/partnerAppContract.ts";
 import { isReminderRenewalReply, quotedReminderUsername } from "../_shared/waReminderReply.ts";
 import { persistConversationState } from "../_shared/waConversationState.ts";
+import { loadTrialUse, claimTrialUse, finishTrialUse, releaseTrialUse, trialActivationExpired } from "../_shared/waTrialHistory.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;
@@ -1176,6 +1177,7 @@ async function uniplayFetch(
   const apiPath = path.startsWith("/") ? path : `/${path}`;
   const token = bearer.replace(/^Bearer\s+/i, "").trim();
   const method = (init?.method || "GET").toUpperCase();
+  const noReplay = method === "POST" && (apiPath === "/users-iptv" || apiPath.startsWith("/activate-"));
   const body =
     init?.body == null
       ? undefined
@@ -1240,7 +1242,8 @@ async function uniplayFetch(
         const err = new Error(
           uniplayErrorMessage(res.status, data, attempt.base),
         );
-        // proxy/direct indisponível → tenta próximo candidato
+        if (noReplay) throw err;
+        // Leituras podem tentar outro proxy; criação/ativação nunca são repetidas.
         if (
           res.status === 404 ||
           res.status === 403 ||
@@ -1256,6 +1259,7 @@ async function uniplayFetch(
       return data;
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
+      if (noReplay) throw lastErr;
       // rede / proxy fora → próximo
       if (/Failed to fetch|NetworkError|fetch failed|502|503/i.test(lastErr.message)) {
         continue;
@@ -1610,7 +1614,7 @@ async function createUniplayTestUser(
   ];
   let lastErr: Error | null = null;
   let created: unknown = null;
-  for (const body of requestedUsername ? attempts.slice(0,1) : attempts) {
+  for (const body of attempts.slice(0, 1)) {
     try {
       created = await uniplayFetch("/users-iptv", bearer, {
         method: "POST",
@@ -2703,11 +2707,27 @@ Deno.serve(async (req) => {
       fromMe && cmdNorm === normKey("liberar teste");
     const ownerPixCommand = fromMe ? /^enviar\s+pix(?:\s+(\S+))?$/i.exec(text.trim()) : null;
     const isOwnerSendPix = Boolean(ownerPixCommand);
+    const needsTrialHistory = !fromMe && !isPausedConversation(phone, sessions, humanPaused, phoneMatches) && !["atendente", "atendentes", "parar", "stop", "sair", "cancelar mensagens"].includes(cmdNorm) && (String(sessions[phone]?.state || "").startsWith("test_") || /test(?:e|ar)/i.test(cmdNorm) || Boolean(testPhrase) && waNorm(text) === waNorm(testPhrase));
+    if (needsTrialHistory) {
+      try {
+        const legacy = findTestConsumed(phone);
+        const used = await loadTrialUse(client, String(userId), phoneStateKey(phone), legacy);
+        if (used?.released) {
+          clearTestConsumed(phone);
+          sessions[phone] = { state: "idle", updatedAt: new Date().toISOString() };
+        } else if (used) markTestConsumed(phone, used);
+        else if (legacy) clearTestConsumed(phone);
+      } catch (error) {
+        await send(error instanceof Error ? error.message : "Não consegui conferir o histórico do teste. Digite atendente.");
+        return json({ ok: false, action: "trial_history_unavailable" });
+      }
+    }
     const isOwnerAssume = fromMe && cmdNorm === "atender";
     const isOwnerEndHuman =
       fromMe && Boolean(endHumanNorm) && cmdNorm === endHumanNorm;
 
     if (isOwnerReleaseTest) {
+      await releaseTrialUse(client, String(userId), phoneStateKey(phone));
       clearTestConsumed(phone);
       setHumanPaused(phone, false);
       const ok = phoneStateKey(phone);
@@ -2790,6 +2810,12 @@ Deno.serve(async (req) => {
     if (recoveryContact?.status === "invited" && cmdNorm === "1") setHumanPaused(phone, false);
 
     // Foto/áudio/vídeo/doc sem legenda → não ficar calado
+    if (!fromMe && !["atendente", "atendentes", "parar", "stop", "sair", "cancelar mensagens"].includes(cmdNorm) && trialActivationExpired(sessions[phone] || {}, findTestConsumed(phone))) {
+      sessions[phone] = { ...sessions[phone], state: "idle", devicePhoto: undefined, updatedAt: new Date().toISOString() };
+      await persistState();
+      await send("Você já solicitou o teste gratuito neste número e o prazo terminou. Não posso ativar ou gerar outro teste.\n\nPara uma nova liberação, fale com o atendente. Somente o responsável pode usar o comando *liberar teste*.");
+      return json({ ok: true, action: "test_expired_blocked" });
+    }
     const photoStates = ["test_await_mac", "test_confirm_install", "test_plan_await_mac"];
     const receivesDevicePhoto = mediaKind === "image" && photoStates.includes(sessions[phone]?.state || "") && Boolean(sessions[phone]?.testApp) && !isManualSamsungSession(sessions[phone]);
     if (!text && mediaKind && !receivesDevicePhoto) {
@@ -2876,7 +2902,9 @@ Deno.serve(async (req) => {
         const diagnostic = { ...failure, app: current.testApp, at: new Date().toISOString() };
         console.warn("device_photo_failed", diagnostic);
         await client.from("platform_private_secrets").upsert({ name: "openai_device_photo_last_error", value: diagnostic, updated_at: diagnostic.at }, { onConflict: "name" });
-        await send(photoFailureMessage(failure.code, current.testApp!));
+        await send(failure.code === "unreadable" && current.testApp === "zuxo" && current.testPhoneOs === "ios"
+          ? "Não consegui ler o MAC com segurança. No iPhone, toque na engrenagem ⚙️ no canto superior direito do Zuxo Player, role as Configurações até MAC e envie um print nítido dessa parte. Você também pode digitar o MAC."
+          : photoFailureMessage(failure.code, current.testApp!));
         return json({ ok: true, action: "photo_retry", error: failure.code });
       }
     }
@@ -3600,11 +3628,13 @@ Deno.serve(async (req) => {
         if(error||!claimed?.length)throw new Error("Seu teste de recuperação já está em processamento. Digite atendente se precisar de ajuda.");
       }
       try {
+        const reservation = await claimTrialUse(client, String(userId), phoneStateKey(phone));
         const created=await createUniplayTestUser(bearer,Number(sess.testHours)||testHours,phone,defaultPackage,sess.testClientName,sess.recoveryUsername);
         if(sess.recoveryUsername&&created.username!==sess.recoveryUsername)throw new Error("O painel não confirmou o usuário solicitado. Digite atendente para conferir o teste.");
         sessions[phone]={...sess,testUsername:created.username,testPassword:created.password,testRemoteId:created.remoteId,updatedAt:new Date().toISOString()};
         markTestConsumed(phone,{at:new Date().toISOString(),username:created.username,name:sess.testClientName,remoteId:created.remoteId});
         await persistState();
+        await finishTrialUse(client, String(userId), phoneStateKey(phone), reservation, { at: new Date().toISOString(), username: created.username, name: sess.testClientName, remoteId: created.remoteId });
         if(sess.recoveryId)await client.from("wa_recovery_contacts").update({status:"trial",updated_at:new Date().toISOString()}).eq("id",sess.recoveryId).eq("status","creating");
         return created;
       } catch(error) {
@@ -3617,6 +3647,7 @@ Deno.serve(async (req) => {
       if (isManualSamsungSession(sess)) return await finishTestPcPhone(sess, "samsung");
       const app = sess.testApp === "utm" ? "utm" : sess.testApp === "zuxo" ? "zuxo" : "pixel";
       const { device: mac, deviceKey } = parsePartnerDeviceText(app, rawMac);
+      await send("Recebi o código do aparelho. Estou consultando a ativação; aguarde alguns segundos.");
       const username = String(sess.testUsername || "").trim();
       const password = String(sess.testPassword || "").trim();
       if (!username || !password) throw new Error("Teste sem usu?rio e senha. Volte ao menu ou solicite um atendente.");
@@ -3795,6 +3826,12 @@ Deno.serve(async (req) => {
     };
 
     const finishZuxoDevice = async (sess: Session, device?: "android" | "ios") => {
+      if (sess.testDevice === "phone" && !device && !sess.testPhoneOs) {
+        sessions[phone] = { ...sess, state: "test_ask_phone_os", updatedAt: new Date().toISOString() };
+        await persistState();
+        await sendMenu(flowObj?.phoneMenu || defaultPhoneOsMenu(), { hours: sess.testHours || testHours }, { allowBack: false });
+        return json({ ok: true, action: "test_ask_phone_os" });
+      }
       if (!device && (sess.testTv === "samsung" || sess.testAppMenuId?.includes("samsung"))) return await finishTestPcPhone(sess, "samsung");
       const next = device ? { ...sess, testDevice: "phone" as const, testPhoneOs: device, testTv: undefined, testAppMenuId: undefined }
         : { ...sess, testDevice: "tv" as const, testPhoneOs: undefined };
@@ -3862,10 +3899,10 @@ Deno.serve(async (req) => {
       }
       if (action === "back") return await goBackTest(sess);
       if (action === "app_pixel") {
-        if (sess.testDevice === "phone") return await finishZuxoDevice(sess, sess.testPhoneOs || "android");
+        if (sess.testDevice === "phone") return await finishZuxoDevice(sess, sess.testPhoneOs);
         return await finishTestWithApp({ ...sess, testDevice: "tv", testPhoneOs: undefined }, "pixel");
       }
-      if (action === "app_zuxo") return await finishZuxoDevice(sess, sess.testDevice === "phone" ? sess.testPhoneOs || "android" : undefined);
+      if (action === "app_zuxo") return await finishZuxoDevice(sess, sess.testDevice === "phone" ? sess.testPhoneOs : undefined);
       if (action === "app_utm") {
         return await finishZuxoDevice(sess);
       }
@@ -4027,10 +4064,13 @@ Deno.serve(async (req) => {
       return json({ ok: true, action: "test_bad_action" });
     };
 
-    // Repair only on a real incoming message; reuse the trial already created by the old bug.
+    // Check repeat requests before any legacy-session repair can reuse credentials.
+    const explicitTestRequest = waNorm(text) === "teste" || Boolean(testPhrase) && waNorm(text) === waNorm(testPhrase);
+    if (explicitTestRequest && findTestConsumed(phone) && !clientItem && !resellerItem) return await sendAlreadyUsedOrOffer({ includeAlreadyUsed: true });
+    // Repair only on a real incoming message; reuse only a still-valid trial.
     if (["test_await_mac", "test_confirm_install"].includes(session.state || "") && !session.testDoneAt && !wantsAttendant && !["0", "voltar", "menu"].includes(t)
-      && (session.testDevice === "phone" && session.testApp !== "zuxo" || session.testDevice === "tv" && ((session.testApp !== "zuxo" && session.testApp !== "pixel") || session.testApp === "zuxo" && session.testTv === "samsung" && session.testActivationMode !== "manual_samsung"))) {
-      return await finishZuxoDevice(session, session.testDevice === "phone" ? session.testPhoneOs || "android" : undefined);
+      && (session.testDevice === "phone" && (session.testApp !== "zuxo" || !session.testPhoneOs) || session.testDevice === "tv" && ((session.testApp !== "zuxo" && session.testApp !== "pixel") || session.testApp === "zuxo" && session.testTv === "samsung" && session.testActivationMode !== "manual_samsung"))) {
+      return await finishZuxoDevice(session, session.testDevice === "phone" ? session.testPhoneOs : undefined);
     }
 
     // Campaign replies are isolated from ordinary renewal menus and old trial limits.
@@ -4275,7 +4315,7 @@ Deno.serve(async (req) => {
               };
               await persistState();
               await send(
-                partnerDeviceGuide(session.testApp!, true),
+                session.testApp === "zuxo" ? zuxoRemoteInstructions(session.testPhoneOs || session.testTv || "android") : partnerDeviceGuide(session.testApp!, true),
               );
               return json({ ok: true, action: "test_confirm_install_ok_mac" });
             }
@@ -4440,7 +4480,10 @@ Deno.serve(async (req) => {
           sessions[phone] = { ...sessions[phone], state: "test_await_mac", devicePhoto: undefined, updatedAt: new Date().toISOString() };
           await persistState();
           const target = session.testApp === "utm" ? "MAC e Device Key" : session.testApp === "pixel" ? "Device ID completo" : "MAC";
-          await send(`Não foi possível ativar com esse código.\n\nMande outra *foto do ${target}* ou *digite o código correto* para tentar novamente.\n\nSe continuar, digite *atendente*.`);
+          const invalidCode = /^(Envie|Faltou)|exatamente como aparece/i.test(e instanceof Error ? e.message : "");
+          await send(invalidCode
+            ? `Não consegui validar o ${target}.\n\nMande uma *foto nítida* ou *digite o código completo*.\n\nSe precisar, digite *atendente*.`
+            : "Recebi o código, mas não consegui concluir a ativação no painel agora. Não vou criar outro teste automaticamente.\n\nDigite *atendente* para a equipe conferir seu acesso.");
           return json({ ok: false, action: "test_device_retry" });
         }
         const raw =
