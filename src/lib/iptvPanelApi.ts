@@ -1251,7 +1251,7 @@ function userRowKey(u: IptvRemoteUser): string {
 /** Lista usuários IPTV no painel (com paginação quando a API limitar). */
 export async function listIptvUsers(
   creds: IptvPanelCreds,
-  opts?: { /** Se true, omite testes/trials */ activeOnly?: boolean; fresh?: boolean },
+  opts?: { /** Se true, omite testes/trials */ activeOnly?: boolean; fresh?: boolean; requireComplete?: boolean },
 ): Promise<IptvRemoteUser[]> {
   const reg = creds.regPassword?.trim() || "";
   const baseParams = new URLSearchParams();
@@ -1283,7 +1283,8 @@ export async function listIptvUsers(
       let batch: IptvRemoteUser[] = [];
       try {
         batch = await fetchPage(page, pageSize);
-      } catch {
+      } catch (error) {
+        if (opts?.requireComplete) throw error;
         break;
       }
       let added = 0;
@@ -2318,7 +2319,7 @@ export async function fetchIptvUserAccess(
   creds: IptvPanelCreds,
   username: string,
 ): Promise<{ password: string; m3u: string; dnsSmarters: string; webPlayer: string }> {
-  const users = await listIptvUsers(creds, { fresh: true });
+  const users = await listIptvUsers(creds, { fresh: true, requireComplete: true });
   const remote = users.find((row) => row.username?.trim().toLowerCase() === username.trim().toLowerCase());
   if (!remote || remote.id == null) {
     throw new Error("Cliente não encontrado na Uniplay para consultar os dados de acesso.");

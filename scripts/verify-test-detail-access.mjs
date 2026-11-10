@@ -41,7 +41,7 @@ const api = ts.createSourceFile('api.ts', fs.readFileSync('src/lib/iptvPanelApi.
 const fetchAccess = api.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'fetchIptvUserAccess');
 const requests = [];
 const apiCtx = vm.createContext({
-  listIptvUsers: async (_creds, opts) => { assert.equal(opts.fresh, true); return [{ id: 42, username: 'user-b' }]; },
+  listIptvUsers: async (_creds, opts) => { assert.equal(opts.fresh, true); assert.equal(opts.requireComplete, true); return [{ id: 42, username: 'user-b' }]; },
   panelFetch: async (_creds, path, init) => { requests.push({ path, init }); return {}; },
   extractIptvClientAccess: () => ({ password: 'actual', m3u: 'https://actual.invalid/list', dnsSmarters: 'https://actual-dns.invalid', webPlayer: '' }),
   enrichCreateTestResult: () => ({}), deepFindPassword: () => '',
@@ -52,6 +52,15 @@ assert.equal(requests[0].path, '/users-iptv/42'); assert.equal(requests[0].init.
 assert.equal(requests[0].init.cache, 'no-store'); assert.equal(JSON.parse(requests[0].init.body).action, 8, 'read links, never renew or recreate');
 apiCtx.extractIptvClientAccess = () => ({ password: '', m3u: '', dnsSmarters: '', webPlayer: '' });
 assert.equal((await apiCtx.fetchIptvUserAccess({}, 'user-b')).m3u, '', 'missing panel data stays empty');
+const listUsers = api.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'listIptvUsers');
+let pageCalls = 0;
+const listing = vm.createContext({ URLSearchParams, Date,
+  panelFetch: async () => { if (++pageCalls === 1) return Array.from({ length: 15 }, (_, i) => ({ id: i, username: 'fixture-' + i })); throw Error('Proxy page unavailable'); },
+  asArray: value => value, pickUserFields: value => value, userRowKey: value => String(value.id),
+});
+vm.runInContext(ts.transpileModule(listUsers.getText(api).replace(/^export /, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, listing);
+await assert.rejects(listing.listIptvUsers({}, { fresh: true, requireComplete: true }), /Proxy page unavailable/, 'an incomplete lookup must not report a missing client');
+pageCalls = 0; assert.equal((await listing.listIptvUsers({})).length, 15, 'unrelated bulk callers retain partial-list behavior');
 const modal = source.slice(source.indexOf('{/* Detalhes do teste /'));
 assert.match(modal, /M3U:\{" "\}[\s\S]*?Telefone:\{" "\}[\s\S]*?DNS Smarters:\{" "\}/);
 assert.doesNotMatch(modal, /linksForJob|detailJob\.panelPassword/);
