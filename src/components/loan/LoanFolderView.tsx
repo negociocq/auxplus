@@ -256,7 +256,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
           </dl>
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
             <p>{loan.lateRate ? `Taxa de atraso: ${loan.lateRateType === "amount" ? money(loan.lateRate) : `${loan.lateRate}%`} ${loan.latePeriod === "day" ? "ao dia" : "ao mês (30 dias)"}` : "Sem juros por atraso"}</p>
-            <p>Vence: <span className="font-medium text-foreground">{formatBrDate(loan.dueDate)}</span></p>
+            <p>{!loan.paidAt && balance.daysLate > 0 ? <><span className="font-medium text-destructive">Vencido há {balance.daysLate} {balance.daysLate === 1 ? "dia" : "dias"}</span><span> · </span></> : "Vence: "}<span className="font-medium text-foreground">{formatBrDate(loan.dueDate)}</span></p>
           </div>
         </div>
       ) : <p className="my-3 text-sm text-muted-foreground">Configure as condições do empréstimo.</p>}
