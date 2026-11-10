@@ -8,6 +8,7 @@ export function loanReminderCandidate(folder: Record<string, unknown>, item: Rec
   if (!loan) return null;
   const kind = loanReminderKind(loan, today);
   if (!kind) return null;
+  if ((kind === "before" && !settings.sendBefore) || (kind === "onday" && !settings.sendOnDay)) return null;
   let phone = String(item.phone || "").replace(/\D/g, "");
   if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
   if (!/^[1-9]\d{9,14}$/.test(phone)) return null;

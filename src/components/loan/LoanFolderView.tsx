@@ -169,13 +169,17 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     </form>
     </details>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs text-muted-foreground">{autoSettings.enabled ? `Automático: 2 dias antes e no vencimento · ${autoSettings.sendTime}` : "Envio automático desligado"}</p>
+      <p className="text-xs text-muted-foreground">{autoSettings.enabled ? `Automático: ${autoSettings.sendBefore && autoSettings.sendOnDay ? "2 dias antes e no vencimento" : autoSettings.sendBefore ? "somente 2 dias antes" : "somente no vencimento"} · ${autoSettings.sendTime}` : "Envio automático desligado"}</p>
       <Button type="button" size="sm" variant="outline" onClick={() => { setMessageDrafts({ before: readLoanReminder(currentFolder.whatsappMessage, "before"), onday: readLoanReminder(currentFolder.whatsappMessage, "onday") }); setMessageKind("before"); setMessageOpen(true); }}><MessageSquareText className="h-4 w-4" />Editar lembrete</Button>
     </div>
     <details className="rounded-xl border bg-card">
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium">Envio automático <span className="ml-2 text-xs font-normal text-muted-foreground">{autoSettings.enabled ? "Ativo" : "Configurar"}</span></summary>
       <form className="space-y-3 border-t p-4" onSubmit={saveAuto}>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-primary" checked={autoDraft.enabled} onChange={e => setAutoDraft(s => ({ ...s, enabled: e.target.checked }))} />Enviar 2 dias antes e no vencimento</label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" className="h-4 w-4 shrink-0 accent-primary" checked={autoDraft.sendBefore} onChange={e => setAutoDraft(s => ({ ...s, sendBefore: e.target.checked, enabled: e.target.checked || s.sendOnDay }))} />Enviar 2 dias antes</label>
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" className="h-4 w-4 shrink-0 accent-primary" checked={autoDraft.sendOnDay} onChange={e => setAutoDraft(s => ({ ...s, sendOnDay: e.target.checked, enabled: s.sendBefore || e.target.checked }))} />Enviar no vencimento</label>
+        </div>
+        <p className="text-xs text-muted-foreground">Marque uma opção ou as duas. Desmarque ambas para desligar os envios automáticos desta pasta.</p>
         <div className="flex flex-wrap items-end gap-2"><div className="space-y-1"><Label htmlFor="loan-auto-time">Horário de Brasília</Label><Input id="loan-auto-time" type="time" required value={autoDraft.sendTime} onChange={e => setAutoDraft(s => ({ ...s, sendTime: e.target.value }))} /></div><Button type="submit">Salvar agendamento</Button></div>
         <p className="text-xs text-muted-foreground">Usa a mensagem salva em Editar lembrete e a chave PIX desta pasta. Funciona com o AuxPlus fechado e exige WhatsApp conectado. A fila é conferida a cada 5 minutos após o horário escolhido. Empréstimos quitados não recebem cobrança.</p>
       </form>

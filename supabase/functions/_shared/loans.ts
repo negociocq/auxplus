@@ -122,18 +122,23 @@ export function renderLoanReminder(template: string, values: Record<string, stri
   return pixKey && !template.includes("{pix}") ? `${message}\n\nChave PIX para pagamento:\n${pixKey}` : message;
 }
 
-export interface LoanAutoSettings { enabled: boolean; sendTime: string }
+export interface LoanAutoSettings { enabled: boolean; sendTime: string; sendBefore: boolean; sendOnDay: boolean }
 const autoMarker = /<!--AXLOANAUTO:([\s\S]*?)-->/g;
 export function readLoanAutoSettings(message?: string | null): LoanAutoSettings {
   try {
     const encoded = [...(message || "").matchAll(autoMarker)][0]?.[1];
     const value = encoded ? JSON.parse(decodeURIComponent(encoded)) : {};
-    return { enabled: value.enabled === true, sendTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(value.sendTime) ? value.sendTime : "09:30" };
-  } catch { return { enabled: false, sendTime: "09:30" }; }
+    const sendBefore = typeof value.sendBefore === "boolean" ? value.sendBefore : value.enabled === true;
+    const sendOnDay = typeof value.sendOnDay === "boolean" ? value.sendOnDay : value.enabled === true;
+    return { enabled: sendBefore || sendOnDay, sendBefore, sendOnDay, sendTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(value.sendTime) ? value.sendTime : "09:30" };
+  } catch { return { enabled: false, sendBefore: false, sendOnDay: false, sendTime: "09:30" }; }
 }
-export function writeLoanAutoSettings(message: string | null | undefined, settings: LoanAutoSettings): string {
+export function writeLoanAutoSettings(message: string | null | undefined, settings: Pick<LoanAutoSettings, "enabled" | "sendTime"> & Partial<Pick<LoanAutoSettings, "sendBefore" | "sendOnDay">>): string {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(settings.sendTime)) throw Error("Informe um horário válido.");
-  return `${(message || "").replace(autoMarker, "").trim()}\n<!--AXLOANAUTO:${encodeURIComponent(JSON.stringify(settings))}-->`.trim();
+  const sendBefore = settings.sendBefore ?? settings.enabled;
+  const sendOnDay = settings.sendOnDay ?? settings.enabled;
+  const normalized = { enabled: sendBefore || sendOnDay, sendBefore, sendOnDay, sendTime: settings.sendTime };
+  return `${(message || "").replace(autoMarker, "").trim()}\n<!--AXLOANAUTO:${encodeURIComponent(JSON.stringify(normalized))}-->`.trim();
 }
 export function loanReminderKind(loan: LoanTerms, today: string): "before" | "onday" | null {
   if (loan.paidAt) return null;
