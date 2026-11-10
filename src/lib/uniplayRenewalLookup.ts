@@ -4,6 +4,14 @@ import { ensureIptvToken, listUniplayRenewalLogs, listUniplayCreditLogs } from "
 import { brazilDay } from "@/lib/renewalSummary";
 import type { UniplayRenewalEvent, UniplayRecreatedLine, UniplayCreditEvent } from "@/lib/uniplayRenewalLogs";
 
+async function loadInBatches<T>(values: { year: number; month: number }[], loader: (value: { year: number; month: number }) => Promise<T>, size = 4): Promise<T[]> {
+  const result: T[] = [];
+  for (let i = 0; i < values.length; i += size) {
+    result.push(...await Promise.all(values.slice(i, i + size).map(loader)));
+  }
+  return result;
+}
+
 /** Consulta em memória: não arquiva os logs nem altera clientes ou vencimentos. */
 export async function lookupUniplayRenewals(userId: string, start: string, end: string, minimumDate?: string | null) {
   if (!/^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(start) || !/^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(end) || !Number.isFinite(Date.parse(`${start}T12:00:00Z`)) || !Number.isFinite(Date.parse(`${end}T12:00:00Z`)) || start > end) throw new Error("Selecione um período válido.");
@@ -29,17 +37,13 @@ export async function lookupUniplayRenewals(userId: string, start: string, end: 
   const events: UniplayRenewalEvent[] = [];
   const recreations: UniplayRecreatedLine[] = [];
   const creditEvents: UniplayCreditEvent[] = [];
-  for (let i = 0; i < months.length; i += 2) {
-    const batch = await Promise.all(months.slice(i, i + 2).map(({ year, month }) => listUniplayRenewalLogs(creds, year, month)));
-    for (const logs of batch) {
-      events.push(...logs.events);
-      recreations.push(...logs.recreations);
-    }
+  const renewalLogs = await loadInBatches(months, ({ year, month }) => listUniplayRenewalLogs(creds, year, month));
+  for (const logs of renewalLogs) {
+    events.push(...logs.events);
+    recreations.push(...logs.recreations);
   }
   const creditMonths = months.filter(({ key }) => key <= end.slice(0, 7));
-  for (let i = 0; i < creditMonths.length; i += 2) {
-    const batch = await Promise.all(creditMonths.slice(i, i + 2).map(({ year, month }) => listUniplayCreditLogs(creds, year, month)));
-    for (const logs of batch) creditEvents.push(...logs);
-  }
+  const creditLogs = await loadInBatches(creditMonths, ({ year, month }) => listUniplayCreditLogs(creds, year, month));
+  for (const logs of creditLogs) creditEvents.push(...logs);
   return { source: "uniplay" as const, events: events.filter((event) => { const day = brazilDay(new Date(event.occurredAt)); return day >= start && day <= end; }), recreations, creditEvents: creditEvents.filter((event) => { const day = brazilDay(new Date(event.occurredAt)); return day >= start && day <= end; }), creditUnitPrice: auto.resellerCreditPriceBrl, months: months.map(({ key }) => key) };
 }
