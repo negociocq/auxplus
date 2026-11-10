@@ -1,4 +1,4 @@
-import { upgradePartnerTestFlow, parsePartnerDeviceText, zuxoRemoteInstructions, zuxoSamsungInstructions, zuxoActivatedInstructions } from "../_shared/partnerTestFlow.ts";
+import { upgradePartnerTestFlow, parsePartnerDeviceText, zuxoRemoteInstructions, zuxoSamsungInstructions, zuxoActivatedInstructions, isManualSamsungSession } from "../_shared/partnerTestFlow.ts";
 import { recoveryPhone, recoveryPanel } from "../_shared/waRecovery.ts";
 import { readPartnerDevicePhoto, photoConfirmation, photoFailureCode, photoFailureMessage, type PhotoDevice } from "../_shared/partnerDevicePhoto.ts";
 import { partnerDeviceGuide, partnerDeviceHelp, partnerGuideUrl } from "../_shared/partnerDeviceGuide.ts";
@@ -2789,7 +2789,7 @@ Deno.serve(async (req) => {
 
     // Foto/áudio/vídeo/doc sem legenda → não ficar calado
     const photoStates = ["test_await_mac", "test_confirm_install", "test_plan_await_mac"];
-    const receivesDevicePhoto = mediaKind === "image" && photoStates.includes(sessions[phone]?.state || "") && Boolean(sessions[phone]?.testApp) && sessions[phone]?.testActivationMode !== "manual_samsung" && sessions[phone]?.testTv !== "samsung";
+    const receivesDevicePhoto = mediaKind === "image" && photoStates.includes(sessions[phone]?.state || "") && Boolean(sessions[phone]?.testApp) && !isManualSamsungSession(sessions[phone]);
     if (!text && mediaKind && !receivesDevicePhoto) {
       if (isHumanPaused(phone)) {
         return json({ ok: true, skipped: "human_media" });
@@ -3473,7 +3473,7 @@ Deno.serve(async (req) => {
     };
 
     const activateMacForSession = async (sess: Session, rawMac: string) => {
-      if (sess.testActivationMode === "manual_samsung" || sess.testTv === "samsung") return await finishTestPcPhone(sess, "samsung");
+      if (isManualSamsungSession(sess)) return await finishTestPcPhone(sess, "samsung");
       const app = sess.testApp === "utm" ? "utm" : sess.testApp === "zuxo" ? "zuxo" : "pixel";
       const { device: mac, deviceKey } = parsePartnerDeviceText(app, rawMac);
       const username = String(sess.testUsername || "").trim();
@@ -3720,7 +3720,11 @@ Deno.serve(async (req) => {
         return json({ ok: true, action: "test_ask_app" });
       }
       if (action === "back") return await goBackTest(sess);
-      if (action === "app_pixel" || action === "app_zuxo") return await finishZuxoDevice(sess);
+      if (action === "app_pixel") {
+        if (sess.testDevice === "phone") return await finishZuxoDevice(sess, sess.testPhoneOs || "android");
+        return await finishTestWithApp({ ...sess, testDevice: "tv", testPhoneOs: undefined }, "pixel");
+      }
+      if (action === "app_zuxo") return await finishZuxoDevice(sess, sess.testDevice === "phone" ? sess.testPhoneOs || "android" : undefined);
       if (action === "app_utm") {
         return await finishZuxoDevice(sess);
       }
@@ -3884,7 +3888,7 @@ Deno.serve(async (req) => {
 
     // Repair only on a real incoming message; reuse the trial already created by the old bug.
     if (["test_await_mac", "test_confirm_install"].includes(session.state || "") && !session.testDoneAt && !wantsAttendant && !["0", "voltar", "menu"].includes(t)
-      && (session.testDevice === "phone" && session.testApp !== "zuxo" || session.testDevice === "tv" && (session.testApp !== "zuxo" || session.testTv === "samsung" && session.testActivationMode !== "manual_samsung"))) {
+      && (session.testDevice === "phone" && session.testApp !== "zuxo" || session.testDevice === "tv" && ((session.testApp !== "zuxo" && session.testApp !== "pixel") || session.testApp === "zuxo" && session.testTv === "samsung" && session.testActivationMode !== "manual_samsung"))) {
       return await finishZuxoDevice(session, session.testDevice === "phone" ? session.testPhoneOs || "android" : undefined);
     }
 

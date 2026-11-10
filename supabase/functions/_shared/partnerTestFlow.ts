@@ -303,7 +303,8 @@ function upgradeUniversalZuxoFlow<T>(input: T): T {
 
 export function upgradePartnerTestFlow<T>(input: T): T {
   if (!input || typeof input !== "object") return input;
-  if (Number((input as Record<string, unknown>).appCatalogVersion) >= 13) return input;
+  if (Number((input as Record<string, unknown>).appCatalogVersion) >= 14) return input;
+  if (Number((input as Record<string, unknown>).appCatalogVersion) >= 13) return upgradeTvPlayerChoices(input);
   const flow = upgradeZuxoCatalog(upgradeTvCatalogFlow(input)) as Record<string, unknown>;
   const texts = { ...(flow.texts as Record<string, unknown> || {}) };
   if (/pixel/i.test(String(texts.phoneReady || ""))) texts.phoneReady = ANDROID_PHONE_READY;
@@ -314,7 +315,35 @@ export function upgradePartnerTestFlow<T>(input: T): T {
     if (/android|pixel/i.test(label) || option.action === "app_pixel") return { ...option, action: "phone_android", nextMenuId: undefined, label: /pixel/i.test(String(option.label || "")) ? "Android" : option.label };
     return option;
   }) } : phoneMenu;
-  return upgradeUniversalZuxoFlow({ ...flow, appCatalogVersion: Math.max(9, Number(flow.appCatalogVersion) || 0), phoneMenu: repairedPhoneMenu, texts } as T);
+  return upgradeTvPlayerChoices(upgradeUniversalZuxoFlow({ ...flow, appCatalogVersion: Math.max(9, Number(flow.appCatalogVersion) || 0), phoneMenu: repairedPhoneMenu, texts } as T));
+}
+
+/** TV choices only: retain phone/tablet, PC, prices and custom trial messages. */
+function upgradeTvPlayerChoices<T>(input: T): T {
+  const flow = input as Record<string, any>;
+  const brands = ["samsung", "lg", "roku", "android"];
+  const brandNames: Record<string, string> = { samsung: "Samsung", lg: "LG", roku: "Roku", android: "Android TV / Google TV / TV Box" };
+  const menus = brands.flatMap(brand => {
+    const players = brand === "samsung" ? ["pixel", "zuxo"] : ["zuxo", "pixel"];
+    const menu = {
+      message: `Qual aplicativo você vai usar na sua TV ${brandNames[brand]}?\n\nEscolha uma opção.`,
+      options: [
+        ...players.map((app, index) => ({ key: String(index + 1), label: app === "pixel" ? "Pixel Player" : "Zuxo Player", keywords: app === "pixel" ? "pixel,pixel player" : "zuxo,zuxo player", action: `app_${app}` })),
+        { key: "9", label: "Falar com atendente", keywords: "atendente,ajuda", action: "human" },
+        { key: "0", label: "Voltar", keywords: "voltar,menu", action: "back" },
+      ],
+    };
+    return [{ id: brand, title: `Aplicativos — ${brandNames[brand]}`, menu }, { id: `help_${brand}`, title: `Instalar aplicativo — ${brandNames[brand]}`, menu }];
+  });
+  const replaced = new Set(menus.map(menu => menu.id));
+  return { ...flow, appCatalogVersion: 14,
+    tvMenu: { ...flow.tvMenu, message: "Qual é a sua TV?" },
+    appMenus: [...(flow.appMenus || []).filter((menu: { id: string }) => !replaced.has(menu.id)), ...menus],
+  } as T;
+}
+
+export function isManualSamsungSession(session: { testApp?: string; testTv?: string; testActivationMode?: string }): boolean {
+  return session.testApp !== "pixel" && (session.testActivationMode === "manual_samsung" || session.testApp === "zuxo" && session.testTv === "samsung");
 }
 
 export function isMisroutedAndroidPhoneSession(session: { testDevice?: string; testApp?: string; state?: string; testUsername?: string; testPassword?: string }): boolean {

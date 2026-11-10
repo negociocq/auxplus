@@ -12,17 +12,17 @@ const base = upgrade({ texts: { askName: "Custom name", macOk: "Custom success" 
 
 for (const version of [2,3,4,5,6,7,8,9,10,12]) {
  const flow=upgrade({...base,appCatalogVersion:version});
- assert.equal(flow.appCatalogVersion,13);
+ assert.equal(flow.appCatalogVersion,14);
  assert.equal(flow.texts.askName,'Custom name');assert.equal(flow.texts.macOk,'Custom success');
  assert.equal(flow.monthPriceBrl,29);assert.deepEqual(flow.offerMenu,base.offerMenu);assert.deepEqual(upgrade(flow),flow);
  const menus=new Map(flow.appMenus.map(m=>[m.id,m.menu]));assert.equal(menus.size,flow.appMenus.length);
  for(const brand of ['samsung','lg','roku','android']) {
   assert.equal(flow.tvMenu.options.find(o=>o.nextMenuId===brand).action,'ask_app');
   const menu=menus.get(brand);
-  assert.deepEqual(menu.options.filter(o=>o.action.startsWith('app_')).map(o=>o.action),['app_zuxo']);
+  assert.deepEqual(menu.options.filter(o=>o.action.startsWith('app_')).map(o=>o.action),brand==='samsung'?['app_pixel','app_zuxo']:['app_zuxo','app_pixel']);
   assert(menu.options.some(o=>o.action==='human'));
   assert.equal(new Set(menu.options.map(o=>o.key)).size,menu.options.length);
-  assert.match(menu.message,brand==='samsung'?/manual/:/MAC/);
+  assert.match(menu.message,/aplicativo/);
  }
  assert.match(flow.phoneApkUrl,/com.zuxoplayer.app/);assert.match(flow.phoneIosUrl,/id6782688104/);
 }
