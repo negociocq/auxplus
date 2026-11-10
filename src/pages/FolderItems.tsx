@@ -62,7 +62,6 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import {
   annualPaymentBalance,
   getRecordedPayments,
-  withEmbeddedPayments,
   stripPaymentMarker,
   sumPaymentsByMonth,
   sumRecordedPaymentsByMonth,
@@ -343,8 +342,6 @@ export default function FolderItems() {
   const [editing, setEditing] = useState<Item | null>(null);
   const [moveItemId, setMoveItemId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
-  const [manualPaymentDate, setManualPaymentDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [manualPaymentAmount, setManualPaymentAmount] = useState("");
   const [nearDays, setNearDays] = useState(3);
   const [farDays, setFarDays] = useState(3);
   const [whatsMsg, setWhatsMsg] = useState("");
@@ -754,8 +751,6 @@ export default function FolderItems() {
       creditsBought: "0",
     });
     setFormOpen(true);
-    setManualPaymentDate(format(new Date(), "yyyy-MM-dd"));
-    setManualPaymentAmount("");
   };
 
   const openEdit = (item: Item) => {
@@ -779,24 +774,6 @@ export default function FolderItems() {
       notes: notesForDisplay(item.notes),
     });
     setFormOpen(true);
-    setManualPaymentDate(format(new Date(), "yyyy-MM-dd"));
-    setManualPaymentAmount("");
-  };
-
-  const addManualPayment = () => {
-    if (!editing) return;
-    const amount = Math.round((Number(String(manualPaymentAmount).replace(",", ".")) || 0) * 100) / 100;
-    if (!manualPaymentDate || amount <= 0) {
-      toast.error("Informe a data e um valor maior que zero.");
-      return;
-    }
-    const current = data.items.find((item) => item.id === editing.id && item.folderId === folder.id);
-    if (!current) return;
-    const payment = { paidAt: manualPaymentDate, amount, kind: "renewal" as const, paymentId: `manual-${crypto.randomUUID()}` };
-    setData((prev) => updateItem(prev, withEmbeddedPayments({ ...current, payments: [...getRecordedPayments(current), payment] })));
-    setEditing((prev) => prev ? { ...prev, payments: [...getRecordedPayments(current), payment] } : prev);
-    setManualPaymentAmount("");
-    toast.success("Recebimento histórico adicionado ao gráfico");
   };
 
   const onSave = (e: FormEvent) => {
@@ -1879,17 +1856,6 @@ export default function FolderItems() {
                   )}{" "}
                   ({money(resellerCreditPriceBrl)} por crédito).
                 </p>
-              </div>
-            ) : null}
-            {editing && !isResellerFolder ? (
-              <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-                <p className="text-sm font-medium">Adicionar recebimento histórico</p>
-                <p className="text-[11px] text-muted-foreground">Registra um valor no mês escolhido para o gráfico, sem alterar vencimento ou gerar PIX.</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1"><Label htmlFor="manual-payment-date">Data recebida</Label><Input id="manual-payment-date" type="date" value={manualPaymentDate} onChange={(e) => setManualPaymentDate(e.target.value)} /></div>
-                  <div className="space-y-1"><Label htmlFor="manual-payment-amount">Valor (R$)</Label><Input id="manual-payment-amount" inputMode="decimal" placeholder="30,00" value={manualPaymentAmount} onChange={(e) => setManualPaymentAmount(e.target.value)} /></div>
-                </div>
-                <Button type="button" variant="outline" className="w-full" onClick={addManualPayment}>Adicionar recebimento</Button>
               </div>
             ) : null}
             <div className="space-y-2">

@@ -1171,7 +1171,7 @@ export default function Dashboard() {
                     Receita por mês
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Mesma base de Renovações e créditos recebidos · sem projetar mensalidades
+                    Renovações e créditos recebidos · histórico Slim de Jessica e Jones incluído
                   </p>
                   <p className="mt-2 text-lg font-bold tracking-tight text-primary">
                     Total registrado em {chartYear}: {chartLoading || chartError ? "—" : money(annualBalance)}
