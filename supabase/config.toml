@@ -43,6 +43,10 @@ verify_jwt = false
 [functions.wa-auto-send]
 verify_jwt = false
 
+# Authenticated by the private x-loan-cron secret stored in Vault and Edge secrets.
+[functions.loan-reminders]
+verify_jwt = false
+
 # Auth URLs (produção + localhost / Dyad)
 [auth]
 enabled = true

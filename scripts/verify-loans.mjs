@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import ts from 'typescript';
 import assert from 'node:assert/strict';
-const source = fs.readFileSync('src/lib/loans.ts', 'utf8');
+const source = fs.readFileSync('supabase/functions/_shared/loans.ts', 'utf8');
 const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
-const { loanBalance, readLoan, writeLoan, validateLoan, loanDueStatus, readLoanPixKey, writeLoanPixKey, readLoanReminder, writeLoanReminder, renderLoanReminder, DEFAULT_LOAN_REMINDER } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+const { loanBalance, readLoan, writeLoan, validateLoan, loanDueStatus, readLoanPixKey, writeLoanPixKey, readLoanReminder, writeLoanReminder, renderLoanReminder, DEFAULT_LOAN_REMINDER, readLoanAutoSettings, writeLoanAutoSettings, loanReminderKind } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 const loan = { version: 1, principal: 1000, agreedAmount: 1100, lentAt: '2026-10-01', dueDate: '2026-11-09', lateRate: 3, latePeriod: 'month' };
 assert.equal(loanBalance(loan, '2026-11-08').total, 1100);
 assert.equal(loanBalance(loan, '2026-11-09').lateInterest, 0);
@@ -51,4 +51,15 @@ assert.equal(renderLoanReminder('Olá {name}', { name: 'Ana' }, 'chave'), 'Olá 
 assert.equal(renderLoanReminder('{name}', { name: 'Ana' }), 'Ana');
 assert.throws(() => writeLoanReminder('', ' '));
 assert.throws(() => writeLoanReminder('', 'a'.repeat(4001)));
+assert.equal(loanReminderKind(loan, '2026-11-07'), 'before');
+assert.equal(loanReminderKind(loan, '2026-11-09'), 'onday');
+assert.equal(loanReminderKind(loan, '2026-11-08'), null);
+assert.equal(loanReminderKind(loan, '2026-11-10'), null);
+assert.equal(loanReminderKind({ ...loan, paidAt: '2026-11-07T12:00:00Z' }, '2026-11-07'), null);
+assert.equal(readLoanAutoSettings('').enabled, false);
+const autoMessage = writeLoanAutoSettings(configured, { enabled: true, sendTime: '09:30' });
+assert.deepEqual(readLoanAutoSettings(autoMessage), { enabled: true, sendTime: '09:30' });
+assert.equal(readLoanReminder(autoMessage), customTemplate);
+assert.equal(readLoanPixKey(autoMessage), 'pix+teste@example.com');
+assert.throws(() => writeLoanAutoSettings('', { enabled: true, sendTime: '25:90' }));
 console.log('PASS: due-day boundary, daily/monthly simple interest, leap days, zero rate, paid balance freeze, persisted terms, duplicate-marker removal and invalid terms.');
