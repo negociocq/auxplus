@@ -386,4 +386,8 @@ state().testConsumed[releasedPhone]={at:aged(7*86400000),username:'stale-browser
 state().sessions[releasedPhone]={state:'test_await_mac',testUsername:'stale-browser-trial',testPassword:'fixture',testDoneAt:aged(7*86400000),testDevice:'phone'};
 assert.equal((await receive('teste',{targetPhone:releasedPhone})).action,'test_ask_name','owner release must override a stale browser state without reviving its old credentials');
 assert.equal(state().sessions[releasedPhone].testUsername,undefined);
+assert.equal((await receive('Wallisson',{targetPhone:releasedPhone})).action,'test_ask_device','pending release must not erase the freshly entered name');
+assert.equal(state().sessions[releasedPhone].testClientName,'Wallisson');
+assert.equal((await receive('Celular',{targetPhone:releasedPhone})).action,'test_ask_phone_os','pending release must preserve the device step');
+assert.equal(state().sessions[releasedPhone].testDevice,'phone');
 console.log('PASS: durable owner release survives stale browser writes and starts a clean name/device flow.');

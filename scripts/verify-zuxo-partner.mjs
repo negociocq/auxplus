@@ -50,4 +50,11 @@ await assert.rejects(requestContext.uniplayFetch('/activate-zuxo','fixture',{met
 assert.equal(attempts,1,'uncertain activation cannot replay through another proxy');
 attempts=0;await assert.rejects(requestContext.uniplayFetch('/users-iptv','fixture',{method:'POST',body:'{}'}));
 assert.equal(attempts,1,'uncertain test creation cannot replay through another proxy');
+const createFunction=webhook.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='createUniplayTestUser');
+const creationCalls=[];
+const creationContext=vm.createContext({genTestPassword:()=> 'fixture-password',digitsPhone:()=> '5571990000000',sanitizeTestClientName:s=>s,uniplayFetch:async(path,_token,init)=>{creationCalls.push({path,body:JSON.parse(init.body)});throw Error('fixture 500');}});
+vm.runInContext(ts.transpileModule(createFunction.getText(webhook),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,creationContext);
+await assert.rejects(creationContext.createUniplayTestUser('fixture',6,'fixture','1','Walisson'));
+assert.equal(creationCalls.length,1);
+assert.deepEqual(creationCalls[0].body,{test_hours:'6',nota:'Walisson',password:'fixture-password',pass:'fixture-password',senha:'fixture-password',whatsapp:5571990000000,isOficial:false,package:'1',credits:1,isCustomPackage:false});
 console.log('PASS: live-panel Zuxo id_user/MAC contract; Pixel/UTM unchanged; retired app blocked; saved menus migrated without creating real activations.');

@@ -1599,34 +1599,12 @@ async function createUniplayTestUser(
   if (wa != null && Number.isFinite(wa) && wa > 0) {
     baseFields.whatsapp = wa;
   }
-  const attempts: Array<Record<string, unknown>> = [
-    // Formato simples (mais compatível)
-    { ...baseFields },
-    // Formato completo do painel
-    {
-      ...baseFields,
-      isOficial: false,
-      package: pkg,
-      credits: 1,
-      isCustomPackage: false,
-      bouquets: [],
-    },
-  ];
-  let lastErr: Error | null = null;
-  let created: unknown = null;
-  for (const body of attempts.slice(0, 1)) {
-    try {
-      created = await uniplayFetch("/users-iptv", bearer, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      lastErr = null;
-      break;
-    } catch (e) {
-      lastErr = e instanceof Error ? e : new Error(String(e));
-    }
-  }
-  if (lastErr) throw lastErr;
+  // Same fields as the panel's quick-test action, in one request. Missing
+  // package/type fields must not be handled by replaying a creation with variants.
+  const created = await uniplayFetch("/users-iptv", bearer, {
+    method: "POST",
+    body: JSON.stringify({ ...baseFields, isOficial: false, package: pkg, credits: 1, isCustomPackage: false }),
+  });
   let { username, password: pass, remoteId } = pickUsernamePassFromCreated(
     created,
     password,
@@ -2714,7 +2692,11 @@ Deno.serve(async (req) => {
         const used = await loadTrialUse(client, String(userId), phoneStateKey(phone), legacy);
         if (used?.released) {
           clearTestConsumed(phone);
-          sessions[phone] = { state: "idle", updatedAt: new Date().toISOString() };
+          // Clear credentials from a stale browser write only once. A fresh authorized
+          // name/device flow must survive every subsequent message until creation.
+          if (legacy || sessions[phone]?.testUsername || sessions[phone]?.testDoneAt) {
+            sessions[phone] = { state: "idle", updatedAt: new Date().toISOString() };
+          }
         } else if (used) markTestConsumed(phone, used);
         else if (legacy) clearTestConsumed(phone);
       } catch (error) {
