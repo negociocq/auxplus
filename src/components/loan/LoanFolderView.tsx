@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Bell, CheckCircle2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
+import { ArrowLeft, Bell, CheckCircle2, Info, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
 import { createItem, deleteItem, updateItem } from "@/lib/storage";
@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { stripPaymentMarker } from "@/lib/payments";
 import { stripPlanMarker } from "@/lib/planMonths";
 import { stripScreensMarker } from "@/lib/itemScreens";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
 const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", latePeriod: "month" as LoanTerms["latePeriod"], notes: "" });
@@ -114,7 +115,37 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     </li>)}</ul>}
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"><DialogHeader><DialogTitle>{editing ? "Editar empréstimo" : "Novo empréstimo"}</DialogTitle><DialogDescription>Informe as condições combinadas com o cliente.</DialogDescription></DialogHeader><form onSubmit={save} className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">{([['name', 'Nome do cliente', 'text'], ['phone', 'WhatsApp com DDI', 'tel'], ['principal', 'Valor emprestado (R$)', 'text'], ['agreedAmount', 'Valor a pagar no vencimento (R$)', 'text'], ['lentAt', 'Data do empréstimo', 'date'], ['dueDate', 'Vencimento', 'date']] as const).map(([key, label, type]) => <div key={key} className="space-y-1"><Label htmlFor={`loan-${key}`}>{label}</Label><Input id={`loan-${key}`} type={type} inputMode={key === 'principal' || key === 'agreedAmount' ? 'decimal' : undefined} required={key !== 'phone'} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} /></div>)}</div>
-      <div className="rounded-lg border p-3"><p className="mb-2 text-sm font-medium">Juros após o vencimento (opcional)</p><div className="grid grid-cols-2 gap-3"><div className="space-y-1"><Label htmlFor="loan-rate">Taxa (%)</Label><Input id="loan-rate" inputMode="decimal" required value={form.lateRate} onChange={e => setForm(p => ({ ...p, lateRate: e.target.value }))} /></div><div className="space-y-1"><Label htmlFor="loan-period">Período da taxa</Label><select id="loan-period" className="h-10 w-full rounded-md border bg-background px-2 text-sm" value={form.latePeriod} onChange={e => setForm(p => ({ ...p, latePeriod: e.target.value as LoanTerms['latePeriod'] }))}><option value="month">Ao mês (30 dias)</option><option value="day">Ao dia</option></select></div></div><p className="mt-2 text-xs text-muted-foreground">Use 0 para não cobrar juros por atraso. A contagem começa no dia seguinte ao vencimento, sobre o valor combinado, sem juros sobre juros. Taxas mensais são proporcionais aos dias de atraso.</p></div>
+      <div className="rounded-lg border p-3">
+        <p className="mb-2 text-sm font-medium">Juros após o vencimento (opcional)</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="loan-rate">Taxa (%)</Label>
+            <Input id="loan-rate" inputMode="decimal" required value={form.lateRate} onChange={e => setForm(p => ({ ...p, lateRate: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-1">
+              <Label htmlFor="loan-period">Período da taxa</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type="button" aria-label="Como funcionam os juros ao mês e ao dia" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Info className="h-4 w-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)] space-y-3 text-sm">
+                  <p className="font-semibold">Como escolher o período?</p>
+                  <p><strong>Ao mês:</strong> a taxa informada vale para 30 dias de atraso. O sistema divide esse valor por 30 para calcular cada dia.</p>
+                  <p>Exemplo: valor combinado de <strong>R$ 1.000</strong>, com <strong>3% ao mês</strong>, gera R$ 30 em 30 dias — ou <strong>R$ 1 por dia de atraso</strong>. Em 5 dias, o total será R$ 1.005.</p>
+                  <p><strong>Ao dia:</strong> a taxa informada é cobrada a cada dia de atraso.</p>
+                  <p>Exemplo: valor combinado de <strong>R$ 1.000</strong>, com <strong>1% ao dia</strong>, gera <strong>R$ 10 por dia de atraso</strong>. Em 5 dias, o total será R$ 1.050.</p>
+                  <p className="border-t pt-2 text-xs text-muted-foreground">Os juros começam no dia seguinte ao vencimento e são calculados sempre sobre o valor combinado, sem cobrar juros sobre os juros acumulados. Com taxa 0, o valor não aumenta após vencer.</p>
+                </PopoverContent>
+              </Popover>
+            </div>
+            <select id="loan-period" className="h-10 w-full rounded-md border bg-background px-2 text-sm" value={form.latePeriod} onChange={e => setForm(p => ({ ...p, latePeriod: e.target.value as LoanTerms['latePeriod'] }))}><option value="month">Ao mês (30 dias)</option><option value="day">Ao dia</option></select>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Use 0 para não cobrar juros por atraso. Toque no ícone de informação para ver exemplos.</p>
+      </div>
       <div className="space-y-1"><Label htmlFor="loan-notes">Observações</Label><Textarea id="loan-notes" value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} /></div><DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit">Salvar empréstimo</Button></DialogFooter>
     </form></DialogContent></Dialog>
     <Dialog open={!!confirm} onOpenChange={v => { if (!v) setConfirm(null); }}><DialogContent><DialogHeader><DialogTitle>{confirm?.action === "pay" ? "Confirmar pagamento integral" : "Excluir empréstimo?"}</DialogTitle><DialogDescription>{confirm?.action === "pay" ? `Confirme somente após receber o total de ${money(loanBalance(readLoan(confirm.item)!, today).total)} de ${confirm.item.name}. A quitação congela o valor e encerra os juros.` : "O registro será removido. Esta ação não pode ser desfeita."}</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setConfirm(null)}>Cancelar</Button><Button variant={confirm?.action === "delete" ? "destructive" : "default"} onClick={confirmAction}>Confirmar</Button></DialogFooter></DialogContent></Dialog>
