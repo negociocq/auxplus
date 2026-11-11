@@ -2802,6 +2802,9 @@ Deno.serve(async (req) => {
     }
     const photoStates = ["test_await_mac", "test_confirm_install", "test_plan_await_mac"];
     const receivesDevicePhoto = mediaKind === "image" && photoStates.includes(sessions[phone]?.state || "") && Boolean(sessions[phone]?.testApp) && !isManualSamsungSession(sessions[phone]);
+    if (!text && mediaKind && !receivesDevicePhoto && !clientItem) {
+      return json({ ok: true, action: "media_ignored_unknown", media: mediaKind });
+    }
     if (!text && mediaKind && !receivesDevicePhoto) {
       if (isHumanPaused(phone)) {
         return json({ ok: true, skipped: "human_media" });
