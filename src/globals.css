@@ -222,6 +222,25 @@
   padding: 0.6rem 0.7rem;
 }
 @media (max-width: 639px) {
+  .loan-folder-view > details {
+    display: inline-block;
+    width: calc(50% - 0.2rem);
+    margin-right: 0.25rem;
+    vertical-align: top;
+  }
+  .loan-folder-view > details:nth-of-type(3) {
+    width: 100%;
+    margin-top: 0.25rem;
+  }
+  .loan-folder-view > details > summary {
+    padding: 0.55rem 0.65rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .loan-folder-view > details > summary span {
+    margin-left: 0.25rem;
+    font-size: 0.65rem;
+  }
   .loan-folder-view > section > div:nth-child(2) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
