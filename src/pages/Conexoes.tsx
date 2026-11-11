@@ -80,6 +80,7 @@ export default function Conexoes() {
   const uni = useUniplayConnection(user);
   const [pairingPhone, setPairingPhone] = useState("");
   const [pairingRequested, setPairingRequested] = useState(false);
+  const [connectionMode, setConnectionMode] = useState<"qr" | "phone">("qr");
 
   /** Pastas tipo Cliente — onde o sync UniPlay pode ser ligado */
   const clientFolders = useMemo(
@@ -233,6 +234,11 @@ export default function Conexoes() {
               </div>
             ) : null}
 
+            {wa.status !== "open" ? <div className="grid grid-cols-2 rounded-lg border bg-muted/30 p-1">
+              <button type="button" className={cn("rounded-md px-3 py-2 text-sm", connectionMode === "qr" && "bg-background font-medium shadow-sm")} onClick={() => { setConnectionMode("qr"); setPairingRequested(false); }}>QR Code</button>
+              <button type="button" className={cn("rounded-md px-3 py-2 text-sm", connectionMode === "phone" && "bg-background font-medium shadow-sm")} onClick={() => setConnectionMode("phone")}>Conectar com número</button>
+            </div> : null}
+
             {wa.status === "open" ? (
               <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3">
                 <CheckCircle2 className="h-8 w-8 shrink-0 text-success" />
@@ -259,7 +265,7 @@ export default function Conexoes() {
               </div>
             ) : (
               <div className="flex min-h-[200px] items-center justify-center rounded-xl border bg-muted/30 p-4">
-                {pairingRequested ? (
+                {connectionMode === "phone" ? (
                   <div className="max-w-sm text-center text-sm text-muted-foreground">
                     <Link2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
                     Aguardando o código de pareamento. No WhatsApp, abra Aparelhos conectados → Conectar com número de telefone.
@@ -280,7 +286,7 @@ export default function Conexoes() {
               </div>
             )}
 
-            {wa.pairingCode ? (
+            {connectionMode === "phone" && wa.pairingCode ? (
               <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3 text-center">
                 <p className="text-xs text-muted-foreground">No celular: WhatsApp → Aparelhos conectados → Conectar com número de telefone. Digite este código:</p>
                 <p className="text-lg font-mono font-semibold tracking-widest text-foreground">
@@ -289,7 +295,7 @@ export default function Conexoes() {
               </div>
             ) : null}
 
-            {wa.status !== "open" ? <div className="space-y-2 rounded-lg border p-3">
+            {wa.status !== "open" && connectionMode === "phone" ? <div className="space-y-2 rounded-lg border p-3">
               <Label htmlFor="whatsapp-pairing-phone" className="text-xs">Conectar por número (opcional)</Label>
               <div className="flex flex-wrap gap-2">
                 <Input id="whatsapp-pairing-phone" inputMode="tel" placeholder="5571999999999" value={pairingPhone} onChange={(e) => { setPairingPhone(e.target.value); setPairingRequested(Boolean(e.target.value.trim())); }} className="h-9 min-w-0 flex-1" />
@@ -298,7 +304,7 @@ export default function Conexoes() {
               <p className="text-[11px] text-muted-foreground">Use o número completo com DDI, somente números. O QR continua disponível abaixo.</p>
             </div> : null}
 
-            <div className="flex flex-wrap gap-2">
+            {connectionMode === "qr" ? <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 onClick={() => void wa.refreshQr()}
@@ -340,7 +346,7 @@ export default function Conexoes() {
                   </Button>
                 </>
               ) : null}
-            </div>
+            </div> : null}
             {wa.status === "open" ? (
               <p className="text-[11px] text-muted-foreground">
                 O bot não depende do localhost: a Evolution avisa o Supabase.

@@ -960,7 +960,9 @@ export async function fetchEvolutionQr(
 
   const rawPairingCode = qr.pairingCode || qr.data?.pairingCode;
   const rawCode = qr.code || qr.data?.code;
-  const pairingCode = rawPairingCode || (/^[A-Z0-9-]{6,12}$/i.test(String(rawCode || "")) ? rawCode : undefined);
+  const pairingCode = rawPairingCode && /^[A-Z0-9]{8}$/i.test(String(rawPairingCode).trim())
+    ? String(rawPairingCode).trim().toUpperCase()
+    : (/^[A-Z0-9]{8}$/i.test(String(rawCode || "").trim()) ? String(rawCode).trim().toUpperCase() : undefined);
   const base64 = qr.base64 || qr.qrcode?.base64 || qr.data?.base64 || qr.data?.qrcode?.base64;
   return {
     status: base64 ? "qr" : "connecting",
