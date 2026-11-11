@@ -947,6 +947,16 @@ export async function fetchEvolutionQr(
   }
 
   const number = String(phoneNumber || "").replace(/\D/g, "");
+  if (number) {
+    // A Evolution pode manter uma tentativa anterior de QR em estado "connecting"
+    // e, nesse caso, devolver somente o payload bruto. Reinicie a tentativa antes
+    // de solicitar o pareamento por número para forçar a geração do código curto.
+    try {
+      await evolutionFetch(runtime, `/instance/logout/${name}`, { method: "DELETE" }, true);
+    } catch {
+      // Instâncias já desconectadas podem responder 404; ainda assim prosseguimos.
+    }
+  }
   const qr = (await evolutionFetch(
     runtime,
     `/instance/connect/${name}${number ? `?number=${encodeURIComponent(number)}` : ""}`,
