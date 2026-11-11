@@ -79,6 +79,7 @@ export default function Conexoes() {
   const wa = useEvolutionConnection(user);
   const uni = useUniplayConnection(user);
   const [pairingPhone, setPairingPhone] = useState("");
+  const [pairingRequested, setPairingRequested] = useState(false);
 
   /** Pastas tipo Cliente — onde o sync UniPlay pode ser ligado */
   const clientFolders = useMemo(
@@ -258,7 +259,12 @@ export default function Conexoes() {
               </div>
             ) : (
               <div className="flex min-h-[200px] items-center justify-center rounded-xl border bg-muted/30 p-4">
-                {wa.qrBase64 ? (
+                {pairingRequested ? (
+                  <div className="max-w-sm text-center text-sm text-muted-foreground">
+                    <Link2 className="mx-auto mb-2 h-8 w-8 opacity-50" />
+                    Aguardando o código de pareamento. No WhatsApp, abra Aparelhos conectados → Conectar com número de telefone.
+                  </div>
+                ) : wa.qrBase64 ? (
                   <img
                     src={wa.qrBase64}
                     alt="QR Code WhatsApp"
@@ -286,7 +292,7 @@ export default function Conexoes() {
             {wa.status !== "open" ? <div className="space-y-2 rounded-lg border p-3">
               <Label htmlFor="whatsapp-pairing-phone" className="text-xs">Conectar por número (opcional)</Label>
               <div className="flex flex-wrap gap-2">
-                <Input id="whatsapp-pairing-phone" inputMode="tel" placeholder="5571999999999" value={pairingPhone} onChange={(e) => setPairingPhone(e.target.value)} className="h-9 min-w-0 flex-1" />
+                <Input id="whatsapp-pairing-phone" inputMode="tel" placeholder="5571999999999" value={pairingPhone} onChange={(e) => { setPairingPhone(e.target.value); setPairingRequested(Boolean(e.target.value.trim())); }} className="h-9 min-w-0 flex-1" />
                 <Button type="button" variant="secondary" onClick={() => void wa.refreshQr(pairingPhone)} disabled={wa.busy || !wa.runtime || !pairingPhone.trim()}>{wa.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}Gerar código</Button>
               </div>
               <p className="text-[11px] text-muted-foreground">Use o número completo com DDI, somente números. O QR continua disponível abaixo.</p>
