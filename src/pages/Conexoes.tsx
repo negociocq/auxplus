@@ -78,6 +78,7 @@ export default function Conexoes() {
   } = useHideBalance();
   const wa = useEvolutionConnection(user);
   const uni = useUniplayConnection(user);
+  const [pairingPhone, setPairingPhone] = useState("");
 
   /** Pastas tipo Cliente — onde o sync UniPlay pode ser ligado */
   const clientFolders = useMemo(
@@ -274,13 +275,22 @@ export default function Conexoes() {
             )}
 
             {wa.pairingCode ? (
-              <p className="text-center text-sm text-muted-foreground">
-                Código de pareamento:{" "}
-                <span className="font-mono font-semibold text-foreground">
+              <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3 text-center">
+                <p className="text-xs text-muted-foreground">No celular: WhatsApp → Aparelhos conectados → Conectar com número de telefone. Digite este código:</p>
+                <p className="text-lg font-mono font-semibold tracking-widest text-foreground">
                   {wa.pairingCode}
-                </span>
-              </p>
+                </p>
+              </div>
             ) : null}
+
+            {wa.status !== "open" ? <div className="space-y-2 rounded-lg border p-3">
+              <Label htmlFor="whatsapp-pairing-phone" className="text-xs">Conectar por número (opcional)</Label>
+              <div className="flex flex-wrap gap-2">
+                <Input id="whatsapp-pairing-phone" inputMode="tel" placeholder="5571999999999" value={pairingPhone} onChange={(e) => setPairingPhone(e.target.value)} className="h-9 min-w-0 flex-1" />
+                <Button type="button" variant="secondary" onClick={() => void wa.refreshQr(pairingPhone)} disabled={wa.busy || !wa.runtime || !pairingPhone.trim()}>{wa.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}Gerar código</Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">Use o número completo com DDI, somente números. O QR continua disponível abaixo.</p>
+            </div> : null}
 
             <div className="flex flex-wrap gap-2">
               <Button

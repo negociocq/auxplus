@@ -40,7 +40,7 @@ export type UseEvolutionConnectionResult = {
   connectedProfile: EvolutionConnectedProfile | null;
   setBusy: Dispatch<SetStateAction<boolean>>;
   ensureBotInbound: (opts?: { silent?: boolean }) => Promise<boolean>;
-  refreshQr: () => Promise<void>;
+  refreshQr: (phoneNumber?: string) => Promise<void>;
   checkStatus: () => Promise<void>;
   onDisconnect: () => Promise<void>;
 };
@@ -145,7 +145,7 @@ export function useEvolutionConnection(
     }
   }, [runtime]);
 
-  const refreshQr = useCallback(async () => {
+  const refreshQr = useCallback(async (phoneNumber?: string) => {
     if (!runtime) {
       setStatus("disconnected");
       setQrBase64(null);
@@ -157,7 +157,9 @@ export function useEvolutionConnection(
     }
     setBusy(true);
     try {
-      const res = await fetchEvolutionQr(runtime);
+      const normalizedPhone = String(phoneNumber || "").replace(/\D/g, "");
+      if (phoneNumber && (normalizedPhone.length < 10 || normalizedPhone.length > 15)) throw new Error("Informe o número com DDI, somente números.");
+      const res = await fetchEvolutionQr(runtime, normalizedPhone || undefined);
       setStatus(res.status);
       setQrBase64(res.base64 || null);
       setPairingCode(res.pairingCode || null);

@@ -39,11 +39,13 @@ export function useLoanWhatsappConnection(userId: string | undefined, folderId: 
     const timer = window.setInterval(() => { void checkStatus().catch(() => {}); }, 4000);
     return () => window.clearInterval(timer);
   }, [status, checkStatus]);
-  const refreshQr = async () => {
+  const refreshQr = async (phoneNumber?: string) => {
     if (!runtime) { toast.error("A API do WhatsApp precisa estar configurada pelo administrador."); return; }
     setBusy(true);
     try {
-      const qr = await fetchEvolutionQr(runtime);
+      const normalizedPhone = String(phoneNumber || "").replace(/\D/g, "");
+      if (phoneNumber && (normalizedPhone.length < 10 || normalizedPhone.length > 15)) throw new Error("Informe o número com DDI, somente números.");
+      const qr = await fetchEvolutionQr(runtime, normalizedPhone || undefined);
       if (active.current !== runtime.instanceName) return;
       setStatus(qr.status); setQrBase64(qr.base64 || null); setPairingCode(qr.pairingCode || null);
       if (qr.status === "open") await checkStatus();

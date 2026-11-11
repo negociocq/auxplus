@@ -932,6 +932,7 @@ export async function ensureEvolutionInstance(runtime: EvolutionRuntimeConfig) {
 
 export async function fetchEvolutionQr(
   runtime: EvolutionRuntimeConfig,
+  phoneNumber?: string,
 ): Promise<{ base64?: string; pairingCode?: string; status: WaConnectionStatus }> {
   const name = runtime.instanceName.trim() || "auxplus";
   await ensureEvolutionInstance(runtime);
@@ -945,9 +946,10 @@ export async function fetchEvolutionQr(
     return { status: "open" };
   }
 
+  const number = String(phoneNumber || "").replace(/\D/g, "");
   const qr = (await evolutionFetch(
     runtime,
-    `/instance/connect/${name}`,
+    `/instance/connect/${name}${number ? `?number=${encodeURIComponent(number)}` : ""}`,
   )) as {
     base64?: string;
     qrcode?: { base64?: string };
