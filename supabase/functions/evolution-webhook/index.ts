@@ -1604,7 +1604,7 @@ async function createUniplayTestUser(
   // package/type fields must not be handled by replaying a creation with variants.
   const created = await uniplayFetch("/users-iptv", bearer, {
     method: "POST",
-    body: JSON.stringify({ ...baseFields, isOficial: false, package: pkg, credits: 1, isCustomPackage: false }),
+    body: JSON.stringify({ ...baseFields, isOficial: false, package: pkg, credits: 2, isCustomPackage: false }),
   });
   let { username, password: pass, remoteId } = pickUsernamePassFromCreated(
     created,
