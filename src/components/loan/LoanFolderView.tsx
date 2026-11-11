@@ -28,7 +28,6 @@ import { LoanWhatsappConnection } from "@/components/loan/LoanWhatsappConnection
 import { useLoanWhatsappConnection } from "@/hooks/useLoanWhatsappConnection";
 import { fetchEvolutionStatus, sendEvolutionText } from "@/lib/whatsappAutomation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
 const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", lateRateType: "percent" as NonNullable<LoanTerms["lateRateType"]>, latePeriod: "day" as LoanTerms["latePeriod"], notes: "" });
@@ -53,7 +52,6 @@ const dueColors: Record<ItemStatus, string> = {
   "Já Vencido": "border-l-destructive bg-[linear-gradient(90deg,hsl(var(--destructive)_/_0.12)_0%,hsl(var(--destructive)_/_0.04)_35%,transparent_70%)]",
   "Sem Vencimento": "border-l-muted",
 };
-function LoanFinancialCharts({ rows, money }: { rows: Array<{ loan: LoanTerms | null; balance: ReturnType<typeof loanBalance> | null }>; money: (value: number) => string }) {
   const capital = rows.reduce((sum, row) => sum + (row.loan?.principal || 0), 0);
   const interest = rows.reduce((sum, row) => sum + (row.balance?.agreedInterest || 0) + (row.balance?.lateInterest || 0), 0);
   const received = rows.reduce((sum, row) => sum + ((row.loan?.receipts || []).reduce((total, receipt) => total + receipt.amount, 0) || (row.loan?.paidAmount || 0)), 0);
@@ -246,7 +244,6 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <Button onClick={() => edit()}><Plus className="h-4 w-4" />Novo empréstimo</Button>
     </div>
     <LoanWhatsappConnection connection={loanWa} />
-    <LoanFinancialCharts rows={rows} money={money} />
     <details className="rounded-xl border bg-card">
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium">PIX dos lembretes <span className="ml-2 text-xs font-normal text-muted-foreground">{pixKey ? "Chave cadastrada" : "Cadastrar chave"}</span></summary>
     <form onSubmit={savePix} className="space-y-2 border-t p-4">
