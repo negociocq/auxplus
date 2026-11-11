@@ -234,7 +234,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     });
     setConfirm(null); toast.success(action === "pay" ? "Empréstimo quitado. Os juros foram encerrados." : action === "interest" ? "Juros recebidos. Capital mantido e vencimento prorrogado." : "Empréstimo excluído");
   };
-  return <div className="space-y-3 sm:space-y-4">
+  return <div className="loan-folder-view space-y-3 sm:space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" />Voltar</Link><h1 className="text-2xl font-semibold">{folder.name}</h1><p className="text-sm text-muted-foreground">Empréstimos · valores e juros atualizados diariamente</p></div>
       <Button onClick={() => edit()}><Plus className="h-4 w-4" />Novo empréstimo</Button>

@@ -214,4 +214,25 @@
   }
 }
 
-
+/* Resumo de empréstimos compacto em telas pequenas. */
+.loan-folder-view > section {
+  padding: 0.75rem;
+}
+.loan-folder-view > section > div {
+  padding: 0.6rem 0.7rem;
+}
+@media (max-width: 639px) {
+  .loan-folder-view > section > div:nth-child(2) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .loan-folder-view > section > div:nth-child(2) > div {
+    min-width: 0;
+  }
+  .loan-folder-view > section > div:nth-child(2) p {
+    font-size: 0.78rem;
+    line-height: 1.05rem;
+  }
+  .loan-folder-view > section > div:nth-child(2) p:first-child {
+    font-size: 0.62rem;
+  }
+}
