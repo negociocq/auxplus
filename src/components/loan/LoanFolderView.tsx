@@ -69,12 +69,6 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const [filter, setFilter] = useState("open");
   const [summaryPeriod, setSummaryPeriod] = useState<"all" | "day" | "week" | "month" | "year">("year");
   const [loanPanel, setLoanPanel] = useState<"whatsapp" | "pix" | "auto">("whatsapp");
-  useEffect(() => {
-    const panelIndex = loanPanel === "whatsapp" ? 1 : loanPanel === "pix" ? 2 : 3;
-    const root = document.querySelector<HTMLElement>(".loan-folder-view");
-    const details = root?.querySelectorAll<HTMLDetailsElement>(":scope > details");
-    details?.forEach((detail, index) => { detail.open = index + 1 === panelIndex; });
-  }, [loanPanel]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [form, setForm] = useState(blank);
