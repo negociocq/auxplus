@@ -955,9 +955,13 @@ export async function fetchEvolutionQr(
     qrcode?: { base64?: string };
     pairingCode?: string;
     code?: string;
+    data?: { pairingCode?: string; code?: string; base64?: string; qrcode?: { base64?: string } };
   };
 
-  const base64 = qr.base64 || qr.qrcode?.base64;
+  const rawPairingCode = qr.pairingCode || qr.data?.pairingCode;
+  const rawCode = qr.code || qr.data?.code;
+  const pairingCode = rawPairingCode || (/^[A-Z0-9-]{6,12}$/i.test(String(rawCode || "")) ? rawCode : undefined);
+  const base64 = qr.base64 || qr.qrcode?.base64 || qr.data?.base64 || qr.data?.qrcode?.base64;
   return {
     status: base64 ? "qr" : "connecting",
     base64: base64?.startsWith("data:")
@@ -965,7 +969,7 @@ export async function fetchEvolutionQr(
       : base64
         ? `data:image/png;base64,${base64}`
         : undefined,
-    pairingCode: qr.pairingCode || qr.code,
+    pairingCode,
   };
 }
 
