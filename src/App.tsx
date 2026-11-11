@@ -20,7 +20,6 @@ const FolderItems = lazy(() => import("./pages/FolderItems"));
 const Tickets = lazy(() => import("./pages/Tickets"));
 const Logs = lazy(() => import("./pages/Logs"));
 const WhatsApp = lazy(() => import("./pages/WhatsApp"));
-const WizetDelivery = lazy(() => import("./pages/WizetDelivery"));
 const Conexoes = lazy(() => import("./pages/Conexoes"));
 const UniPlay = lazy(() => import("./pages/UniPlay"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -59,7 +58,6 @@ const App = () => (
                     />
                     <Route path="/tickets" element={<Tickets />} />
                     <Route path="/whatsapp" element={<WhatsApp />} />
-                    <Route path="/wizet-delivery" element={<WizetDelivery />} />
                     <Route path="/conexoes" element={<Conexoes />} />
                     <Route path="/uniplay" element={<UniPlay />} />
                     <Route

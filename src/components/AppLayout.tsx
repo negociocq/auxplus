@@ -15,7 +15,6 @@ import {
   Mail,
   Menu,
   MessageCircle,
-  Store,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
@@ -197,7 +196,6 @@ export function AppLayout() {
   const clientLinks = [
     { to: "/dashboard", label: "Pastas", icon: FolderKanban },
     { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
-    { to: "/wizet-delivery", label: "Wizet Delivery", icon: Store },
     ...(uniplayConnected
       ? [{ to: "/uniplay", label: "UniPlay", icon: Tv }]
       : []),
