@@ -32,7 +32,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
 const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", lateRateType: "percent" as NonNullable<LoanTerms["lateRateType"]>, latePeriod: "day" as LoanTerms["latePeriod"], notes: "" });
 const decimal = (value: string) => Number(value.trim().replace(",", "."));
-const inLoanPeriod = (date: string | undefined, period: "day" | "week" | "month" | "year", today: string) => {
+const inLoanPeriod = (date: string | undefined, period: "all" | "day" | "week" | "month" | "year", today: string) => {
+  if (period === "all") return true;
   if (!date) return false;
   const end = new Date(`${today}T12:00:00Z`);
   const start = new Date(end);
@@ -62,7 +63,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const [today, setToday] = useState(localLoanDay());
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("open");
-  const [summaryPeriod, setSummaryPeriod] = useState<"day" | "week" | "month" | "year">("month");
+  const [summaryPeriod, setSummaryPeriod] = useState<"all" | "day" | "week" | "month" | "year">("year");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [form, setForm] = useState(blank);
