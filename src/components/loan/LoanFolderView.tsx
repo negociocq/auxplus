@@ -68,6 +68,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("open");
   const [summaryPeriod, setSummaryPeriod] = useState<"all" | "day" | "week" | "month" | "year">("year");
+  const [loanPanel, setLoanPanel] = useState<"whatsapp" | "pix" | "auto">("whatsapp");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [form, setForm] = useState(blank);
@@ -234,11 +235,12 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     });
     setConfirm(null); toast.success(action === "pay" ? "Empréstimo quitado. Os juros foram encerrados." : action === "interest" ? "Juros recebidos. Capital mantido e vencimento prorrogado." : "Empréstimo excluído");
   };
-  return <div className="loan-folder-view space-y-3 sm:space-y-4">
+  return <div className="loan-folder-view space-y-3 sm:space-y-4" data-panel={loanPanel}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" />Voltar</Link><h1 className="text-2xl font-semibold">{folder.name}</h1><p className="text-sm text-muted-foreground">Empréstimos · valores e juros atualizados diariamente</p></div>
       <Button onClick={() => edit()}><Plus className="h-4 w-4" />Novo empréstimo</Button>
     </div>
+    <div className="loan-panel-tabs grid grid-cols-3 gap-1 rounded-xl border bg-muted/30 p-1"><button type="button" className={loanPanel === "whatsapp" ? "rounded-lg bg-background px-2 py-2 text-xs font-semibold shadow-sm" : "rounded-lg px-2 py-2 text-xs text-muted-foreground"} onClick={() => setLoanPanel("whatsapp")}>WhatsApp</button><button type="button" className={loanPanel === "pix" ? "rounded-lg bg-background px-2 py-2 text-xs font-semibold shadow-sm" : "rounded-lg px-2 py-2 text-xs text-muted-foreground"} onClick={() => setLoanPanel("pix")}>PIX</button><button type="button" className={loanPanel === "auto" ? "rounded-lg bg-background px-2 py-2 text-xs font-semibold shadow-sm" : "rounded-lg px-2 py-2 text-xs text-muted-foreground"} onClick={() => setLoanPanel("auto")}>Envio automático</button></div>
     <LoanWhatsappConnection connection={loanWa} />
     <details className="rounded-xl border bg-card">
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium">PIX dos lembretes <span className="ml-2 text-xs font-normal text-muted-foreground">{pixKey ? "Chave cadastrada" : "Cadastrar chave"}</span></summary>

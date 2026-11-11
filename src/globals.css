@@ -254,6 +254,17 @@
 .loan-folder-view .loan-reminder-actions > button {
   display: none;
 }
+.loan-folder-view[data-panel="whatsapp"] > details:nth-of-type(2),
+.loan-folder-view[data-panel="whatsapp"] > details:nth-of-type(3),
+.loan-folder-view[data-panel="pix"] > details:first-of-type,
+.loan-folder-view[data-panel="pix"] > details:nth-of-type(3),
+.loan-folder-view[data-panel="auto"] > details:first-of-type,
+.loan-folder-view[data-panel="auto"] > details:nth-of-type(2) {
+  display: none;
+}
+.loan-folder-view[data-panel="auto"] .loan-reminder-actions {
+  display: none;
+}
 .loan-folder-view > section > div {
   padding: 0.6rem 0.7rem;
 }
