@@ -28,6 +28,7 @@ import { LoanWhatsappConnection } from "@/components/loan/LoanWhatsappConnection
 import { useLoanWhatsappConnection } from "@/hooks/useLoanWhatsappConnection";
 import { fetchEvolutionStatus, sendEvolutionText } from "@/lib/whatsappAutomation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
 const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", lateRateType: "percent" as NonNullable<LoanTerms["lateRateType"]>, latePeriod: "day" as LoanTerms["latePeriod"], notes: "" });
@@ -52,6 +53,15 @@ const dueColors: Record<ItemStatus, string> = {
   "Já Vencido": "border-l-destructive bg-[linear-gradient(90deg,hsl(var(--destructive)_/_0.12)_0%,hsl(var(--destructive)_/_0.04)_35%,transparent_70%)]",
   "Sem Vencimento": "border-l-muted",
 };
+function LoanFinancialCharts({ rows, money }: { rows: Array<{ loan: LoanTerms | null; balance: ReturnType<typeof loanBalance> | null }>; money: (value: number) => string }) {
+  const capital = rows.reduce((sum, row) => sum + (row.loan?.principal || 0), 0);
+  const interest = rows.reduce((sum, row) => sum + (row.balance?.agreedInterest || 0) + (row.balance?.lateInterest || 0), 0);
+  const received = rows.reduce((sum, row) => sum + ((row.loan?.receipts || []).reduce((total, receipt) => total + receipt.amount, 0) || (row.loan?.paidAmount || 0)), 0);
+  const outstanding = rows.reduce((sum, row) => sum + (row.balance?.outstanding || 0), 0);
+  const distribution = [{ name: "Capital", value: capital }, { name: "Juros", value: interest }, { name: "Recebido", value: received }, { name: "Saldo", value: outstanding }].filter(entry => entry.value > 0);
+  const overview = [{ name: "Emprestado", valor: capital }, { name: "Juros", valor: interest }, { name: "Recebido", valor: received }, { name: "A receber", valor: outstanding }];
+  return <section className="grid gap-3 lg:grid-cols-[1fr_1.35fr]"><div className="rounded-2xl border bg-card p-4 shadow-sm"><h2 className="text-sm font-semibold">Distribuição financeira</h2><p className="text-xs text-muted-foreground">Capital, juros, recebido e saldo.</p><div className="h-52"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={distribution} dataKey="value" nameKey="name" innerRadius={52} outerRadius={76} paddingAngle={3}>{[{ fill: "hsl(var(--primary))" }, { fill: "hsl(var(--warning))" }, { fill: "hsl(var(--success))" }, { fill: "hsl(var(--muted-foreground))" }].map((color, index) => <Cell key={index} fill={color.fill} />)}</Pie><Tooltip formatter={(value: number) => money(value)} /></PieChart></ResponsiveContainer></div><div className="grid grid-cols-2 gap-1 text-xs"><span>● Capital {money(capital)}</span><span>● Juros {money(interest)}</span><span>● Recebido {money(received)}</span><span>● Saldo {money(outstanding)}</span></div></div><div className="rounded-2xl border bg-card p-4 shadow-sm"><h2 className="text-sm font-semibold">Visão geral</h2><p className="text-xs text-muted-foreground">Comparativo dos principais valores.</p><div className="h-52"><ResponsiveContainer width="100%" height="100%"><BarChart data={overview} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip formatter={(value: number) => money(value)} /><Bar dataKey="valor" radius={[6, 6, 0, 0]} fill="hsl(var(--primary))" /></BarChart></ResponsiveContainer></div></div></section>;
+}
 export function LoanFolderView({ folder }: { folder: Folder }) {
   const { data, setData, user } = useApp();
   const loanWa = useLoanWhatsappConnection(user?.id, folder.id);
@@ -236,6 +246,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <Button onClick={() => edit()}><Plus className="h-4 w-4" />Novo empréstimo</Button>
     </div>
     <LoanWhatsappConnection connection={loanWa} />
+    <LoanFinancialCharts rows={rows} money={money} />
     <details className="rounded-xl border bg-card">
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium">PIX dos lembretes <span className="ml-2 text-xs font-normal text-muted-foreground">{pixKey ? "Chave cadastrada" : "Cadastrar chave"}</span></summary>
     <form onSubmit={savePix} className="space-y-2 border-t p-4">
