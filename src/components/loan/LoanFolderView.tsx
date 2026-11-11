@@ -251,13 +251,13 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <p className="text-xs text-muted-foreground">A chave salva será incluída nos lembretes de todos os empréstimos desta pasta. Para removê-la, apague o campo e salve.</p>
     </form>
     </details>
-    <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="loan-reminder-actions flex flex-wrap items-center justify-between gap-2">
       <p className="text-xs text-muted-foreground">{autoSettings.enabled ? `Automático: ${autoSettings.sendBefore && autoSettings.sendOnDay ? "2 dias antes e no vencimento" : autoSettings.sendBefore ? "somente 2 dias antes" : "somente no vencimento"} · ${autoSettings.sendTime}` : "Envio automático desligado"}</p>
       <Button type="button" size="sm" variant="outline" onClick={() => { setMessageDrafts({ before: readLoanReminder(currentFolder.whatsappMessage, "before"), onday: readLoanReminder(currentFolder.whatsappMessage, "onday") }); setMessageKind("before"); setMessageOpen(true); }}><MessageSquareText className="h-4 w-4" />Editar lembrete</Button>
     </div>
     <details className="rounded-xl border bg-card">
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium">Envio automático <span className="ml-2 text-xs font-normal text-muted-foreground">{autoSettings.enabled ? "Ativo" : "Configurar"}</span></summary>
-      <form className="space-y-3 border-t p-4" onSubmit={saveAuto}>
+      <form className="space-y-3 border-t p-4" onSubmit={saveAuto}><Button type="button" size="sm" variant="outline" onClick={() => { setMessageDrafts({ before: readLoanReminder(currentFolder.whatsappMessage, "before"), onday: readLoanReminder(currentFolder.whatsappMessage, "onday") }); setMessageKind("before"); setMessageOpen(true); }}><MessageSquareText className="h-4 w-4" />Editar lembrete</Button>
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" className="h-4 w-4 shrink-0 accent-primary" checked={autoDraft.sendBefore} onChange={e => setAutoDraft(s => ({ ...s, sendBefore: e.target.checked, enabled: e.target.checked || s.sendOnDay }))} />Enviar 2 dias antes</label>
           <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" className="h-4 w-4 shrink-0 accent-primary" checked={autoDraft.sendOnDay} onChange={e => setAutoDraft(s => ({ ...s, sendOnDay: e.target.checked, enabled: s.sendBefore || e.target.checked }))} />Enviar no vencimento</label>

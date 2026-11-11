@@ -251,6 +251,9 @@
   border-bottom: 1px solid hsl(var(--border));
   border-radius: 0.7rem 0.7rem 0 0;
 }
+.loan-folder-view .loan-reminder-actions > button {
+  display: none;
+}
 .loan-folder-view > section > div {
   padding: 0.6rem 0.7rem;
 }
