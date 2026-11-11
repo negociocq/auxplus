@@ -32,6 +32,17 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
 const blank = () => ({ name: "", phone: "+55", principal: "", agreedAmount: "", lentAt: localLoanDay(), dueDate: "", lateRate: "0", lateRateType: "percent" as NonNullable<LoanTerms["lateRateType"]>, latePeriod: "day" as LoanTerms["latePeriod"], notes: "" });
 const decimal = (value: string) => Number(value.trim().replace(",", "."));
+const inLoanPeriod = (date: string | undefined, period: "day" | "week" | "month" | "year", today: string) => {
+  if (!date) return false;
+  const end = new Date(`${today}T12:00:00Z`);
+  const start = new Date(end);
+  if (period === "day") start.setUTCDate(start.getUTCDate());
+  if (period === "week") { const day = start.getUTCDay() || 7; start.setUTCDate(start.getUTCDate() - day + 1); }
+  if (period === "month") start.setUTCDate(1);
+  if (period === "year") { start.setUTCMonth(0, 1); }
+  const value = new Date(`${date.slice(0, 10)}T12:00:00Z`);
+  return value >= start && value <= end;
+};
 const loanFinancialFields = ["principal", "agreedAmount", "lentAt", "dueDate", "lateRate", "latePeriod", "lateRateType"] as const;
 const sameLoanConditions = (a: LoanTerms, b: LoanTerms) => dailyLoanRate(a) === dailyLoanRate(b) && loanFinancialFields.filter(key => key !== "lateRate" && key !== "latePeriod").every(key => (a[key] ?? (key === "lateRateType" ? "percent" : undefined)) === (b[key] ?? (key === "lateRateType" ? "percent" : undefined)));
 const dueColors: Record<ItemStatus, string> = {
@@ -51,6 +62,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   const [today, setToday] = useState(localLoanDay());
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("open");
+  const [summaryPeriod, setSummaryPeriod] = useState<"day" | "week" | "month" | "year">("month");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [form, setForm] = useState(blank);
@@ -111,6 +123,21 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
   }), [data.items, folder.id, today, nearDays]);
   const pending = rows.filter(r => r.loan && !r.loan.paidAt);
   const dueToday = pending.filter(r => r.loan!.dueDate === today);
+  const summaryRows = rows.filter(r => r.loan && inLoanPeriod(r.loan.lentAt, summaryPeriod, today));
+  const summary = useMemo(() => {
+    const capitalLent = summaryRows.reduce((sum, row) => sum + (row.loan?.principal || 0), 0);
+    const combined = summaryRows.reduce((sum, row) => sum + (row.loan?.agreedAmount || 0), 0);
+    const contractInterest = Math.max(0, combined - capitalLent);
+    const lateInterest = summaryRows.reduce((sum, row) => sum + (row.balance?.lateInterest || 0), 0);
+    const received = summaryRows.reduce((sum, row) => {
+      const loan = row.loan!;
+      const receipts = (loan.receipts || []).filter(receipt => inLoanPeriod(receipt.paidAt, summaryPeriod, today)).reduce((total, receipt) => total + receipt.amount, 0);
+      const legacy = !loan.receipts?.length && loan.paidAt && inLoanPeriod(loan.paidAt, summaryPeriod, today) ? (loan.paidAmount || 0) : 0;
+      return sum + receipts + legacy;
+    }, 0);
+    const outstanding = summaryRows.reduce((sum, row) => sum + (row.balance?.outstanding || 0), 0);
+    return { capitalLent, combined, contractInterest, lateInterest, received, outstanding };
+  }, [summaryRows, summaryPeriod, today]);
   const detail = rows.find(r => r.item.id === detailId);
   const paymentLoan = confirm && confirm.action !== "delete" ? readLoan(confirm.item) : null;
   const paymentBalance = paymentLoan ? loanBalance(paymentLoan, today) : null;
@@ -235,11 +262,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
         <p className="text-xs text-muted-foreground">Usa a mensagem e a chave PIX desta pasta. Funciona com o AuxPlus fechado e exige o WhatsApp de empréstimos conectado aqui. A fila é conferida a cada 5 minutos após o horário escolhido. Empréstimos quitados não recebem cobrança.</p>
       </form>
     </details>
-    <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-      <div className="min-w-0 rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Total a receber</p><p className="mt-1 break-words text-sm font-semibold tabular-nums text-primary sm:text-lg">{money(pending.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></div>
-      <div className="min-w-0 rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Vence hoje</p><p className="mt-1 break-words text-sm font-semibold tabular-nums sm:text-lg">{money(dueToday.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></div>
-      <div className="min-w-0 rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] leading-tight text-muted-foreground">Juros de atraso</p><p className="mt-1 break-words text-sm font-semibold tabular-nums sm:text-lg">{money(pending.reduce((s, r) => s + r.balance!.lateInterest, 0))}</p></div>
-    </div>
+    <section className="space-y-2 rounded-xl border bg-card p-3 sm:p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold">Resumo financeiro</h2><p className="text-xs text-muted-foreground">Valores dos empréstimos iniciados no período selecionado.</p></div><select aria-label="Período do resumo financeiro" className="h-9 rounded-md border bg-background px-2 text-sm" value={summaryPeriod} onChange={e => setSummaryPeriod(e.target.value as typeof summaryPeriod)}><option value="day">Hoje</option><option value="week">Esta semana</option><option value="month">Este mês</option><option value="year">Este ano</option></select></div><div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2"><div className="rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2.5 sm:px-4"><p className="text-[11px] text-muted-foreground">Quanto emprestei</p><p className="mt-1 text-sm font-semibold tabular-nums text-primary sm:text-lg">{money(summary.capitalLent)}</p></div><div className="rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] text-muted-foreground">Total combinado</p><p className="mt-1 text-sm font-semibold tabular-nums sm:text-lg">{money(summary.combined)}</p></div><div className="rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] text-muted-foreground">Juros combinados</p><p className="mt-1 text-sm font-semibold tabular-nums sm:text-lg">{money(summary.contractInterest)}</p></div><div className="rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] text-muted-foreground">Juros de atraso</p><p className="mt-1 text-sm font-semibold tabular-nums sm:text-lg">{money(summary.lateInterest)}</p></div><div className="rounded-xl border bg-card px-2.5 py-2.5 sm:px-4"><p className="text-[11px] text-muted-foreground">Já recebido</p><p className="mt-1 text-sm font-semibold tabular-nums sm:text-lg">{money(summary.received)}</p></div><div className="rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2.5 sm:px-4"><p className="text-[11px] text-muted-foreground">Ainda a receber</p><p className="mt-1 text-sm font-semibold tabular-nums text-primary sm:text-lg">{money(summary.outstanding)}</p></div></div><p className="text-[11px] text-muted-foreground">Em aberto hoje: {money(pending.reduce((s, r) => s + r.balance!.outstanding, 0))} · Vence hoje: {money(dueToday.reduce((s, r) => s + r.balance!.outstanding, 0))}</p></section>
     <div className="flex flex-wrap gap-2"><Input className="w-full sm:max-w-xs" aria-label="Buscar cliente ou telefone" placeholder="Buscar cliente ou telefone" value={query} onChange={e => setQuery(e.target.value)} /><select aria-label="Filtrar empréstimos" className="h-10 rounded-md border bg-background px-3 text-sm" value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Em aberto ({pending.length})</option><option value="far">Longe do vencimento</option><option value="near">Perto do vencimento</option><option value="late">Em atraso</option><option value="paid">Quitados</option><option value="all">Todos</option></select></div>
     {!visible.length ? <div className="rounded-xl border border-dashed p-8 text-center"><Wallet className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p>Nenhum empréstimo nesta seleção.</p><p className="text-sm text-muted-foreground">Cadastre o cliente e as condições combinadas para acompanhar.</p></div> : <ul className="grid gap-3 lg:grid-cols-2">{visible.map(({ item, loan, balance, dueStatus }) => <li key={item.id} className={`min-w-0 overflow-hidden rounded-xl border border-l-4 bg-card ${loan && !loan.paidAt ? dueColors[dueStatus] : "border-l-muted"}`}>
       <div className="p-3">
