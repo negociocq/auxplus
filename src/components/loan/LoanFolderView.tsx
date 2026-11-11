@@ -245,7 +245,7 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
       <div className="p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1"><h2 className="break-words text-sm font-semibold leading-snug">{item.name}</h2><p className="mt-0.5 text-[11px] text-muted-foreground">{displayPhone(item.phone) || "Sem telefone"}</p></div>
-          <div className="flex shrink-0 items-center gap-1">{loan && !loan.paidAt ? <StatusBadge status={dueStatus} /> : <span className="rounded-full bg-muted px-2 py-1 text-xs">{loan?.paidAt ? "Quitado" : "Configurar"}</span>}{!loan?.paidAt && <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 rounded-full" aria-label="Editar" title="Editar empréstimo" onClick={() => edit(item)}><Pencil className="h-3.5 w-3.5" /></Button>}</div>
+          <div className="flex shrink-0 items-center gap-1">{loan && !loan.paidAt ? <StatusBadge status={dueStatus} /> : <span className="rounded-full bg-muted px-2 py-1 text-xs">{loan?.paidAt ? "Quitado" : "Configurar"}</span>}{!loan?.paidAt && <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 rounded-full" aria-label="Editar" title="Editar empréstimo" onClick={() => edit(item)}><Pencil className="h-3.5 w-3.5" /></Button>}<Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 rounded-full text-destructive hover:text-destructive" aria-label={`Excluir empréstimo de ${item.name}`} title="Excluir empréstimo" onClick={() => setConfirm({ item, action: "delete" })}><Trash2 className="h-3.5 w-3.5" /></Button></div>
         </div>
       {loan && balance ? (
         <div className="mt-2.5 space-y-2">
