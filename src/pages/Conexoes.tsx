@@ -51,7 +51,7 @@ import { formatIptvCredits } from "@/lib/iptvPanelApi";
 import { copyText } from "@/lib/iptvAutomation";
 import { DEFAULT_IPTV_PANEL_URL } from "@/lib/platformApi";
 import { SUPABASE_URL } from "@/integrations/supabase/client";
-import type { WaConnectionStatus } from "@/lib/whatsappAutomation";
+import type { WaConnectionStatus } from "@/lib/whatsappCore";
 import { MpOrdersCleanup } from "@/components/mp-orders-cleanup";
 
 function statusLabel(status: WaConnectionStatus) {

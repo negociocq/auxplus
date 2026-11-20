@@ -1,4 +1,4 @@
-import { CalendarClock, FlaskConical, Headset, Ticket, Users, Wallet } from "lucide-react";
+import { FlaskConical, Headset, Ticket, Users, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -10,7 +10,6 @@ export function UniPlayNavigation({ clients, resellers, tests }: { clients: numb
     { value: "renovacoes", label: "Renovações", icon: Wallet },
     { value: "atendimento", label: "Atendimento", icon: Headset },
     { value: "tickets", label: "Tickets", icon: Ticket },
-    { value: "novidades", label: "Novidades e jogos", icon: CalendarClock },
   ];
   return <TabsList aria-label="Seções principais do UniPlay" className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-none border-b border-border/70 bg-transparent p-0 pb-2">
     {items.map(({ value, label, icon: Icon, count }) => <TabsTrigger key={value} value={value}

@@ -1,0 +1,29 @@
+[
+  {
+    "name": "O Morro dos Ventos Uivantes (2026)",
+    "audio": "DUB/LEG",
+    "qualities": [
+      "4K"
+    ],
+    "path": "tmp/banner-filmes-referencias/capa-1.jpg"
+  },
+  {
+    "name": "18 Rosas (2026)",
+    "audio": "DUB/LEG",
+    "qualities": [
+      "4K"
+    ],
+    "path": "tmp/banner-filmes-referencias/capa-2.jpg"
+  },
+  {
+    "name": "23.000 Vidas (2026)",
+    "audio": "DUB/LEG",
+    "qualities": [],
+    "path": "tmp/banner-filmes-referencias/capa-3.jpg"
+  },
+  {
+    "name": "(Des)controle (2026)",
+    "qualities": [],
+    "path": "tmp/banner-filmes-referencias/capa-4.jpg"
+  }
+]

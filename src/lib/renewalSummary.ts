@@ -7,6 +7,13 @@ export function brazilDay(value = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 }
 
+const timeFormatter = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+export function renewalTime(row: { occurredAt?: string; timeKnown?: boolean }): string | null {
+  if (row.timeKnown === false || !row.occurredAt || !/T\d{2}:\d{2}/.test(row.occurredAt)) return null;
+  const date = new Date(row.occurredAt);
+  return Number.isFinite(date.getTime()) ? timeFormatter.format(date) : null;
+}
+
 export function renewalRange(preset: string, today = brazilDay()) {
   const date = new Date(`${today}T12:00:00Z`);
   const shift = (days: number) => { const copy = new Date(date); copy.setUTCDate(copy.getUTCDate() + days); return copy.toISOString().slice(0, 10); };
@@ -17,7 +24,7 @@ export function renewalRange(preset: string, today = brazilDay()) {
 }
 
 export function summarizeRenewals(items: Item[], start: string, end: string, panelEvents: UniplayRenewalEvent[] = [], includeUnmatched = true, recreations: UniplayRecreatedLine[] = [], creditOptions?: { events: UniplayCreditEvent[]; items: Item[]; unitPrice: number }) {
-  const rows: { id: string; item: Item | null; username: string; currentUsername: string; recreated: boolean; paidAt: string; amount: number | null; source: "Uniplay" | "Pasta"; occurredAt: string; kind: "renewal" | "credits"; credits: number }[] = [];
+  const rows: { id: string; item: Item | null; username: string; currentUsername: string; recreated: boolean; paidAt: string; amount: number | null; source: "Uniplay" | "Pasta"; occurredAt: string; timeKnown?: boolean; kind: "renewal" | "credits"; credits: number }[] = [];
   const seen = new Set<string>();
   const unmatchedUsers = new Set<string>();
   let unmatchedRenewals = 0;

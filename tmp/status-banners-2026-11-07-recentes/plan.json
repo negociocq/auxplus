@@ -1,0 +1,58 @@
+[
+  {
+    "kind": "movie",
+    "page": 0,
+    "total": 1,
+    "titles": [
+      {
+        "key": "group:movie|2026|coyote vs acme",
+        "name": "Coyote vs. Acme (2026)",
+        "kind": "movie",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/eZX2GyAJt5k0bL4OJbZGDvvxESD.jpg",
+        "genres": [],
+        "releasedAt": 1784937600000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [],
+        "variantKeys": [
+          "movie:Coyote vs. Acme (2026)",
+          "movie:Coyote vs. Acme (2026) LEG"
+        ],
+        "variantNames": [
+          "Coyote vs. Acme (2026)",
+          "Coyote vs. Acme (2026) LEG"
+        ],
+        "variantCount": 2,
+        "audioLabel": "DUB/LEG"
+      }
+    ]
+  },
+  {
+    "kind": "series",
+    "page": 0,
+    "total": 1,
+    "titles": [
+      {
+        "key": "group:series|2026|visionquest",
+        "name": "VisionQuest (2026)",
+        "kind": "series",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/WGyAyBPncfuu8MZhLY9RtfZPM0.jpg",
+        "genres": [],
+        "releasedAt": 1791936000000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [],
+        "variantKeys": [
+          "series:VisionQuest (2026)",
+          "series:VisionQuest (2026) LEG"
+        ],
+        "variantNames": [
+          "VisionQuest (2026)",
+          "VisionQuest (2026) LEG"
+        ],
+        "variantCount": 2,
+        "audioLabel": "DUB/LEG"
+      }
+    ]
+  }
+]

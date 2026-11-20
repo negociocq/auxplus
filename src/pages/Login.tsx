@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Mail, ArrowLeft } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { BrandLogo } from "@/components/shared/BrandLogo";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Login() {
   const { user, login, loading } = useApp();
@@ -17,6 +18,10 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   if (loading) return <LoadingScreen />;
   if (user) {
@@ -34,6 +39,23 @@ export default function Login() {
       return;
     }
     navigate("/");
+  };
+
+  const onReset = async (e: FormEvent) => {
+    e.preventDefault();
+    setResetLoading(true);
+    setError("");
+    try {
+      const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (err) throw err;
+      setResetSent(true);
+    } catch (err: any) {
+      setError(err?.message || "Erro ao enviar link de redefinição");
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   return (
@@ -153,14 +175,57 @@ export default function Login() {
               </Button>
             </form>
 
+            {resetMode ? (
+              <div className="mt-4 space-y-2">
+                <form className="space-y-2" onSubmit={onReset}>
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-email">E-mail para redefinição</Label>
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      required
+                      placeholder="seu@email.com"
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={resetLoading}>
+                    {resetLoading ? "Enviando…" : "Enviar link de redefinição"}
+                  </Button>
+                </form>
+                {resetSent ? (
+                  <p className="text-sm text-green-700 text-center">
+                    Link de redefinição enviado para {resetEmail}. Verifique seu e-mail.
+                  </p>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => { setResetMode(false); setResetSent(false); setResetEmail(""); }}
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" /> Voltar ao login
+                </Button>
+              </div>
+            ) : null}
+
             <p className="mt-6 text-center text-sm text-muted-foreground">
-              Não tem conta?{" "}
+              {resetMode ? null : <>Não tem conta?{" "}
               <Link
                 to="/register"
                 className="font-semibold text-primary hover:underline"
               >
                 Criar conta
-              </Link>
+              </Link></>}
+              {resetMode ? null : <span className="block mt-2 text-sm">
+                <a
+                  href="#"
+                  className="font-semibold text-primary hover:underline"
+                  onClick={(e) => { e.preventDefault(); setResetMode(true); }}
+                >
+                  Esqueci minha senha?
+                </a>
+              </span>}
             </p>
           </div>
         </div>

@@ -36,7 +36,7 @@ import {
   type IptvReseller,
   type IptvResellerMovement,
 } from "@/lib/iptvPanelApi";
-import { ymdOnly, parseLocalYmd } from "@/lib/whatsappAutomation";
+import { ymdOnly, parseLocalYmd } from "@/lib/whatsappCore";
 import { supabase } from "@/integrations/supabase/client";
 
 export type IptvJobKind = "renew" | "test";

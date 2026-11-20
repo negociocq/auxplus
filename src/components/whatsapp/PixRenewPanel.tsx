@@ -66,7 +66,7 @@ import {
   fetchEvolutionStatus,
   getWhatsappGreeting,
   sendEvolutionText,
-} from "@/lib/whatsappAutomation";
+} from "@/lib/whatsappCore";
 import { isRevenueFolderType } from "@/types";
 import { cn } from "@/lib/utils";
 import { getPlanMonths, planPixAmount } from "@/lib/planMonths";

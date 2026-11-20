@@ -47,7 +47,9 @@ self.addEventListener("fetch", (event) => {
         return res;
       })
       .catch(() =>
-        caches.match(event.request).then((hit) => hit || caches.match("/")),
+        caches
+          .match(event.request)
+          .then((hit) => hit || caches.match("/") || new Response("", { status: 404 })),
       ),
   );
 });

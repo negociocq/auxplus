@@ -1,0 +1,14 @@
+const fs = require('fs');
+const path = 'src/components/loan/LoanFolderView.tsx';
+let s = fs.readFileSync(path,'utf8');
+s = s.replace('lateRate: "0", latePeriod:', 'lateRate: "0", lateRateType: "percent" as NonNullable<LoanTerms["lateRateType"]>, latePeriod:');
+s = s.replace('lateRate: String(loan?.lateRate || 0), latePeriod:', 'lateRate: String(loan?.lateRate || 0), lateRateType: loan?.lateRateType || "percent", latePeriod:');
+s = s.replace('lateRate: decimal(form.lateRate), latePeriod:', 'lateRate: decimal(form.lateRate), lateRateType: form.lateRateType, latePeriod:');
+s = s.replaceAll('${loan.lateRate}%', '${loan.lateRateType === "amount" ? money(loan.lateRate) : `${loan.lateRate}%`}');
+s = s.replace('<div className="grid grid-cols-2 gap-3">\n          <div className="space-y-1">\n            <Label className="flex h-8 items-center text-xs" htmlFor="loan-rate">Taxa (%)</Label>', '<div className="grid grid-cols-2 gap-3">\n          <div className="col-span-2 space-y-1">\n            <Label className="text-xs" htmlFor="loan-rate-type">Tipo da taxa</Label>\n            <select id="loan-rate-type" className="h-10 w-full rounded-md border bg-background px-2 text-sm" value={form.lateRateType} onChange={e => setForm(p => ({ ...p, lateRateType: e.target.value as NonNullable<LoanTerms["lateRateType"]> }))}><option value="percent">Porcentagem (%)</option><option value="amount">Valor em reais (R$)</option></select>\n          </div>\n          <div className="space-y-1">\n            <Label className="flex h-8 items-center text-xs" htmlFor="loan-rate">{form.lateRateType === "amount" ? "Taxa (R$)" : "Taxa (%)"}</Label>');
+s = s.replace('<p className="font-semibold">Como escolher o período?</p>', '<p className="font-semibold">Como escolher a taxa e o período?</p>\n                  <p><strong>Porcentagem:</strong> calculada sobre o valor combinado no vencimento. <strong>Valor em reais:</strong> acrescenta o valor informado por período, independentemente do saldo.</p>\n                  <p>Exemplo em reais: <strong>R$ 30 ao mês</strong> equivale a R$ 1 por dia de atraso. <strong>R$ 5 ao dia</strong> acrescenta R$ 25 em 5 dias.</p>');
+s = s.replace('e são calculados sempre sobre o valor combinado, sem cobrar juros sobre os juros acumulados.', 'e não acumulam juros sobre juros. Na opção porcentagem, a base é sempre o valor combinado no vencimento.');
+if (!s.includes('id="loan-rate-type"')) throw Error('selector replacement failed');
+fs.writeFileSync(path,s);
+const history = 'src/components/loan/LoanClientHistory.tsx';
+fs.writeFileSync(history,fs.readFileSync(history,'utf8').replace('${loan.lateRate}%', '${loan.lateRateType === "amount" ? money(loan.lateRate) : `${loan.lateRate}%`}'));

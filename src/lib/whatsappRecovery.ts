@@ -6,7 +6,7 @@ export async function startRecoverySession(username: string, password: string) {
   const result=await response.json();if(!response.ok)throw new Error(result.error||"Falha ao iniciar sessão.");
   localStorage.setItem(key,JSON.stringify(result));
 }
-export async function recoveryRequest(userId: string, action: string, body: Record<string,unknown> = {}, service: "wa-recovery" | "wa-football-status" | "wa-content-status" | "buffer-instagram" = "wa-recovery") {
+export async function recoveryRequest(userId: string, action: string, body: Record<string,unknown> = {}, service: "wa-recovery" = "wa-recovery") {
   const session=JSON.parse(localStorage.getItem(key)||"null");
   if(!session||session.userId!==userId||Date.parse(session.expiresAt)<=Date.now())throw new Error(service !== "wa-recovery" ? "Saia e entre novamente no AuxPlus para configurar a postagem automática." : "Saia e entre novamente no AuxPlus para usar a recuperação.");
   const response=await fetch(`${SUPABASE_URL}/functions/v1/${service}`,{method:"POST",headers:{apikey:SUPABASE_ANON_KEY,"Content-Type":"application/json",Authorization:`Bearer ${session.token}`},body:JSON.stringify({...body,action})});

@@ -1,0 +1,267 @@
+[
+  {
+    "kind": "movie",
+    "page": 0,
+    "total": 2,
+    "titles": [
+      {
+        "key": "group:movie|2026|resident evil",
+        "name": "Resident Evil (2026)",
+        "kind": "movie",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/qq5q39WCZ7VtQKDWxkk7Quz8aIS.jpg",
+        "genres": [],
+        "releasedAt": 1789430400000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [],
+        "variantKeys": [
+          "movie:Resident Evil (2026)",
+          "movie:Resident Evil (2026) Leg"
+        ],
+        "variantNames": [
+          "Resident Evil (2026)",
+          "Resident Evil (2026) Leg"
+        ],
+        "variantCount": 2,
+        "audioLabel": "DUB/LEG"
+      },
+      {
+        "key": "group:movie|2026|o fim da rua",
+        "name": "O Fim da Rua (2026)",
+        "kind": "movie",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/4kfDP13cYwCx55YP2gLGtcUFZlC.jpg",
+        "genres": [],
+        "releasedAt": 1786233600000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [
+          "4K"
+        ],
+        "variantKeys": [
+          "movie:O Fim da Rua (2026)",
+          "movie:O Fim da Rua (2026) 4K",
+          "movie:O Fim da Rua (2026) LEG"
+        ],
+        "variantNames": [
+          "O Fim da Rua (2026)",
+          "O Fim da Rua (2026) 4K",
+          "O Fim da Rua (2026) LEG"
+        ],
+        "variantCount": 3,
+        "audioLabel": "DUB/LEG"
+      },
+      {
+        "key": "group:movie|2026|homem aranha um novo dia",
+        "name": "Homem-Aranha: Um Novo Dia (2026)",
+        "kind": "movie",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/x0nvYzQpyJc5pdT9lMnkMuYAg0O.jpg",
+        "genres": [],
+        "releasedAt": 1785283200000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [
+          "4K"
+        ],
+        "variantKeys": [
+          "movie:Homem-Aranha: Um Novo Dia (2026)",
+          "movie:Homem-Aranha: Um Novo Dia (2026) 4K",
+          "movie:Homem-Aranha: Um Novo Dia (2026) LEG"
+        ],
+        "variantNames": [
+          "Homem-Aranha: Um Novo Dia (2026)",
+          "Homem-Aranha: Um Novo Dia (2026) 4K",
+          "Homem-Aranha: Um Novo Dia (2026) LEG"
+        ],
+        "variantCount": 3,
+        "audioLabel": "DUB/LEG"
+      },
+      {
+        "key": "group:movie|2026|moana",
+        "name": "Moana (2026)",
+        "kind": "movie",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/wjAdEJoqcmyjBj8jxb3lrUN0PLJ.jpg",
+        "genres": [],
+        "releasedAt": 1783468800000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [
+          "4K"
+        ],
+        "variantKeys": [
+          "movie:Moana (2026)",
+          "movie:Moana (2026) 4K",
+          "movie:Moana (2026) LEG"
+        ],
+        "variantNames": [
+          "Moana (2026)",
+          "Moana (2026) 4K",
+          "Moana (2026) LEG"
+        ],
+        "variantCount": 3,
+        "audioLabel": "DUB/LEG"
+      }
+    ]
+  },
+  {
+    "kind": "movie",
+    "page": 1,
+    "total": 2,
+    "titles": [
+      {
+        "key": "group:movie|2026|coyote vs acme",
+        "name": "Coyote vs. Acme (2026)",
+        "kind": "movie",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/eZX2GyAJt5k0bL4OJbZGDvvxESD.jpg",
+        "genres": [],
+        "releasedAt": 1784937600000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [],
+        "variantKeys": [
+          "movie:Coyote vs. Acme (2026)",
+          "movie:Coyote vs. Acme (2026) LEG"
+        ],
+        "variantNames": [
+          "Coyote vs. Acme (2026)",
+          "Coyote vs. Acme (2026) LEG"
+        ],
+        "variantCount": 2,
+        "audioLabel": "DUB/LEG"
+      },
+      {
+        "key": "group:movie|2026|supergirl",
+        "name": "Supergirl (2026)",
+        "kind": "movie",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/qhXfLI1gDWaahzfHT0cb2CH61hO.jpg",
+        "genres": [],
+        "releasedAt": 1782086400000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [
+          "4K"
+        ],
+        "variantKeys": [
+          "movie:Supergirl (2026)",
+          "movie:Supergirl (2026) 4K",
+          "movie:Supergirl (2026) LEG"
+        ],
+        "variantNames": [
+          "Supergirl (2026)",
+          "Supergirl (2026) 4K",
+          "Supergirl (2026) LEG"
+        ],
+        "variantCount": 3,
+        "audioLabel": "DUB/LEG"
+      },
+      {
+        "key": "group:movie|2026|dia d",
+        "name": "Dia D (2026)",
+        "kind": "movie",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/pmff1wjKrgJi92PPr346lAifzlg.jpg",
+        "genres": [],
+        "releasedAt": 1781049600000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [
+          "4K"
+        ],
+        "variantKeys": [
+          "movie:Dia D (2026)",
+          "movie:Dia D (2026) 4K",
+          "movie:Dia D (2026) LEG"
+        ],
+        "variantNames": [
+          "Dia D (2026)",
+          "Dia D (2026) 4K",
+          "Dia D (2026) LEG"
+        ],
+        "variantCount": 3,
+        "audioLabel": "DUB/LEG"
+      },
+      {
+        "key": "group:movie|2026|star wars o mandaloriano e grogu",
+        "name": "Star Wars: O Mandaloriano e Grogu (2026)",
+        "kind": "movie",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/dNwaS0tnwgQRaQFPY5MbGxdmYXr.jpg",
+        "genres": [],
+        "releasedAt": 1778716800000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [],
+        "variantKeys": [
+          "movie:Star Wars: O Mandaloriano e Grogu (2026)",
+          "movie:Star Wars: O Mandaloriano e Grogu (2026) LEG"
+        ],
+        "variantNames": [
+          "Star Wars: O Mandaloriano e Grogu (2026)",
+          "Star Wars: O Mandaloriano e Grogu (2026) LEG"
+        ],
+        "variantCount": 2,
+        "audioLabel": "DUB/LEG"
+      }
+    ]
+  },
+  {
+    "kind": "series",
+    "page": 0,
+    "total": 1,
+    "titles": [
+      {
+        "key": "group:series|2026|visionquest",
+        "name": "VisionQuest (2026)",
+        "kind": "series",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/WGyAyBPncfuu8MZhLY9RtfZPM0.jpg",
+        "genres": [],
+        "releasedAt": 1791936000000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [],
+        "variantKeys": [
+          "series:VisionQuest (2026)",
+          "series:VisionQuest (2026) LEG"
+        ],
+        "variantNames": [
+          "VisionQuest (2026)",
+          "VisionQuest (2026) LEG"
+        ],
+        "variantCount": 2,
+        "audioLabel": "DUB/LEG"
+      },
+      {
+        "key": "group:series|2026|off campus amores improvaveis",
+        "name": "Off Campus: Amores Improváveis (2026)",
+        "kind": "series",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/bw4L5fRn7LvxM73fMXfY4qa0RUi.jpg",
+        "genres": [],
+        "releasedAt": 1778630400000,
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [],
+        "variantKeys": [
+          "series:Off Campus: Amores Improváveis 2026"
+        ],
+        "variantNames": [
+          "Off Campus: Amores Improváveis 2026"
+        ],
+        "variantCount": 1
+      },
+      {
+        "key": "group:series|2026|scrubs",
+        "name": "Scrubs (2026)",
+        "kind": "series",
+        "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/vYmEEiuYU3O1BmlHhJwnNEOOTxn.jpg",
+        "genres": [],
+        "releaseYear": 2026,
+        "featuredRelease": false,
+        "qualities": [],
+        "variantKeys": [
+          "series:Scrubs 2026"
+        ],
+        "variantNames": [
+          "Scrubs 2026"
+        ],
+        "variantCount": 1
+      }
+    ]
+  }
+]

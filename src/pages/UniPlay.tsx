@@ -138,10 +138,10 @@ import {
   type SmartAppEntry,
 } from "@/lib/iptvPanelApi";
 import {
+  DEFAULT_PRORROGA_MESSAGE,
   fetchEvolutionStatus,
   sendEvolutionText,
-  loadWhatsappSettings,
-} from "@/lib/whatsappAutomation";
+} from "@/lib/whatsappCore";
 import {
   instanceNameForUser,
   isEvolutionConfigured,
@@ -152,7 +152,6 @@ import { cn } from "@/lib/utils";
 import { replaceRecreatedItemAccess, replaceRecreatedJobAccess, type RecreatedIptvAccess } from "@/lib/iptvRecreation";
 import { UniplayEditUserDialog } from "@/components/UniplayEditUserDialog";
 import { UniplayTicketsPanel } from "@/components/UniplayTicketsPanel";
-import { UniplayDiscoverPanel } from "@/components/UniplayDiscoverPanel";
 import { configurePartnerAppsAccount, migratePartnerApps, syncPartnerApps } from "@/lib/partnerAppsSync";
 
 type ActivateAppScope = "clientes" | "testes";
@@ -1203,13 +1202,10 @@ export default function UniPlay() {
         return;
       }
 
-      // Carrega configurações do WhatsApp para pegar o template
-      const waSettings = loadWhatsappSettings(user.id);
-      // Extrai a data antiga do marcador de prorrogação (se existir)
-      // ou usa a data atual como fallback
+      // Usa mensagem padrão de prorrogação
       const prorrogaUsage = extractProrrogaUsage(item);
       const oldDue = prorrogaUsage?.oldDue || item.dueDate;
-      const newDue = item.dueDate; // Data já atualizada pela applyProrrogaToItem
+      const newDue = item.dueDate;
 
       const text = buildProrrogaMessage(
         item.name,
@@ -1217,7 +1213,7 @@ export default function UniPlay() {
         oldDue,
         newDue,
         kind || "48h",
-        waSettings.prorrogaMessage
+        DEFAULT_PRORROGA_MESSAGE
       );
       await sendEvolutionText(runtime, phone, text);
       toast.success("Mensagem de prorrogação enviada no WhatsApp");
@@ -2538,9 +2534,6 @@ export default function UniPlay() {
           tests={testsCountConfirmed ? testJobsCount : undefined}
         />
 
-        <TabsContent value="novidades" className="mt-0 space-y-4">
-          {tab === "novidades" ? <UniplayDiscoverPanel creds={panelCreds()} onToken={persistToken} accountId={user?.id || "local"} /> : null}
-        </TabsContent>
         <TabsContent value="tickets" className="mt-0 space-y-4">
           {tab === "tickets" ? <UniplayTicketsPanel creds={panelCreds()} onToken={persistToken} resellers={resellers} /> : null}
         </TabsContent>

@@ -18,6 +18,10 @@ const report = load("src/lib/renewalSummary.ts", { "@/lib/uniplayRenewalLogs": l
 const { recordPixPayment } = load("supabase/functions/_shared/renewalPayments.ts");
 const { parseUniplayRenewalLogs } = load("src/lib/uniplayRenewalLogs.ts");
 const date = "2026-10-20";
+assert.equal(report.renewalTime({ occurredAt: "2026-10-30T12:45:00Z" }), "09:45");
+assert.equal(report.renewalTime({ occurredAt: "2026-10-30T03:00:00Z" }), "00:00");
+assert.equal(report.renewalTime({ occurredAt: "2026-10-30T12:00:00-03:00", timeKnown: false }), null, "date-only folder records never display a fabricated noon");
+assert.equal(report.renewalTime({ occurredAt: "2026-10-30" }), null);
 assert.equal(report.brazilDay(new Date("2026-10-20T02:30:00Z")), "2026-10-19");
 assert.deepEqual(report.renewalRange("yesterday", date), { start: "2026-10-19", end: "2026-10-19" });
 assert.deepEqual(report.renewalRange("week", date), { start: "2026-10-19", end: date });

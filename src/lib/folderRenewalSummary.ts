@@ -21,7 +21,8 @@ export function summarizeFolderRenewals(items: Item[], start: string, end: strin
       const id = payment.paymentId ? `payment:${payment.paymentId}` : `folder:${item.id}:${index}`;
       if (seen.has(id)) return;
       seen.add(id);
-      result.rows.push({ id, item, username: item.itemId, currentUsername: item.itemId, recreated: false, paidAt, occurredAt: `${paidAt}T12:00:00-03:00`, amount: Math.round(amount * 100) / 100, source: "Pasta", kind: item.folderId === resellersFolderId ? "credits" : "renewal", credits: 0 });
+      const timeKnown = /T\d{2}:\d{2}/.test(rawDate);
+      result.rows.push({ id, item, username: item.itemId, currentUsername: item.itemId, recreated: false, paidAt, occurredAt: timeKnown ? rawDate : `${paidAt}T12:00:00-03:00`, timeKnown, amount: Math.round(amount * 100) / 100, source: "Pasta", kind: item.folderId === resellersFolderId ? "credits" : "renewal", credits: 0 });
     });
   }
   result.rows.sort((a, b) => b.paidAt.localeCompare(a.paidAt) || a.username.localeCompare(b.username));

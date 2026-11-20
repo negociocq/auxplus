@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { loadEvolutionPlatformConfig, isEvolutionConfigured, type EvolutionPlatformConfig } from "@/lib/platformApi";
-import { fetchEvolutionConnectedProfile, fetchEvolutionQr, fetchEvolutionStatus, logoutEvolution, type EvolutionConnectedProfile, type EvolutionRuntimeConfig, type WaConnectionStatus } from "@/lib/whatsappAutomation";
+import { fetchEvolutionConnectedProfile, fetchEvolutionQr, fetchEvolutionStatus, logoutEvolution, type EvolutionConnectedProfile, type EvolutionRuntimeConfig, type WaConnectionStatus } from "@/lib/whatsappCore";
 import { loanInstanceName } from "../../supabase/functions/_shared/waLoanConnection";
 
 /** Loan-only connection: never registers the IPTV bot mapping or webhook. */

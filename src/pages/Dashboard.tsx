@@ -235,7 +235,9 @@ export default function Dashboard() {
           /^d[ií]vidas?$/i.test(f.name.trim()) && f.type !== "Dívida"
             ? { ...f, type: "Dívida" as FolderType }
             : f,
-        ),
+        )
+        // Remove pastas duplicadas no banco (mesmo ID) após migração
+        .filter((f, idx, arr) => arr.findIndex((x) => x.id === f.id) === idx),
     [data.folders, user?.id],
   );
 

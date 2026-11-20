@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { normalizeBrPhone } from "@/lib/whatsappAutomation";
+import { normalizeBrPhone } from "@/lib/whatsappCore";
 import { humanConversationPhones } from "@/lib/waHumanConversations";
 import {
   defaultWhatsappBotConfig,

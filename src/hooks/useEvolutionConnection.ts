@@ -18,7 +18,7 @@ import {
   type EvolutionConnectedProfile,
   type EvolutionRuntimeConfig,
   type WaConnectionStatus,
-} from "@/lib/whatsappAutomation";
+} from "@/lib/whatsappCore";
 import {
   instanceNameForUser,
   isEvolutionConfigured,

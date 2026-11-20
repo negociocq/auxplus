@@ -220,6 +220,8 @@ async function notifyAdminPanelBack(
     console.error(`[notifyAdminPanelBack] Erro:`, error);
   }
 }
+
+async function sendWhatsAppMessage(
   apiBaseUrl: string,
   apiKey: string,
   instanceName: string,

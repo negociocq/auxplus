@@ -1,0 +1,74 @@
+# Proxy UniPlay — sem validar JWT do Supabase (usa x-iptv-authorization).
+
+[functions.gesapi]
+verify_jwt = false
+
+[functions.ges-api]
+verify_jwt = false
+
+# Webhook Evolution (sem JWT — a Evolution chama direto)
+[functions.evolution-webhook]
+verify_jwt = false
+
+# Custom AuxPlus login is verified on the server before accepting writes.
+[functions.admin-photo-config]
+verify_jwt = false
+
+[functions.wa-recovery]
+verify_jwt = false
+
+# Custom account session and private cron token are validated inside the function.
+[functions.wa-football-status]
+verify_jwt = false
+
+# Public read-only renderer; no WhatsApp or account credentials are exposed here.
+[functions.wa-football-banner]
+verify_jwt = false
+static_files = ["./functions/wa-football-banner/assets/*"]
+
+[functions.mp-pix]
+verify_jwt = false
+
+# Webhook Mercado Pago (sem JWT — o MP chama direto)
+[functions.mp-webhook]
+verify_jwt = false
+
+# Envio automático WhatsApp (cron via pg_cron chama sem JWT; função é idempotente)
+[functions.wa-auto-send]
+verify_jwt = false
+
+# Auth URLs (produção + localhost / Dyad)
+[auth]
+enabled = true
+site_url = "https://auxplus.vercel.app"
+additional_redirect_urls = [
+  "https://auxplus.vercel.app",
+  "https://auxplus.vercel.app/**",
+  "https://auxplus.vercel.app/auth/confirm",
+  "http://localhost:3000",
+  "http://localhost:3000/**",
+  "http://localhost:3000/auth/confirm",
+  "http://localhost:8080",
+  "http://localhost:8080/**",
+  "http://localhost:8080/auth/confirm",
+  "http://localhost:32116",
+  "http://localhost:32116/**",
+  "http://localhost:32116/auth/confirm",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3000/**",
+  "http://127.0.0.1:3000/auth/confirm",
+]
+
+# Manter alinhado ao que já estava no projeto remoto
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = false
+max_frequency = "1m0s"
+otp_length = 8
+otp_expiry = 3600
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true

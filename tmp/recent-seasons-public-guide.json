@@ -1,0 +1,6951 @@
+{
+  "head" : {
+    "vars" : [ "item", "label", "date", "season", "seasonNumber", "seasonDate" ]
+  },
+  "results" : {
+    "bindings" : [ {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141841072"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q114554430"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Dark Matter"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-05-08T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140452072"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125305426"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-18T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Outlander: Blood of My Blood"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2025-08-08T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140997552"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116199566"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-02T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Special Ops: Lioness"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-07-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141176292"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139715835"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-07T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "M.I.A. (TV series)"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-07T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141604258"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125867678"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Las Azules"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-07-31T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139908346"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125755654"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-08T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Georgie and Mandy's First Marriage"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-17T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "ATVNCG"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Call Me by Fire Vietnam"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141841072"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q114554430"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Dark Matter (série americana)"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-05-08T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139793708"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836131"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Stuart Não Consegue Salvar o Universo"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141284653"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q119082176"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-01T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Pupstruction"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-06-14T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113882038"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Criminal Minds, season 16"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-11-24T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139793708"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836131"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Stuart Fails to Save the Universe"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141490661"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116449538"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "The Traitors"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-12T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140452072"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125305426"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-18T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Outlander: Blood of My Blood"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2025-08-08T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141657006"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q117425241"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-15T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Diplomat"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-04-20T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139979968"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q123956515"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Spider-Man Noir"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141490661"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116449538"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "The Traitors (série estadunidense)"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-12T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141490661"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116449538"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Traitors"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-12T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139908346"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125755654"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-08T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Georgie and Mandy's First Marriage"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-17T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141604258"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125867678"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Women in Blue"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-07-31T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139979968"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q123956515"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Noir"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141284653"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q119082176"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-01T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Pupstruction"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-06-14T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139965146"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124062018"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-19T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Rock, Paper, Scissors"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-02-11T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139976024"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q120756352"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "A Good Girl's Guide to Murder"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-07-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659662"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124449112"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Regresso dos Feiticeiros de Waverly Place"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139935542"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q52617"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-30T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "11"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Survivor Finland"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2013-01-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659662"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124449112"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Wizards Beyond Waverly Place"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141434720"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141142908"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "6"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Un monde, un regard"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2021-09-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140782976"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125988942"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-31T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Batman: Caped Crusader"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-08-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141632370"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116948009"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-24T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Special Forces: World's Toughest Test"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-04T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140148869"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116745346"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-11T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Rubble and Crew"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659662"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124449112"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Regresso dos Feiticeiros de Waverly Place"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659662"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124449112"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Wizards Beyond Waverly Place"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140452072"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125305426"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-18T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Outlander: Blood of My Blood"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2025-08-08T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140782976"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125988942"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-31T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Batman: Caped Crusader"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-08-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "ATVNCG"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-06-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Call Me by Fire Vietnam"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-06-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141270104"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q115860329"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Gentlemen"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-03-07T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659662"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124449112"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Wizards"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140997552"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116199566"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-02T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Operação: Lioness"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-07-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140452072"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125305426"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-18T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Outlander: Blood of my Blood"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2025-08-08T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133042509"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q94527193"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Star Trek Strange New Worlds"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133042509"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q94527193"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Star Trek: Strange New Worlds (TV)"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141490661"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116449538"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Traitors US"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-12T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113882038"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Criminal Minds: Evolution"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-11-24T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141521223"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113416916"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Ca sĩ mặt nạ"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141490661"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116449538"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "The Traitors US"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-12T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Call Me by Fire Vietnam"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-06-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133042509"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q94527193"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Strange New Worlds"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141632370"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116948009"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-24T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Celebrity SAS: Who Dares Wins USA"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-04T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141521223"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113416916"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Ca sĩ mặt nạ"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-07-16T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140452072"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125305426"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-18T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Blood of my Blood"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2025-08-08T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141015092"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q89414035"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-20T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "OBX"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2020-04-15T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139976024"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q120756352"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Manual de assassinato para boas meninas (série de TV)"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-07-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140997552"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116199566"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-02T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Lioness"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-07-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141521223"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113416916"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Ca sĩ mặt nạ"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-08-04T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140148869"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116745346"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-11T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Rubble & Crew"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Call Me by Fire Vietnam"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140148869"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116745346"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-11T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Rubble & Crew"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "ATVNCG"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-06-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141521223"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113416916"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Masked Singer"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133042509"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q94527193"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "SNW"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141521223"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113416916"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Masked Singer"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-07-16T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140148869"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q116745346"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-11T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Rubble & Crew"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-01-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139976024"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q120756352"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "A Good Girl's Guide To Murder"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-07-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140452072"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125305426"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-18T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Blood of My Blood"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2025-08-08T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141521223"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113416916"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Masked Singer"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-08-04T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139817064"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109850709"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-15T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Berlim"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-12-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "ATVNCG"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113882038"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Criminal Minds: Evolution"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-11-24T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133042509"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q94527193"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Pike Show"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139817064"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109850709"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-15T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Berlim"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-12-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140780084"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113696648"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-19T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Sugar"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-04-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140405924"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q5218925"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Hani the Tiger"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2012-09-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140365577"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2790662"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "28"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Big Brother Estados Unidos"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-07-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140365577"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2790662"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "28"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Big Brother EUA"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-07-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139825542"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q20899617"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-11T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "22"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Taskmaster UK"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2015-07-28T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135928100"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q83279"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "17"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Bob Esponja"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1999-05-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135928100"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q83279"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "17"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Bob Esponja Calça Quadrada"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1999-05-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140074897"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q17625874"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "11"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Coca-Cola Summer Festival"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141417619"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q76759345"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Helluva Boss"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2019-11-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140365577"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2790662"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "28"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Big Brother USA"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-07-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139995488"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q15659308"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-24T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "9"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Rick and Morty"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2013-12-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141127877"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q90824181"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-08T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Trying"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2020-05-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141176179"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q3359114"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "30"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Expedition Robinson"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1997-09-13T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141417619"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q76759345"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Helluva Boss"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2019-11-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141015092"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q89414035"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-20T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Outer Banks"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2020-04-15T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141160786"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q648934"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Fabryka zirok"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2007-10-07T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141160786"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q648934"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Fabryka zirok"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2007-10-07T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141750282"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q111967146"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-16T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Tulsa King"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-11-13T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135928100"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q83279"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "17"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "SpongeBob"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1999-05-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135928100"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q83279"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "17"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "SpongeBob SquarePants"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1999-05-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133042509"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q94527193"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Star Trek: Strange New Worlds"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140936067"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q96407897"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Ted Lasso"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2020-08-14T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126915768"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q72930269"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-21T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "House of the Dragon"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-08-21T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139888204"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q28856068"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-01T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "51"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Survivor"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-05-31T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141176179"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q3359114"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "30"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Expedition Robinson"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1997-09-13T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135928100"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q83279"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "17"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "SpongeBob SquarePants"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1999-05-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140405924"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q5218925"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Daniel Tigre"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2012-09-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140936067"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q96407897"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Ted Lasso"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2020-08-14T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139825542"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q20899617"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-11T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "22"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Taskmaster"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2015-07-28T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140074897"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q17625874"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "11"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "105 Summer Festival"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140074897"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q17625874"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "11"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Coca-Cola Summer Festival"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141120038"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q104880809"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-16T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "6"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Slow Horses"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-04-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q130572587"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q103821269"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "O Star Do Patrick Estrela"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2021-07-09T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140074897"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q17625874"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "11"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Tezenis Summer Festival"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q202141"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Mentes Criminosas"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-09-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140374882"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109608844"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Avatar: The Last Airbender"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-02-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139888204"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q28856068"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-01T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "51"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Survivor"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-05-31T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141015092"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q89414035"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-20T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Outer Banks"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2020-04-15T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139825542"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q20899617"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-11T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "22"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Taskmaster"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2015-07-28T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140690324"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q27645779"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-21T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Big City Greens"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2018-06-18T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q202141"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Criminal Minds: Evolution"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-09-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139995488"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q15659308"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-24T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "9"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Rick & Morty"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2013-12-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141120038"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q104880809"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-16T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "6"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Slow Horses"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-04-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133042509"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q94527193"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Star Trek: Strange New Worlds"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135511327"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q20642692"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-01T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "10"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Loud House"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2016-05-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140405924"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q5218925"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Daniel Tiger"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2012-09-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140405924"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q5218925"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Daniel Tiger's Neighborhood"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2012-09-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140405924"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q5218925"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Daniel Tiger's Neighbourhood"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2012-09-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q130572587"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q103821269"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Patrick Show"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2021-07-09T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q130572587"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q103821269"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Patrick Star Show"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2021-07-09T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135511327"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q20642692"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-01T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "10"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Loud em Casa"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2016-05-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139817064"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109850709"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-15T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Berlin"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-12-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140074897"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q17625874"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "11"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Summer Festival"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140936067"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q96407897"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Ted Lasso"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2020-08-14T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140074897"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q17625874"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "11"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Music Summer Festival - Tezenis Live"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140322497"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q19751476"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-22T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "D'Academy"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2014-02-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140074897"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q17625874"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "11"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Wind Summer Festival"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126915768"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q72930269"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-21T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "House of the Dragon"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-08-21T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141521223"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113416916"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Masked Singer Vietnam"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141335984"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q284261"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-06T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "20"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Bigg Boss"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2006-11-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139888204"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q28856068"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-01T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "51"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Survivor"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-05-31T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141417619"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q76759345"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Helluva Boss"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2019-01-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135511327"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q20642692"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-01T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "10"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Loud House"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2016-05-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140365577"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2790662"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "28"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Dan Gheesling"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-07-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139825542"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q20899617"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-11T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "22"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "TM"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2015-07-28T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141306717"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2423094"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-24T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "20"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "PBB"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-08-21T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139995488"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q15659308"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-24T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "9"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Rick and Morty"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2013-12-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140690324"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q27645779"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-21T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Big City Greens"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2018-06-18T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140644264"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q1499182"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-18T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Markus Lanz"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2008-06-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135511327"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q20642692"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-01T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "10"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "The Loud House"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2016-05-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141417619"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q76759345"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Helluva Boss"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2019-01-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q202141"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Mentes Criminosas"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-09-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141176179"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q3359114"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "30"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Robinson"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1997-09-13T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141521223"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113416916"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Masked Singer Vietnam"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-07-16T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141306717"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2423094"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-24T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "20"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Pinoy Big Brother"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-08-21T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140322497"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q19751476"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-22T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "D'Academy"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2014-02-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140322497"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q19751476"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-22T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "D Academy"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2014-02-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140322497"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q19751476"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-22T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Dangdut Academy"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2014-02-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140322497"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q19751476"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-22T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "D Academy"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2014-02-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140322497"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q19751476"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-22T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Dangdut Academy"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2014-02-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140780084"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113696648"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-19T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Sugar (série de televisão)"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-04-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140644264"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q1499182"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-18T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Markus Lanz"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2008-06-03T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141015092"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q89414035"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-20T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Outer Banks"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2020-04-15T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q130572587"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q103821269"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "The Patrick Star Show"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2021-07-09T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141176179"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q3359114"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "30"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Ekspedicio Robinsono"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1997-09-13T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141417619"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q76759345"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Helluva Boss"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2019-01-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141417619"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q76759345"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Helluva Boss"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2019-11-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139825542"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q20899617"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-11T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "22"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Taskmaster (game show)"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2015-07-28T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141521223"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q113416916"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Masked Singer Vietnam"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-08-04T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140365577"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2790662"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "28"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Big Brother USA"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-07-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140374882"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109608844"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Avatar: The Last Airbender"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-02-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141417619"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q76759345"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Helluva Boss"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2019-11-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141417619"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q76759345"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-14T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Helluva Boss"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2019-01-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141638205"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q18420628"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "13"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Tú sí que vales"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141638205"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q18420628"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "13"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Tusiquevales"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140374882"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109608844"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Avatar: The Last Airbender"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-02-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140374882"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109608844"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Avatar: The Legend of Aang"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-02-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q202141"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Criminal Minds: Evolution"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-09-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135928100"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q83279"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "17"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "SpongeBob SquarePants"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "1999-05-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126915768"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q72930269"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-21T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "House of the Dragon"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-08-21T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139979968"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q123956515"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Spider-Noir"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139908346"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125755654"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-08T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Georgie & Mandy's First Marriage"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-17T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139965146"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124062018"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-19T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Rock Paper Scissors"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-02-11T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659662"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124449112"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Wizards Beyond Waverly Place"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139979968"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q123956515"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Spider-Noir"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139908346"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q125755654"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-08T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Georgie & Mandy's First Marriage"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-17T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659662"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124449112"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Wizards Beyond Waverly Place"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659662"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124449112"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Os Feiticeiros Além de Waverly Place"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139979968"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q123956515"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Spider-Noir"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-25T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659662"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124449112"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Os Feiticeiros Além de Waverly Place"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139965146"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q124062018"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-19T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Rock Paper Scissors"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-02-11T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q202141"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Criminal Minds"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-09-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139995488"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q15659308"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-24T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "9"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Rick and Morty"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2013-12-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q202141"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Criminal Minds"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-09-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q202141"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Criminal Minds"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-09-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139935542"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q52617"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-30T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "11"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Selviytyjät Suomi"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2013-01-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140365577"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2790662"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "28"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Big Brother"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-07-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140365577"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2790662"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "28"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Big Brother"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-07-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139985491"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q202141"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "19"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Criminal Minds"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2005-09-22T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140365577"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q2790662"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "28"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Big Brother"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2000-07-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141434720"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141142908"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-04T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "6"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Un monde un regard"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2021-09-01T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141176292"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139715835"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-07T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "M.I.A."
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-07T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Anh trai vượt ngàn chông gai"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-06-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Anh trai vượt ngàn chông gai"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-06-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Anh trai vượt ngàn chông gai"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836445"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126910969"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Anh trai vượt ngàn chông gai"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-27T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139793708"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836131"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Stuart Fails to Save the Universe"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139793708"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836131"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Stuart Não Consegue Salvar o Universo"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139793708"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836131"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Stuart Fails to Save the Universe"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139793708"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138836131"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Stuart Fails to Save the Universe"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140428810"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q108456738"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "O Silo"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140416319"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q126870075"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-28T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Ruangguru Clash of Champions"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-06-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140032606"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q117044876"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "6"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Erikoisjoukot"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139882507"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138862091"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-13T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Off Campus: Amores Improváveis"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-13T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140464413"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q132852828"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-20T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Maximum Pleasure Guaranteed"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-20T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140422090"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133567755"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Cidade das Estrelas"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140161056"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q136498700"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-04-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Widow's Bay"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-04-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141046216"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q131378846"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-15T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Lucky"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-15T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659385"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q130379832"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Max & the Midknights"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-30T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659386"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q130379832"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Max & the Midknights"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-30T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141659388"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q130379832"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-19T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Max & the Midknights"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2024-10-30T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140914546"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q136722498"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Estilhaços"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140161056"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q136498700"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-04-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "O Segredo de Widow's Bay"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-04-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140935786"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140797870"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Super Why's Comic Book Adventures"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141906429"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133842356"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Brothers"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140428810"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q108456738"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Silo"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140914546"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q136722498"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Shards"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141906429"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133842356"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Brothers"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135745692"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q130325444"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Monster"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q137397218"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109242187"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-07T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Anne Rice's Interview with the Vampire"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-10-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141613690"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135969535"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-10-06T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Vampirina: Teenage Vampire"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2025-09-12T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141015508"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109901438"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Reacher"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-02-04T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140422090"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133567755"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Star City"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141906429"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133842356"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Brothers"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140161056"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q136498700"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-04-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Widow's Bay"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-04-29T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140428810"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q108456738"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Wool"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140032606"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q117044876"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "6"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Erikoisjoukot"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q137397218"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109242187"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-07T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "IWTV"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-10-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141015508"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109901438"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Reacher"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-02-04T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139882507"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138862091"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-13T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Off Campus: Amores Improváveis"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-13T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q136121953"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q132296748"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Ransom Canyon"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2025-04-17T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139974124"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139709802"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-09T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Dragon Striker"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-09T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139695850"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q112761982"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "The Bear (series de TV)"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-06-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140428810"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q108456738"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-03T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Silo"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2023-05-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q137397218"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109242187"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-07T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Interview with the Vampire"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-10-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140681563"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q134126367"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Cape Fear"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q137397218"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109242187"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-07T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Interview with the Vampire"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-10-02T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140422090"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133567755"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Cidade das Estrelas"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139882507"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q138862091"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-13T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Off Campus"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-13T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141046216"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q131378846"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-15T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Lucky"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-07-15T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140681563"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q134126367"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt-br",
+        "type" : "literal",
+        "value" : "Cabo do Medo"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141015508"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q109901438"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-08-12T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Reacher"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-02-04T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140422090"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133567755"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-05-29T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "Star City"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139695850"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q112761982"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "mul",
+        "type" : "literal",
+        "value" : "The Bear"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-06-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q139695850"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q112761982"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-25T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "The Bear"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2022-06-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q140681563"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q134126367"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Cape Fear"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-06-05T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q141906429"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q133842356"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-23T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "label" : {
+        "xml:lang" : "pt",
+        "type" : "literal",
+        "value" : "Irmãos"
+      },
+      "date" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-23T00:00:00Z"
+      }
+    }, {
+      "season" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q135745692"
+      },
+      "item" : {
+        "type" : "uri",
+        "value" : "http://www.wikidata.org/entity/Q130325444"
+      },
+      "seasonDate" : {
+        "datatype" : "http://www.w3.org/2001/XMLSchema#dateTime",
+        "type" : "literal",
+        "value" : "2026-09-17T00:00:00Z"
+      },
+      "seasonNumber" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "label" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Monster"
+      }
+    } ]
+  }
+}

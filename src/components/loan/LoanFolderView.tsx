@@ -26,7 +26,7 @@ import { dailyLoanRate, nextLoanMonth, recordLoanPayment } from "@/lib/loans";
 import { LoanClientHistory } from "@/components/loan/LoanClientHistory";
 import { LoanWhatsappConnection } from "@/components/loan/LoanWhatsappConnection";
 import { useLoanWhatsappConnection } from "@/hooks/useLoanWhatsappConnection";
-import { fetchEvolutionStatus, sendEvolutionText } from "@/lib/whatsappAutomation";
+import { fetchEvolutionStatus, sendEvolutionText } from "@/lib/whatsappCore";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));

@@ -444,6 +444,34 @@ async function listResellers(bearer: string, search: string) {
   >;
 }
 
+/** Histórico usado para tornar a entrega de créditos idempotente após uma
+ * falha parcial (a API pode ter aplicado o PUT antes de a resposta chegar). */
+async function resellerCreditsAlreadyDelivered(
+  bearer: string,
+  resellerId: string | number,
+  orderId: string,
+  credits: number,
+) {
+  const id = Math.floor(Number(resellerId));
+  if (!Number.isFinite(id) || id <= 0) return false;
+  const raw = await uniplayFetch(`/logs-reseller/${encodeURIComponent(String(id))}`, bearer);
+  const rows = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object" && Array.isArray((raw as { logs?: unknown }).logs)
+      ? (raw as { logs: unknown[] }).logs
+      : raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data)
+        ? (raw as { data: unknown[] }).data
+        : [];
+  const marker = String(orderId || "").trim().toLowerCase();
+  return rows.some((row) => {
+    if (!row || typeof row !== "object") return false;
+    const item = row as Record<string, unknown>;
+    const text = Object.values(item).map((value) => String(value ?? "")).join(" ").toLowerCase();
+    const qty = Number(item.credits ?? item.creditos ?? item.quantity ?? item.amount);
+    return marker && text.includes(marker) && (!Number.isFinite(qty) || qty >= credits);
+  });
+}
+
 async function sendEvolutionText(
   apiBaseUrl: string,
   apiKey: string,
@@ -649,9 +677,15 @@ async function claimOrder(
 ): Promise<MpOrder | null> {
   const { userId, order } = found;
   if (order.status === "released" || order.releasedAt) return null;
-  if (order.error === RELEASING_MARK) {
+  if (order.error === RELEASING_MARK || (String(order.kind || "") === "reseller_credits" && order.error)) {
     const t = Date.parse(String(order.updatedAt || "")) || 0;
     if (Date.now() - t < 2 * 60 * 1000) return null;
+    // Recargas podem ter sido aplicadas antes de uma falha posterior. Depois
+    // do intervalo de segurança, permite recuperar a mesma ordem; a consulta
+    // ao histórico acima impede um segundo envio.
+    if (String(order.kind || "") === "reseller_credits") {
+      return order;
+    }
   }
   // Trava atômica: só um lado (webhook ou cliente) pode liberar o pedido.
   const gotClaim = await acquireReleaseClaim(client, order.id, "server", userId, order.mpPaymentId);
@@ -856,13 +890,16 @@ async function releaseOrder(
       throw new Error(`Revendedor ${username} não encontrado no UniPlay`);
     }
     const resellerId = remote.id ?? remote.user_id ?? remote.uid;
-    await addResellerCredits(
+    const reason = `AuxPlus PIX ${order.id}`;
+    const delivered = await resellerCreditsAlreadyDelivered(
       bearer,
       resellerId as string | number,
+      order.id,
       packCredits,
-      amount,
-      `AuxPlus PIX ${order.id}`,
     );
+    if (!delivered) {
+      await addResellerCredits(bearer, resellerId as string | number, packCredits, amount, reason);
+    }
     if (order.itemRefId) {
       const { data: item } = await client
         .from("items")

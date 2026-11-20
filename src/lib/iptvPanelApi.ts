@@ -5,7 +5,7 @@
 
 import { SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
 import { formatBrDate } from "@/lib/format";
-import { DEFAULT_PRORROGA_MESSAGE } from "@/lib/whatsappAutomation";
+import { DEFAULT_PRORROGA_MESSAGE } from "@/lib/whatsappCore";
 import { readSyncedDevices, writeSyncedDevice } from "@/lib/partnerAppsSync";
 import { partnerActivationRequest } from "../../supabase/functions/_shared/partnerAppContract.ts";
 import { parseUniplayRenewalLogs, parseUniplayRecreatedLines, parseUniplayCreditLogs } from "@/lib/uniplayRenewalLogs";

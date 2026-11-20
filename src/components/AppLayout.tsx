@@ -30,7 +30,6 @@ import { toast } from "sonner";
 import { useApp } from "@/context/AppContext";
 import { useHideBalance } from "@/hooks/useHideBalance";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
-import { useWhatsappAutoSend } from "@/hooks/useWhatsappAutoSend";
 import { useLocalAlerts } from "@/hooks/useLocalAlerts";
 import { useMpOrderAutoRelease } from "@/hooks/useMpOrderAutoRelease";
 import { useCreditLog } from "@/hooks/useCreditLog";
@@ -74,7 +73,6 @@ export function AppLayout() {
     ios: isIosInstall,
     promptInstall,
   } = usePwaInstall();
-  useWhatsappAutoSend(user, data);
   useLocalAlerts(user, data);
   useMpOrderAutoRelease(user, data, setData);
   useCreditLog(user);

@@ -38,3 +38,5 @@ dist-ssr
 # Supabase CLI local artifacts (não commitar)
 supabase/.temp/*
 !supabase/.temp/linked-project.json
+
+.vercel
