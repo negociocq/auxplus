@@ -86,6 +86,7 @@ export default function WhatsAppPage() {
   const sendingRef = useRef(false);
   const autoRunTodayRef = useRef(false);
   const lastAutoDayRef = useRef("");
+  const lastSendTimeRef = useRef("");
 
   useEffect(() => {
     if (!user) return;
@@ -118,6 +119,12 @@ export default function WhatsAppPage() {
   // Auto-disparo da fila quando chega o horário configurado
   useEffect(() => {
     if (!user) return;
+
+    // Se mudou o horário, permite disparar de novo hoje
+    if (lastSendTimeRef.current !== settings.sendTime) {
+      lastSendTimeRef.current = settings.sendTime;
+      autoRunTodayRef.current = false;
+    }
 
     const tick = () => {
       const today = format(new Date(), "yyyy-MM-dd");
