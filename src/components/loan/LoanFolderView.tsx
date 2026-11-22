@@ -27,6 +27,7 @@ import { LoanClientHistory } from "@/components/loan/LoanClientHistory";
 import { LoanWhatsappConnection } from "@/components/loan/LoanWhatsappConnection";
 import { useLoanWhatsappConnection } from "@/hooks/useLoanWhatsappConnection";
 import { fetchEvolutionStatus, sendEvolutionText } from "@/lib/whatsappCore";
+import { isPastSendTime } from "@/lib/whatsappAutomation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const cleanNotes = (notes?: string) => stripLoan(stripScreensMarker(stripPlanMarker(stripPaymentMarker(notes))));
@@ -123,6 +124,94 @@ export function LoanFolderView({ folder }: { folder: Folder }) {
     window.addEventListener("focus", refresh);
     return () => { window.clearInterval(interval); window.removeEventListener("focus", refresh); };
   }, []);
+
+  const lastAutoDayRef = useRef("");
+  const autoRunningRef = useRef(false);
+
+  const loanSentKey = (day: string) => `auxplus-loan-sent:${folder.id}:${day}`;
+  const loadSentToday = (): Set<string> => {
+    try {
+      const raw = localStorage.getItem(loanSentKey(localLoanDay()));
+      if (!raw) return new Set();
+      return new Set(JSON.parse(raw));
+    } catch { return new Set(); }
+  };
+  const saveSentToday = (set: Set<string>) => {
+    try { localStorage.setItem(loanSentKey(localLoanDay()), JSON.stringify([...set])); } catch {}
+  };
+
+  // Envio automático de lembretes de empréstimos (2 dias antes / no vencimento),
+  // disparado a partir do horário configurado e reavaliado a cada 5 min / ao focar a aba.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    let sentToday = loadSentToday();
+
+    const run = async () => {
+      if (cancelled || autoRunningRef.current) return;
+      if (!autoSettings.enabled || !autoSettings.sendTime) return;
+      if (loanWa.status !== "open" || !loanWa.runtime) return;
+      if (!isPastSendTime(autoSettings.sendTime)) return;
+
+      autoRunningRef.current = true;
+      try {
+        const today = localLoanDay();
+        if (lastAutoDayRef.current !== today) {
+          lastAutoDayRef.current = today;
+          sentToday = loadSentToday();
+        }
+
+        const pending = data.items
+          .filter((i) => i.folderId === folder.id)
+          .map((item) => ({ item, loan: readLoan(item) }))
+          .filter(({ loan }) => !!loan && !loan.paidAt);
+
+        for (const { item, loan } of pending) {
+          if (!loan) continue;
+          const kind = loanReminderKind(loan, today);
+          if (!kind) continue;
+          if (kind === "before" && !autoSettings.sendBefore) continue;
+          if (kind === "onday" && !autoSettings.sendOnDay) continue;
+          const key = `${item.id}:${kind}`;
+          if (sentToday.has(key)) continue;
+
+          try {
+            const ok = await fetchEvolutionStatus(loanWa.runtime);
+            if (ok !== "open") break;
+            const template = readLoanReminder(currentFolder.whatsappMessage, kind);
+            const text = buildLoanReminderMessage(template, item.name, loan, today, pixKey);
+            await sendEvolutionText(loanWa.runtime, item.phone, text, 0);
+            sentToday.add(key);
+            saveSentToday(sentToday);
+          } catch {
+            /* falha individual — segue para o próximo cliente */
+          }
+        }
+      } finally {
+        autoRunningRef.current = false;
+      }
+    };
+
+    const resetIfNewDay = () => {
+      const d = localLoanDay();
+      if (lastAutoDayRef.current !== d) {
+        lastAutoDayRef.current = d;
+        sentToday = loadSentToday();
+      }
+    };
+
+    resetIfNewDay();
+    void run();
+    const id = window.setInterval(() => { resetIfNewDay(); void run(); }, 5 * 60 * 1000);
+    const onFocus = () => { resetIfNewDay(); void run(); };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [user, folder.id, autoSettings, loanWa.status, loanWa.runtime, pixKey, currentFolder.whatsappMessage, data.items]);
+
   const rows = useMemo(() => data.items.filter(i => i.folderId === folder.id).map(item => {
     const loan = readLoan(item);
     return { item, loan, balance: loan ? loanBalance(loan, today) : null, dueStatus: loan ? loanDueStatus(loan.dueDate, today, nearDays) : "Sem Vencimento" as ItemStatus };
